@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OP极速登录器</title>
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --primary-hover: #4338CA;
+            --bg-gradient-1: #c7d2fe;
+            --bg-gradient-2: #fbcfe8;
+            --text-main: #1F2937;
+            --text-muted: #6B7280;
+            --card-bg: rgba(255, 255, 255, 0.7);
+            --card-border: rgba(255, 255, 255, 0.5);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--bg-gradient-1) 0%, var(--bg-gradient-2) 100%);
+            color: var(--text-main);
+            overflow-x: hidden;
+        }
+
+        /* 背景装饰圆 */
+        .bg-shape {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(60px);
+            z-index: -1;
+            opacity: 0.6;
+        }
+        .shape-1 {
+            width: 300px;
+            height: 300px;
+            background: #818CF8;
+            top: -50px;
+            left: -50px;
+        }
+        .shape-2 {
+            width: 400px;
+            height: 400px;
+            background: #F472B6;
+            bottom: -100px;
+            right: -100px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 420px;
+            padding: 20px;
+            box-sizing: border-box;
+            z-index: 1;
+        }
+
+        .glass-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--card-border);
+            border-radius: 24px;
+            padding: 32px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.05);
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 24px;
+            font-weight: 700;
+            margin: 0 0 8px 0;
+            background: linear-gradient(to right, #4F46E5, #EC4899);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 14px;
+            margin: 0 0 28px 0;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 8px;
+            color: var(--text-main);
+        }
+
+        input[type="text"], select {
+            width: 100%;
+            padding: 14px 16px;
+            font-size: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.5);
+            color: var(--text-main);
+            box-sizing: border-box;
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        input[type="text"]:focus, select:focus {
+            background: rgba(255, 255, 255, 0.9);
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+
+        select {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 16px center;
+            background-size: 16px;
+        }
+
+        .btn-submit {
+            width: 100%;
+            padding: 16px;
+            font-size: 16px;
+            font-weight: 600;
+            color: white;
+            background: var(--primary);
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
+            margin-top: 8px;
+        }
+
+        .btn-submit:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(79, 70, 229, 0.3);
+        }
+
+        .btn-submit:active {
+            transform: translateY(1px);
+        }
+
+        .btn-submit:disabled {
+            background: #9CA3AF;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .tutorial {
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .tutorial h3 {
+            font-size: 14px;
+            margin: 0 0 12px 0;
+            color: var(--text-main);
+        }
+
+        .tutorial ol {
+            margin: 0;
+            padding-left: 20px;
+            font-size: 13px;
+            color: var(--text-muted);
+            line-height: 1.6;
+        }
+
+        .tutorial li {
+            margin-bottom: 6px;
+        }
+
+        /* Toast 提示框 */
+        .toast {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-100%);
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            color: var(--text-main);
+            padding: 12px 24px;
+            border-radius: 30px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            opacity: 0;
+            transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            z-index: 1000;
+        }
+
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+
+        .toast.success { border-left: 4px solid #10B981; }
+        .toast.error { border-left: 4px solid #EF4444; }
+    </style>
+</head>
+<body>
+    <div class="bg-shape shape-1"></div>
+    <div class="bg-shape shape-2"></div>
+
+    <div class="container">
+        <div class="glass-card">
+            <h1>OP极速登录器</h1>
+            <p class="subtitle">自动解析，一键唤醒应用</p>
+
+            <form id="loginForm" onsubmit="event.preventDefault(); submitData();">
+                <div class="form-group">
+                    <label for="url">数据号 URL</label>
+                    <input type="text" id="url" name="url" required placeholder="例如：785C405C... 或完整链接">
+                </div>
+
+                <div class="form-group">
+                    <label for="game">目标应用</label>
+                    <select id="game" name="game" required>
+                        <option value="100507190">小红书</option>
+                        <option value="1104466820">王者荣耀</option>
+                        <option value="100228415">快手普通版</option>
+                        <option value="1107805332">快手极速版</option>
+                        <option value="100392046">陌陌</option>
+                        <option value="1105602870" selected>抖音</option>
+                        <option value="1104790111">拼多多</option>
+                        <option value="1107803357">噗叽</option>
+                        <option value="1105245568">天龙八部</option>
+                        <option value="1109838467">妄想山海</option>
+                        <option value="1106467070">和平精英</option>
+                        <option value="1104922185">QQ飞车</option>
+                        <option value="1101070761">腾讯欢乐麻将</option>
+                        <option value="101028429">JJ斗地主</option>
+                        <option value="205141">酷狗</option>
+                        <option value="101992353">欢游</option>
+                        <option value="100733509">他趣</option>
+                        <option value="1105200115">王者营地</option>
+                        <option value="1101083114">微视</option>
+                        <option value="100273020">京东</option>
+                        <option value="1106039633">懂车帝</option>
+                        <option value="1104512706">CFm</option>
+                        <option value="1106087470">百度极速版</option>
+                        <option value="1105641716">一起来捉妖</option>
+                        <option value="1110543085">三角洲</option>
+                        <option value="1105764729">头条极速版</option>
+                        <option value="100290348">今日头条普通版</option>
+                        <option value="1109811436">金铲铲</option>
+                        <option value="101466002">好看视频</option>
+                        <option value="100379435">腾讯地图</option>
+                        <option value="1107594618">途游斗地主</option>
+                        <option value="1105380575">西瓜视频</option>
+                        <option value="1106838536">使命召唤</option>
+                        <option value="1105587736">QQ华夏</option>
+                        <option value="1105376759">雷速</option>
+                        <option value="1105483033">QQ炫舞</option>
+                        <option value="101509574">赫兹</option>
+                        <option value="1103698981">TT语音</option>
+                        <option value="101097681">全民K歌</option>
+                        <option value="100784518">百度正版</option>
+                        <option value="100736949">起点读书</option>
+                        <option value="102042116">咪鸭</option>
+                        <option value="1104301257">爱聊</option>
+                        <option value="100512694">玩吧</option>
+                        <option value="200004">优酷</option>
+                        <option value="101528360">回森</option>
+                    </select>
+                </div>
+
+                <button type="submit" id="submitBtn" class="btn-submit">立即上号</button>
+            </form>
+
+            <div class="tutorial">
+                <h3>使用说明</h3>
+                <ol>
+                    <li>输入或通过网址自动提取完整数据号。</li>
+                    <li>确认目标应用（默认抖音），点击“立即上号”。</li>
+                    <li>如唤起成功，请在弹出的提示中允许打开游戏。</li>
+                    <li>第三方应用请先停留在登录界面再进行操作。</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+        // 显示自定义 Toast 提示
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast ${type} show`;
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        // 页面加载时，自动提取 URL 中 '/' 后面的参数并填充
+        window.addEventListener('DOMContentLoaded', () => {
+            let param = '';
+            
+            // 尝试获取 pathname 最后的参数
+            const path = window.location.pathname;
+            if (path && path !== '/' && path.indexOf('.html') === -1) {
+                param = path.split('/').pop();
+            }
+            
+            // 如果 pathname 没有，尝试获取 search (?xxx)
+            if (!param && window.location.search) {
+                param = window.location.search.substring(1);
+            }
+            
+            // 如果 search 也没有，尝试获取 hash (#xxx)
+            if (!param && window.location.hash) {
+                param = window.location.hash.substring(1);
+            }
+
+            // 清理可能的前缀斜杠
+            if (param) {
+                param = param.replace(/^\/+/, '');
+                param = decodeURIComponent(param);
+                document.getElementById('url').value = param;
+                
+                // 如果提取到了参数，可以通过取消注释下面这行来自动触发提交
+                // setTimeout(submitData, 500); 
+            }
+        });
+
+        // 提交数据
+        function submitData() {
+            const urlInput = document.getElementById('url').value.trim();
+            const gameInput = document.getElementById('game').value;
+            const btn = document.getElementById('submitBtn');
+            
+            if (!urlInput) {
+                showToast('请输入数据号 URL', 'error');
+                return;
+            }
+
+            const originalText = btn.innerText;
+            btn.innerText = '正在处理...';
+            btn.disabled = true;
+
+            fetch('/api/submit', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ url: urlInput, game: gameInput })
+            })
+            .then(response => {
+                if (response.status === 200) {
+                    return response.json();
+                } else if (response.status === 400) {
+                    throw new Error('提取失败或数据号无效');
+                } else if (response.status === 500) {
+                    throw new Error('服务器编码失败');
+                } else {
+                    throw new Error('网络异常，请重试');
+                }
+            })
+            .then(data => {
+                if (data.status === 'success' && data.url) {
+                    showToast('上号成功，正在唤起应用...', 'success');
+                    // 延迟一点时间以确保用户能看到 Toast
+                    setTimeout(() => {
+                        window.location.href = data.url;
+                    }, 800);
+                } else {
+                    showToast('上号失败，请检查数据号 URL 是否正确', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                // 提示错误信息
+                showToast(error.message || '上号失败，请检查网络或数据号', 'error');
+            })
+            .finally(() => {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            });
+        }
+    </script>
+</body>
+</html>
