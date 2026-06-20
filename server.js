@@ -5,7 +5,7 @@ const path = require('path');
 const { buildWakeUrl } = require('./lib/op-url');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 4399;
 
 // 启用中间件
 app.use(cors());
