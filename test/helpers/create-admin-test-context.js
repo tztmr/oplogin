@@ -8,7 +8,7 @@ const { ensureDatabaseSchema } = require('../../lib/schema');
 const { ensureInitialSuperAdmin } = require('../../lib/bootstrap-admin');
 const { createSessionMiddleware } = require('../../lib/session');
 
-async function createAdminTestContext() {
+async function createAdminTestContext(envOverrides = {}) {
   const db = newDb();
   const { Pool } = db.adapters.createPg();
   const pool = new Pool();
@@ -20,6 +20,7 @@ async function createAdminTestContext() {
     INITIAL_SUPER_ADMIN_LOGIN: 'root',
     INITIAL_SUPER_ADMIN_EMAIL: 'root@example.com',
     INITIAL_SUPER_ADMIN_PASSWORD: 'change-me-now',
+    ...envOverrides,
   });
 
   await ensureDatabaseSchema(pool);

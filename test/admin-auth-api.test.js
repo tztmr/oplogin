@@ -49,3 +49,24 @@ test('disabled admins cannot log in', async () => {
   assert.equal(loginResponse.status, 401);
   assert.match(loginResponse.body.error, /Invalid credentials|disabled/i);
 });
+
+test('secure admin session cookie is issued correctly behind https reverse proxy', async () => {
+  const { app, config } = await createAdminTestContext({
+    SESSION_COOKIE_SECURE: 'true',
+  });
+
+  const loginResponse = await require('supertest')(app)
+    .post('/api/admin/auth/login')
+    .set('X-Forwarded-Proto', 'https')
+    .send({
+      identifier: config.initialSuperAdminLogin,
+      password: config.initialSuperAdminPassword,
+    });
+
+  assert.equal(loginResponse.status, 200);
+  assert.ok(
+    (loginResponse.headers['set-cookie'] || []).some((cookie) =>
+      cookie.includes('op_admin_session='),
+    ),
+  );
+});

@@ -268,6 +268,28 @@ ensure_pm2_startup() {
   pm2 startup >/dev/null 2>&1 || true
 }
 
+install_psql_if_needed() {
+  if command_exists psql; then
+    return 0
+  fi
+
+  ensure_root_capability
+  info "检测到未安装 psql 客户端，开始自动安装"
+  if command_exists apt-get; then
+    run_root apt-get update -y -qq
+    run_root apt-get install -y -qq postgresql-client
+  elif command_exists dnf; then
+    run_root dnf install -y -q postgresql
+  elif command_exists yum; then
+    run_root yum install -y -q postgresql
+  else
+    error "不支持的系统包管理器，请手动安装 psql 客户端"
+    return 1
+  fi
+
+  ok "psql 客户端安装完成"
+}
+
 install_nginx_if_needed() {
   if command_exists nginx; then
     return 0
@@ -425,6 +447,55 @@ check_domain_dns() {
 
   error "域名 ${domain} 目前未解析到 IP，请先完成 DNS 解析后再申请 HTTPS"
   return 1
+}
+
+sql_escape() {
+  printf "%s" "${1:-}" | sed "s/'/''/g"
+}
+
+get_database_url_from_env() {
+  local env_file="${PROJECT_DIR}/.env"
+  local database_url
+  database_url="$(read_env_value "$env_file" "DATABASE_URL")"
+  [[ -n "$database_url" ]] || {
+    error "未在 ${env_file} 中找到 DATABASE_URL"
+    return 1
+  }
+  printf "%s" "$database_url"
+}
+
+list_admin_users_db() {
+  load_state || { error "请先执行应用部署"; return 1; }
+  install_psql_if_needed
+
+  local database_url
+  database_url="$(get_database_url_from_env)" || return 1
+
+  psql "$database_url" -c "select id, login, email, role, status, created_at from admin_users order by created_at asc;"
+}
+
+reset_admin_password() {
+  load_state || { error "请先执行应用部署"; return 1; }
+  install_psql_if_needed
+  install_node_if_needed
+
+  local database_url admin_identifier new_password password_hash escaped_identifier escaped_hash
+  database_url="$(get_database_url_from_env)" || return 1
+  admin_identifier="$(prompt_default "要重置的管理员账号或邮箱" "admin")"
+  [[ -n "$admin_identifier" ]] || { error "管理员账号或邮箱不能为空"; return 1; }
+  new_password="$(prompt_default "新的管理员密码" "")"
+  [[ -n "$new_password" ]] || { error "新密码不能为空"; return 1; }
+
+  password_hash="$(
+    cd "$PROJECT_DIR"
+    node -e "require('bcryptjs').hash(process.argv[1], 12).then(v => process.stdout.write(v))" "$new_password"
+  )"
+
+  escaped_identifier="$(sql_escape "$admin_identifier")"
+  escaped_hash="$(sql_escape "$password_hash")"
+
+  psql "$database_url" -c "update admin_users set password_hash = '${escaped_hash}', updated_at = now(), status = 'active' where login = '${escaped_identifier}' or email = '${escaped_identifier}';"
+  ok "管理员密码重置命令已执行，请使用新的密码重新登录"
 }
 
 nginx_conf_dir() {
@@ -629,6 +700,8 @@ print_menu() {
   echo "6) 重启服务"
   echo "7) 拉取最新代码并重建"
   echo "8) 卸载 PM2 应用"
+  echo "9) 查看管理员账号"
+  echo "10) 重置管理员密码"
   echo "0) 退出"
   echo "==============================================="
 }
@@ -636,7 +709,7 @@ print_menu() {
 interactive_main() {
   while true; do
     print_menu
-    printf '请选择 [0-8]: ' >&2
+    printf '请选择 [0-10]: ' >&2
     local choice
     read -r choice
     choice="$(trim "$choice")"
@@ -649,6 +722,8 @@ interactive_main() {
       6) restart_app ;;
       7) rebuild_app ;;
       8) uninstall_app ;;
+      9) list_admin_users_db ;;
+      10) reset_admin_password ;;
       0) exit 0 ;;
       *) warn "无效选项" ;;
     esac
@@ -665,10 +740,12 @@ main() {
     restart) restart_app ;;
     rebuild) rebuild_app ;;
     uninstall) uninstall_app ;;
+    admins) list_admin_users_db ;;
+    reset-admin-password) reset_admin_password ;;
     "") interactive_main ;;
     *)
       error "不支持的命令: $1"
-      echo "可用命令: deploy | https | env | status | logs | restart | rebuild | uninstall"
+      echo "可用命令: deploy | https | env | status | logs | restart | rebuild | uninstall | admins | reset-admin-password"
       exit 1
       ;;
   esac

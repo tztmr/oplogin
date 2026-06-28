@@ -17,6 +17,7 @@ function createApp({ config, pool, sessionMiddleware, buildWakeUrlImpl } = {}) {
 
   app.use(cors());
   app.use(express.json());
+  app.set('trust proxy', 1);
 
   app.get('/health', (req, res) => {
     return res.status(200).json({ status: 'ok' });

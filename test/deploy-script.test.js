@@ -64,3 +64,13 @@ test('deploy script configures PM2 startup for reboot persistence', () => {
   assert.match(script, /ensure_pm2_startup/);
   assert.match(script, /ensure_pm2_startup/);
 });
+
+test('deploy script can install psql client and reset the admin password from DATABASE_URL', () => {
+  const script = fs.readFileSync(scriptPath, 'utf8');
+
+  assert.match(script, /install_psql_if_needed\(\)/);
+  assert.match(script, /reset_admin_password\(\)/);
+  assert.match(script, /postgresql-client/);
+  assert.match(script, /psql "\$database_url" -c/);
+  assert.match(script, /node -e "require\('bcryptjs'\)\.hash/);
+});
