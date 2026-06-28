@@ -4,6 +4,10 @@ const crypto = require('node:crypto');
 
 const { createAdminTestContext } = require('./helpers/create-admin-test-context');
 const { hashAdminPassword } = require('../lib/admin-password');
+const {
+  encryptGooglePassword,
+  buildGooglePasswordSearchHash,
+} = require('../lib/google-password-crypto');
 
 async function loginAsSuperAdmin(agent, config) {
   await agent.post('/api/admin/auth/login').send({
@@ -91,7 +95,7 @@ test('record list supports plain-text filters, exact Google password filter, and
 });
 
 test('operator can create and read managed records', async () => {
-  const { agent, pool, config } = await createAdminTestContext();
+  const { agent, pool } = await createAdminTestContext();
 
   await pool.query(
     `
@@ -129,6 +133,51 @@ test('operator can create and read managed records', async () => {
   assert.equal(listResponse.body.items.length, 1);
 });
 
+test('record list stays available when historical passwords cannot be decrypted', async () => {
+  const { agent, pool, config } = await createAdminTestContext();
+  await loginAsSuperAdmin(agent, config);
+
+  const legacyKey =
+    'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789';
+  await pool.query(
+    `
+      insert into managed_records (
+        id,
+        owner_id,
+        google_account,
+        google_password_encrypted,
+        google_password_search_hash,
+        google_assist,
+        google_expire_at,
+        uid_value,
+        uid_created_at,
+        op_value,
+        op_link,
+        op_expire_at,
+        remark
+      ) values (
+        $1, null, $2, $3, $4, $5, null, '', null, '', '', null, $6
+      )
+    `,
+    [
+      crypto.randomUUID(),
+      'legacy@gmail.com',
+      encryptGooglePassword('legacy-pass', legacyKey),
+      buildGooglePasswordSearchHash('legacy-pass', legacyKey),
+      'legacy assist',
+      'legacy row',
+    ],
+  );
+
+  const response = await agent.get('/api/admin/records');
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.items.length, 1);
+  assert.equal(response.body.items[0].googleAccount, 'legacy@gmail.com');
+  assert.equal(response.body.items[0].googlePassword, '');
+  assert.equal(response.body.items[0].googlePasswordDecryptionFailed, true);
+});
+
 test('text import creates records and derives op link plus op expiry time', async () => {
   const { agent, config } = await createAdminTestContext();
   await loginAsSuperAdmin(agent, config);
@@ -152,7 +201,7 @@ test('text import creates records and derives op link plus op expiry time', asyn
     response.body.items[0].opLink,
     `/oplogin/${encodeURIComponent(opValue)}`,
   );
-  assert.equal(response.body.items[0].opExpireAt, '2026-06-11T21:09:19.000Z');
+  assert.equal(response.body.items[0].opExpireAt, '2026-07-11T21:09:19.000Z');
 });
 
 test('uidCreatedAt is written the first time a blank-uid imported record gets a uid', async () => {
@@ -186,7 +235,7 @@ test('uidCreatedAt is written the first time a blank-uid imported record gets a 
     updateResponse.body.item.opLink,
     `/oplogin/${encodeURIComponent(opValue)}`,
   );
-  assert.equal(updateResponse.body.item.opExpireAt, '2026-06-11T21:09:19.000Z');
+  assert.equal(updateResponse.body.item.opExpireAt, '2026-07-11T21:09:19.000Z');
 });
 
 test('CSV export returns all matching records with full columns', async () => {
@@ -228,7 +277,7 @@ test('CSV export returns all matching records with full columns', async () => {
   );
   assert.match(
     response.text,
-    /谷歌号,谷歌密码,谷歌辅助,谷歌到期时间,UID,UID创建时间,OP,OP链接,OP到期时间,备注/,
+    /"谷歌号","谷歌密码","谷歌辅助","谷歌到期时间","UID","UID创建时间","OP","OP链接","OP到期时间","备注"/,
   );
   assert.match(response.text, /csv-match@gmail\.com/);
   assert.match(response.text, /csv-pass-1/);
