@@ -172,6 +172,7 @@ Column rules:
 - Sensitive fields are stored only in encrypted form
 - Search-hash columns are deterministic lookup helpers for exact filtering of sensitive fields
 - Non-sensitive text fields remain plain so PostgreSQL can filter them directly
+- `uid_created_at` means the first time this UID was entered into the backoffice, not an external platform creation time
 
 ## Security Model
 
@@ -217,6 +218,8 @@ Filtering behavior:
   - substring match using SQL text filtering
 - `google_expire_at`, `uid_created_at`, and `op_expire_at`
   - range filtering using from/to inputs
+
+For `uid_created_at`, the filter applies to the first-recorded UID entry time in this system.
 
 This keeps first-version filtering compatible with encryption while avoiding plain-text storage of sensitive fields.
 
@@ -333,6 +336,9 @@ Behavior:
 
 - create mode opens with empty values
 - edit mode loads existing data from the record API
+- `uid_created_at` is system-managed and not manually editable
+- on record creation, `uid_created_at` is set to the current server time when the UID is first entered for that record
+- on record edit, `uid_created_at` is preserved unless a future spec explicitly changes that rule
 - save validates required inputs before submit
 - successful save returns to the list and refreshes current filters and page
 
@@ -377,12 +383,14 @@ First-version rules:
 - `POST /api/admin/records`
   - validates input
   - encrypts sensitive fields
+  - sets `uid_created_at` to the current server time for a newly created record
   - writes row to database
 - `GET /api/admin/records/:id`
   - returns one decrypted row for edit mode
 - `PUT /api/admin/records/:id`
   - validates input
   - re-encrypts any changed sensitive fields
+  - preserves the existing `uid_created_at` value
   - updates row
 - `DELETE /api/admin/records/:id`
   - permanently deletes the row
@@ -460,6 +468,7 @@ Secondary compatibility target:
 - sensitive fields display correctly only after login
 - delete requires explicit confirmation in the UI
 - first super admin appears from `.env` on an empty database
+- `uid_created_at` reflects the first recorded input time for the UID in this backoffice
 
 ## Acceptance Criteria
 
