@@ -88,6 +88,7 @@ async function submitPasswordForm(event) {
 window.addEventListener('DOMContentLoaded', async () => {
   const user = await requireAdminSession();
   if (!user) return;
+  initializeSelfPasswordChange();
   if (user.role !== 'super_admin') {
     window.location.href = '/admin';
     return;

@@ -70,3 +70,41 @@ test('secure admin session cookie is issued correctly behind https reverse proxy
     ),
   );
 });
+
+test('logged-in admin can change own password with the current password', async () => {
+  const { agent, config } = await createAdminTestContext();
+
+  const loginResponse = await agent.post('/api/admin/auth/login').send({
+    identifier: config.initialSuperAdminLogin,
+    password: config.initialSuperAdminPassword,
+  });
+  const changeResponse = await agent.post('/api/admin/auth/change-password').send({
+    currentPassword: config.initialSuperAdminPassword,
+    newPassword: 'new-secret-pass',
+  });
+  await agent.post('/api/admin/auth/logout').send();
+  const reloginResponse = await agent.post('/api/admin/auth/login').send({
+    identifier: config.initialSuperAdminLogin,
+    password: 'new-secret-pass',
+  });
+
+  assert.equal(loginResponse.status, 200);
+  assert.equal(changeResponse.status, 204);
+  assert.equal(reloginResponse.status, 200);
+});
+
+test('changing own password requires the correct current password', async () => {
+  const { agent, config } = await createAdminTestContext();
+
+  await agent.post('/api/admin/auth/login').send({
+    identifier: config.initialSuperAdminLogin,
+    password: config.initialSuperAdminPassword,
+  });
+  const changeResponse = await agent.post('/api/admin/auth/change-password').send({
+    currentPassword: 'wrong-password',
+    newPassword: 'new-secret-pass',
+  });
+
+  assert.equal(changeResponse.status, 401);
+  assert.match(changeResponse.body.error, /当前密码不正确/);
+});

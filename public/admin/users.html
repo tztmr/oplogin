@@ -14,6 +14,7 @@
     </div>
     <div class="header-actions">
       <a href="/admin">返回数据管理</a>
+      <button id="changeOwnPasswordButton" type="button">修改密码</button>
       <button id="logoutButton" type="button">退出登录</button>
     </div>
   </header>
@@ -72,6 +73,21 @@
       <menu>
         <button type="button" id="passwordCancelButton">取消</button>
         <button type="submit">重置密码</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="selfPasswordDialog">
+    <form id="selfPasswordForm" method="dialog" class="stack-form">
+      <label for="selfCurrentPassword">当前密码</label>
+      <input id="selfCurrentPassword" type="password" placeholder="当前密码" required />
+      <label for="selfNewPassword">新密码</label>
+      <input id="selfNewPassword" type="password" placeholder="新密码" required />
+      <label for="selfConfirmPassword">确认新密码</label>
+      <input id="selfConfirmPassword" type="password" placeholder="再次输入新密码" required />
+      <menu>
+        <button type="button" id="selfPasswordCancelButton">取消</button>
+        <button type="submit">保存新密码</button>
       </menu>
     </form>
   </dialog>

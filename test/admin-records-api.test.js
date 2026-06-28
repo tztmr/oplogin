@@ -133,6 +133,55 @@ test('operator can create and read managed records', async () => {
   assert.equal(listResponse.body.items.length, 1);
 });
 
+test('batch delete removes selected records and keeps unselected rows', async () => {
+  const { agent, config } = await createAdminTestContext();
+  await loginAsSuperAdmin(agent, config);
+
+  const first = await agent.post('/api/admin/records').send({
+    googleAccount: 'delete-1@gmail.com',
+    googlePassword: 'delete-pass-1',
+    googleAssist: 'assist-1',
+    googleExpireAt: '2026-12-31T00:00:00.000Z',
+    uidValue: '',
+    opValue: 'op-delete-1',
+    opLink: 'https://example.com/delete-1',
+    opExpireAt: '2026-12-31T00:00:00.000Z',
+    remark: 'delete-1',
+  });
+  const second = await agent.post('/api/admin/records').send({
+    googleAccount: 'delete-2@gmail.com',
+    googlePassword: 'delete-pass-2',
+    googleAssist: 'assist-2',
+    googleExpireAt: '2026-12-31T00:00:00.000Z',
+    uidValue: '',
+    opValue: 'op-delete-2',
+    opLink: 'https://example.com/delete-2',
+    opExpireAt: '2026-12-31T00:00:00.000Z',
+    remark: 'delete-2',
+  });
+  const third = await agent.post('/api/admin/records').send({
+    googleAccount: 'keep@gmail.com',
+    googlePassword: 'keep-pass',
+    googleAssist: 'assist-3',
+    googleExpireAt: '2026-12-31T00:00:00.000Z',
+    uidValue: '',
+    opValue: 'op-keep',
+    opLink: 'https://example.com/keep',
+    opExpireAt: '2026-12-31T00:00:00.000Z',
+    remark: 'keep',
+  });
+
+  const deleteResponse = await agent.delete('/api/admin/records').send({
+    ids: [first.body.item.id, second.body.item.id],
+  });
+  const listResponse = await agent.get('/api/admin/records');
+
+  assert.equal(deleteResponse.status, 200);
+  assert.equal(deleteResponse.body.deletedCount, 2);
+  assert.equal(listResponse.body.items.length, 1);
+  assert.equal(listResponse.body.items[0].id, third.body.item.id);
+});
+
 test('record list stays available when historical passwords cannot be decrypted', async () => {
   const { agent, pool, config } = await createAdminTestContext();
   await loginAsSuperAdmin(agent, config);

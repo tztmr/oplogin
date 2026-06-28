@@ -1,5 +1,7 @@
 let currentPage = 1;
 const currentPageSize = 20;
+const selectedRecordIds = new Set();
+let currentPageRecordIds = [];
 
 function buildDerivedOpLink(opValue) {
   const normalizedOpValue = String(opValue || '').trim();
@@ -49,10 +51,24 @@ function toQueryString(filters) {
 
 function renderRows(items) {
   const tbody = document.getElementById('recordTableBody');
+  currentPageRecordIds = items.map((item) => item.id);
+  for (const selectedId of Array.from(selectedRecordIds)) {
+    if (!currentPageRecordIds.includes(selectedId)) {
+      selectedRecordIds.delete(selectedId);
+    }
+  }
   tbody.innerHTML = items
     .map(
       (item) => `
         <tr>
+          <td>
+            <input
+              type="checkbox"
+              aria-label="选择 ${item.googleAccount}"
+              ${selectedRecordIds.has(item.id) ? 'checked' : ''}
+              onchange="window.toggleRecordSelection('${item.id}', this.checked)"
+            />
+          </td>
           <td>${item.googleAccount}</td>
           <td>${item.googlePassword}</td>
           <td>${item.googleAssist}</td>
@@ -73,6 +89,7 @@ function renderRows(items) {
       `,
     )
     .join('');
+  syncBatchDeleteState();
 }
 
 function toDateTimeLocalValue(value) {
@@ -97,6 +114,23 @@ async function loadRecords() {
   });
   renderRows(data.items);
   renderPagination(data);
+}
+
+function syncBatchDeleteState() {
+  const batchDeleteButton = document.getElementById('batchDeleteButton');
+  const selectAllCheckbox = document.getElementById('selectAllRecordsCheckbox');
+  const selectedCount = selectedRecordIds.size;
+  batchDeleteButton.disabled = selectedCount === 0;
+  batchDeleteButton.textContent =
+    selectedCount > 0 ? `批量删除 (${selectedCount})` : '批量删除';
+
+  const totalVisible = currentPageRecordIds.length;
+  const selectedVisible = currentPageRecordIds.filter((id) =>
+    selectedRecordIds.has(id),
+  ).length;
+  selectAllCheckbox.checked = totalVisible > 0 && selectedVisible === totalVisible;
+  selectAllCheckbox.indeterminate =
+    selectedVisible > 0 && selectedVisible < totalVisible;
 }
 
 function readRecordFormPayload() {
@@ -190,9 +224,39 @@ window.deleteRecord = async function deleteRecord(id) {
   await loadRecords();
 };
 
+window.toggleRecordSelection = function toggleRecordSelection(id, checked) {
+  if (checked) {
+    selectedRecordIds.add(id);
+  } else {
+    selectedRecordIds.delete(id);
+  }
+  syncBatchDeleteState();
+};
+
+async function deleteSelectedRecords() {
+  const ids = Array.from(selectedRecordIds);
+  if (!ids.length) {
+    showToast('请先勾选要删除的记录');
+    return;
+  }
+
+  if (!window.confirm(`确认永久删除已勾选的 ${ids.length} 条记录吗？`)) {
+    return;
+  }
+
+  const data = await adminFetch('/api/admin/records', {
+    method: 'DELETE',
+    body: JSON.stringify({ ids }),
+  });
+  selectedRecordIds.clear();
+  await loadRecords();
+  showToast(`已删除 ${data.deletedCount} 条记录`);
+}
+
 window.addEventListener('DOMContentLoaded', async () => {
   const user = await requireAdminSession();
   if (!user) return;
+  initializeSelfPasswordChange();
 
   document.getElementById('currentAdminText').textContent = `${user.login} / ${user.role}`;
   document.getElementById('userManageLink').hidden = user.role !== 'super_admin';
@@ -247,6 +311,24 @@ window.addEventListener('DOMContentLoaded', async () => {
     .addEventListener('click', () => {
       document.getElementById('batchImportForm').reset();
       document.getElementById('batchImportDialog').showModal();
+    });
+  document
+    .getElementById('batchDeleteButton')
+    .addEventListener('click', deleteSelectedRecords);
+  document
+    .getElementById('selectAllRecordsCheckbox')
+    .addEventListener('change', (event) => {
+      if (event.target.checked) {
+        currentPageRecordIds.forEach((id) => selectedRecordIds.add(id));
+      } else {
+        currentPageRecordIds.forEach((id) => selectedRecordIds.delete(id));
+      }
+      document
+        .querySelectorAll('#recordTableBody input[type="checkbox"]')
+        .forEach((checkbox) => {
+          checkbox.checked = event.target.checked;
+        });
+      syncBatchDeleteState();
     });
   document
     .getElementById('exportCsvButton')

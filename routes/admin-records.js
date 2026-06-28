@@ -5,6 +5,7 @@ const {
   getManagedRecordById,
   updateManagedRecord,
   deleteManagedRecord,
+  deleteManagedRecords,
   exportManagedRecordsCsv,
   importManagedRecordText,
 } = require('../lib/managed-records');
@@ -55,6 +56,15 @@ function createAdminRecordsRouter({ pool, config, requireAdminAuth }) {
         'attachment; filename="managed-records.csv"',
       );
       return res.status(200).send(csvContent);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.delete('/', async (req, res, next) => {
+    try {
+      const deletedCount = await deleteManagedRecords(pool, req.body.ids, req.adminUser);
+      return res.status(200).json({ deletedCount });
     } catch (error) {
       return next(error);
     }

@@ -1,5 +1,6 @@
 const express = require('express');
 const {
+  changeOwnAdminPassword,
   findAdminByIdentifier,
   serializeAdminUser,
 } = require('../lib/admin-users');
@@ -39,6 +40,20 @@ function createAdminAuthRouter({ pool, requireAdminAuth }) {
 
   router.get('/me', requireAdminAuth, (req, res) => {
     res.status(200).json({ user: req.adminUser });
+  });
+
+  router.post('/change-password', requireAdminAuth, async (req, res, next) => {
+    try {
+      await changeOwnAdminPassword(
+        pool,
+        req.adminUser.id,
+        req.body.currentPassword,
+        req.body.newPassword,
+      );
+      return res.status(204).end();
+    } catch (error) {
+      return next(error);
+    }
   });
 
   router.post('/logout', (req, res) => {

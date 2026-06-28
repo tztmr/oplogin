@@ -95,6 +95,13 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
 }
 
+input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
 textarea {
   min-height: 88px;
   resize: vertical;
@@ -219,6 +226,12 @@ td {
   border-bottom: 1px solid var(--border-color);
   text-align: left;
   vertical-align: middle;
+}
+
+th:first-child,
+td:first-child {
+  width: 52px;
+  text-align: center;
 }
 
 th {
