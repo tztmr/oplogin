@@ -49,6 +49,34 @@ function toQueryString(filters) {
   ).toString();
 }
 
+function escapeHtmlAttribute(value) {
+  return String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
+}
+
+function renderTruncatedText(value, className) {
+  const normalizedValue = String(value || '').trim();
+  if (!normalizedValue) {
+    return '';
+  }
+
+  const safeValue = escapeHtmlAttribute(normalizedValue);
+  return `<span class="cell-truncate ${className}" title="${safeValue}">${normalizedValue}</span>`;
+}
+
+function renderTruncatedLink(value) {
+  const normalizedValue = String(value || '').trim();
+  if (!normalizedValue) {
+    return '';
+  }
+
+  const safeValue = escapeHtmlAttribute(normalizedValue);
+  return `<a class="cell-truncate cell-truncate-link" href="${normalizedValue}" target="_blank" rel="noreferrer" title="${safeValue}">${normalizedValue}</a>`;
+}
+
 function renderRows(items) {
   const tbody = document.getElementById('recordTableBody');
   currentPageRecordIds = items.map((item) => item.id);
@@ -75,8 +103,8 @@ function renderRows(items) {
           <td>${formatDateTime(item.googleExpireAt)}</td>
           <td>${item.uidValue}</td>
           <td>${formatDateTime(item.uidCreatedAt)}</td>
-          <td>${item.opValue}</td>
-          <td>${item.opLink ? `<a href="${item.opLink}" target="_blank">${item.opLink}</a>` : ''}</td>
+          <td>${renderTruncatedText(item.opValue, 'cell-truncate-op')}</td>
+          <td>${renderTruncatedLink(item.opLink)}</td>
           <td>${formatDateTime(item.opExpireAt)}</td>
           <td>${item.remark || ''}</td>
           <td>

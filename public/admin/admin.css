@@ -252,6 +252,26 @@ td .row-actions {
   gap: 8px;
 }
 
+.cell-truncate {
+  display: inline-block;
+  width: 240px;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.cell-truncate-op {
+  width: 220px;
+  max-width: 220px;
+}
+
+.cell-truncate-link {
+  width: 260px;
+  max-width: 260px;
+}
+
 .pagination-bar {
   display: flex;
   align-items: center;
