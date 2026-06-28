@@ -17,7 +17,7 @@ error() { printf "${R}[ERROR]${NC} %s\n" "$1" >&2; }
 ok() { printf "${G}[OK]${NC} %s\n" "$1"; }
 
 APP_SLUG="oplogin"
-DEFAULT_REPO_URL="git@github.com:tztmr/oplogin.git"
+DEFAULT_REPO_URL="https://github.com/tztmr/oplogin.git"
 DEFAULT_BRANCH="main"
 DEFAULT_INSTALL_DIR="/opt/oplogin"
 DEFAULT_APP_NAME="oplogin"
@@ -101,6 +101,26 @@ ensure_state_dir() {
   chmod 700 "$STATE_DIR" 2>/dev/null || true
 }
 
+read_env_value() {
+  local env_file="$1" key="$2"
+  [[ -f "$env_file" ]] || return 0
+  grep -E "^${key}=" "$env_file" | tail -n 1 | cut -d= -f2- || true
+}
+
+set_env_value() {
+  local target_dir="$1" key="$2" value="$3"
+  local env_file="${target_dir}/.env"
+  local tmp_file
+  tmp_file="$(mktemp)"
+
+  if [[ -f "$env_file" ]]; then
+    grep -Ev "^${key}=" "$env_file" > "$tmp_file" || true
+  fi
+  printf '%s=%s\n' "$key" "$value" >> "$tmp_file"
+  install -m 0600 "$tmp_file" "$env_file"
+  rm -f "$tmp_file"
+}
+
 save_state() {
   ensure_state_dir
   {
@@ -113,6 +133,60 @@ save_state() {
     printf 'EMAIL=%q\n' "${EMAIL:-}"
   } > "$STATE_FILE"
   chmod 600 "$STATE_FILE" 2>/dev/null || true
+}
+
+configure_env() {
+  local target_dir="${1:-$PROJECT_DIR}"
+  [[ -z "$target_dir" ]] && { error "项目目录未确定，请先执行部署。"; return 1; }
+  
+  info "配置环境变量 (.env)"
+  local env_file="${target_dir}/.env"
+  
+  local current_db=""
+  local current_session=""
+  local current_crypto=""
+  local current_admin_user="admin"
+  local current_admin_email="admin@example.com"
+  local current_admin_pass="change-me-now"
+  local current_cookie_secure="false"
+  
+  if [[ -f "$env_file" ]]; then
+    current_db="$(read_env_value "$env_file" "DATABASE_URL")"
+    current_session="$(read_env_value "$env_file" "SESSION_SECRET")"
+    current_crypto="$(read_env_value "$env_file" "GOOGLE_PASSWORD_ENCRYPTION_KEY")"
+    current_admin_user="$(read_env_value "$env_file" "INITIAL_SUPER_ADMIN_LOGIN")"
+    current_admin_email="$(read_env_value "$env_file" "INITIAL_SUPER_ADMIN_EMAIL")"
+    current_admin_pass="$(read_env_value "$env_file" "INITIAL_SUPER_ADMIN_PASSWORD")"
+    current_cookie_secure="$(read_env_value "$env_file" "SESSION_COOKIE_SECURE")"
+  fi
+
+  # Generate defaults if empty
+  [[ -z "$current_session" ]] && current_session=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32 || true)
+  [[ -z "$current_crypto" ]] && current_crypto=$(LC_ALL=C tr -dc 'a-f0-9' < /dev/urandom | head -c 64 || true)
+  [[ -z "$current_admin_email" ]] && current_admin_email="admin@example.com"
+  [[ -z "$current_cookie_secure" ]] && current_cookie_secure="false"
+
+  local new_db new_session new_crypto new_admin_user new_admin_email new_admin_pass new_cookie_secure
+  new_db="$(prompt_default "PostgreSQL 数据库连接 (DATABASE_URL)" "${current_db}")"
+  new_session="$(prompt_default "会话密钥 (SESSION_SECRET)" "${current_session}")"
+  new_crypto="$(prompt_default "谷歌密码加密密钥 (GOOGLE_PASSWORD_ENCRYPTION_KEY)" "${current_crypto}")"
+  new_admin_user="$(prompt_default "默认超管账号 (INITIAL_SUPER_ADMIN_LOGIN)" "${current_admin_user:-admin}")"
+  new_admin_email="$(prompt_default "默认超管邮箱 (INITIAL_SUPER_ADMIN_EMAIL)" "${current_admin_email:-admin@example.com}")"
+  new_admin_pass="$(prompt_default "默认超管密码 (INITIAL_SUPER_ADMIN_PASSWORD)" "${current_admin_pass:-change-me-now}")"
+  new_cookie_secure="$(prompt_default "HTTPS 安全 Cookie (SESSION_COOKIE_SECURE)" "${current_cookie_secure}")"
+
+  cat > "$env_file" <<EOF
+PORT=${APP_PORT}
+DATABASE_URL=${new_db}
+SESSION_SECRET=${new_session}
+GOOGLE_PASSWORD_ENCRYPTION_KEY=${new_crypto}
+INITIAL_SUPER_ADMIN_LOGIN=${new_admin_user}
+INITIAL_SUPER_ADMIN_EMAIL=${new_admin_email}
+INITIAL_SUPER_ADMIN_PASSWORD=${new_admin_pass}
+SESSION_COOKIE_SECURE=${new_cookie_secure}
+EOF
+
+  ok "环境变量已保存至 ${env_file}"
 }
 
 load_state() {
@@ -183,6 +257,15 @@ install_pm2_if_needed() {
   info "检测到未安装 PM2，开始自动安装"
   npm install -g pm2
   ok "PM2 安装完成"
+}
+
+ensure_pm2_startup() {
+  if ! command_exists pm2; then
+    return 0
+  fi
+
+  info "配置 PM2 开机自启"
+  pm2 startup >/dev/null 2>&1 || true
 }
 
 install_nginx_if_needed() {
@@ -309,6 +392,41 @@ start_or_restart_app() {
   )
 }
 
+wait_for_app_ready() {
+  local attempts=15
+  local url="http://127.0.0.1:${APP_PORT}/"
+
+  while (( attempts > 0 )); do
+    if curl -fsS "$url" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+    attempts=$((attempts - 1))
+  done
+
+  error "应用启动后未能成功响应：${url}"
+  pm2 logs "$APP_NAME" --lines 50 || true
+  return 1
+}
+
+check_domain_dns() {
+  local domain="$1"
+  [[ -z "$domain" ]] && return 1
+
+  if command_exists getent && getent hosts "$domain" >/dev/null 2>&1; then
+    return 0
+  fi
+  if command_exists dig && [[ -n "$(dig +short "$domain" | tr -d '[:space:]')" ]]; then
+    return 0
+  fi
+  if command_exists host && host "$domain" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  error "域名 ${domain} 目前未解析到 IP，请先完成 DNS 解析后再申请 HTTPS"
+  return 1
+}
+
 nginx_conf_dir() {
   if [[ -d /etc/nginx/conf.d ]]; then
     printf '/etc/nginx/conf.d'
@@ -365,6 +483,7 @@ deploy_app() {
   install_git_if_needed
   install_node_if_needed
   install_pm2_if_needed
+  ensure_pm2_startup
 
   if load_state; then
     install_dir="${PROJECT_DIR:-$DEFAULT_INSTALL_DIR}"
@@ -403,8 +522,11 @@ deploy_app() {
   info "开始安装依赖"
   install_app_dependencies
 
+  configure_env "$install_dir"
+
   info "开始启动 PM2 服务"
   start_or_restart_app
+  wait_for_app_ready
   save_state
 
   ok "应用部署完成"
@@ -424,6 +546,7 @@ setup_https() {
   DOMAIN="$(prompt_default "绑定域名（如 op.example.com）" "${DOMAIN:-}")"
   [[ -z "$DOMAIN" ]] && { error "域名不能为空"; return 1; }
   EMAIL="$(prompt_default "证书邮箱" "${EMAIL:-admin@${DOMAIN}}")"
+  check_domain_dns "$DOMAIN"
 
   local conf_dir conf_file
   conf_dir="$(nginx_conf_dir)"
@@ -438,6 +561,8 @@ setup_https() {
   run_root nginx -t
   run_root systemctl reload nginx 2>/dev/null || run_root nginx -s reload
   run_root certbot --nginx -d "$DOMAIN" --redirect -m "$EMAIL" --agree-tos --non-interactive
+  set_env_value "$PROJECT_DIR" "SESSION_COOKIE_SECURE" "true"
+  restart_app
   save_state
 
   ok "HTTPS 已接入"
@@ -464,6 +589,7 @@ logs_app() {
 restart_app() {
   load_state || { error "请先执行应用部署"; return 1; }
   PORT="$APP_PORT" NODE_ENV=production pm2 restart "$APP_NAME" --update-env
+  wait_for_app_ready
   ok "服务已重启"
 }
 
@@ -472,10 +598,12 @@ rebuild_app() {
   install_git_if_needed
   install_node_if_needed
   install_pm2_if_needed
+  ensure_pm2_startup
   sync_project_code "$PROJECT_DIR" "$REPO_URL" "$BRANCH"
   assert_project_layout
   install_app_dependencies
   start_or_restart_app
+  wait_for_app_ready
   save_state
   ok "代码已更新并重新部署"
 }
@@ -495,11 +623,12 @@ print_menu() {
   echo "=============== oplogin 部署脚本 ==============="
   echo "1) 拉代码 + 安装依赖 + PM2 部署"
   echo "2) 接入域名 HTTPS"
-  echo "3) 查看服务状态"
-  echo "4) 查看日志"
-  echo "5) 重启服务"
-  echo "6) 拉取最新代码并重建"
-  echo "7) 卸载 PM2 应用"
+  echo "3) 配置环境变量 (.env)"
+  echo "4) 查看服务状态"
+  echo "5) 查看日志"
+  echo "6) 重启服务"
+  echo "7) 拉取最新代码并重建"
+  echo "8) 卸载 PM2 应用"
   echo "0) 退出"
   echo "==============================================="
 }
@@ -507,18 +636,19 @@ print_menu() {
 interactive_main() {
   while true; do
     print_menu
-    printf '请选择 [0-7]: ' >&2
+    printf '请选择 [0-8]: ' >&2
     local choice
     read -r choice
     choice="$(trim "$choice")"
     case "$choice" in
       1) deploy_app ;;
       2) setup_https ;;
-      3) status_app ;;
-      4) logs_app ;;
-      5) restart_app ;;
-      6) rebuild_app ;;
-      7) uninstall_app ;;
+      3) load_state && configure_env "$PROJECT_DIR" && restart_app ;;
+      4) status_app ;;
+      5) logs_app ;;
+      6) restart_app ;;
+      7) rebuild_app ;;
+      8) uninstall_app ;;
       0) exit 0 ;;
       *) warn "无效选项" ;;
     esac
@@ -529,6 +659,7 @@ main() {
   case "${1:-}" in
     deploy) deploy_app ;;
     https) setup_https ;;
+    env) load_state && configure_env "$PROJECT_DIR" && restart_app ;;
     status) status_app ;;
     logs) logs_app ;;
     restart) restart_app ;;
@@ -537,7 +668,7 @@ main() {
     "") interactive_main ;;
     *)
       error "不支持的命令: $1"
-      echo "可用命令: deploy | https | status | logs | restart | rebuild | uninstall"
+      echo "可用命令: deploy | https | env | status | logs | restart | rebuild | uninstall"
       exit 1
       ;;
   esac

@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>管理员登录</title>
+  <link rel="stylesheet" href="/admin/admin.css" />
+</head>
+<body class="admin-auth-page">
+  <main class="auth-card">
+    <h1>管理员登录</h1>
+    <p class="auth-subtitle">使用用户名或邮箱进入后台</p>
+    <form id="loginForm" class="stack-form">
+      <label for="identifier">用户名 / 邮箱</label>
+      <input id="identifier" name="identifier" type="text" required />
+
+      <label for="password">密码</label>
+      <input id="password" name="password" type="password" required />
+
+      <p id="loginError" class="form-error" hidden></p>
+      <button id="loginSubmit" type="submit">登录后台</button>
+    </form>
+  </main>
+  <script src="/admin/common.js"></script>
+  <script src="/admin/login.js"></script>
+</body>
+</html>

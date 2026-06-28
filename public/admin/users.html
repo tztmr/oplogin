@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>账号管理</title>
+  <link rel="stylesheet" href="/admin/admin.css" />
+</head>
+<body>
+  <header class="admin-header">
+    <div>
+      <h1>账号管理</h1>
+      <p>仅超级管理员可用</p>
+    </div>
+    <div class="header-actions">
+      <a href="/admin">返回数据管理</a>
+      <button id="logoutButton" type="button">退出登录</button>
+    </div>
+  </header>
+
+  <section class="header-actions admin-section">
+    <button id="createUserButton" type="button">新增运营账号</button>
+  </section>
+
+  <div class="table-wrap">
+    <table id="userTable">
+      <thead>
+        <tr>
+          <th>登录名</th>
+          <th>邮箱</th>
+          <th>角色</th>
+          <th>状态</th>
+          <th>最后登录</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="userTableBody"></tbody>
+    </table>
+  </div>
+
+  <dialog id="userDialog">
+    <form id="userForm" method="dialog" class="stack-form">
+      <input id="userId" type="hidden" />
+      <label for="userLogin">登录名</label>
+      <input id="userLogin" placeholder="登录名" required />
+      <label for="userEmail">邮箱</label>
+      <input id="userEmail" placeholder="邮箱" required />
+      <label for="userRole">角色</label>
+      <select id="userRole">
+        <option value="operator">运营</option>
+        <option value="super_admin">超级管理员</option>
+      </select>
+      <label for="userStatus">状态</label>
+      <select id="userStatus">
+        <option value="active">启用</option>
+        <option value="disabled">禁用</option>
+      </select>
+      <label for="userPassword">密码</label>
+      <input id="userPassword" type="password" placeholder="创建时输入密码" />
+      <menu>
+        <button type="button" id="userCancelButton">取消</button>
+        <button type="submit">保存</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="passwordDialog">
+    <form id="passwordForm" method="dialog" class="stack-form">
+      <input id="passwordTargetUserId" type="hidden" />
+      <label for="newPassword">新密码</label>
+      <input id="newPassword" type="password" placeholder="新密码" required />
+      <menu>
+        <button type="button" id="passwordCancelButton">取消</button>
+        <button type="submit">重置密码</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <script src="/admin/common.js"></script>
+  <script src="/admin/users.js"></script>
+</body>
+</html>

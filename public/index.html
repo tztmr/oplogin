@@ -305,30 +305,28 @@
             }, 3000);
         }
 
-        // 页面加载时，自动提取 URL 中 '/' 后面的参数并填充
-        window.addEventListener('DOMContentLoaded', () => {
-            let param = '';
-            
-            // 尝试获取 pathname 最后的参数
-            const path = window.location.pathname;
-            if (path && path !== '/' && path.indexOf('.html') === -1) {
-                param = path.split('/').pop();
-            }
-            
-            // 如果 pathname 没有，尝试获取 search (?xxx)
-            if (!param && window.location.search) {
-                param = window.location.search.substring(1);
-            }
-            
-            // 如果 search 也没有，尝试获取 hash (#xxx)
-            if (!param && window.location.hash) {
-                param = window.location.hash.substring(1);
+        function extractInitialOpValue() {
+            const pathParts = window.location.pathname.split('/').filter(Boolean);
+            if (pathParts[0] === 'oplogin' && pathParts[1]) {
+                return decodeURIComponent(pathParts.slice(1).join('/'));
             }
 
-            // 清理可能的前缀斜杠
+            if (window.location.search) {
+                return decodeURIComponent(window.location.search.substring(1).replace(/^\/+/, ''));
+            }
+
+            if (window.location.hash) {
+                return decodeURIComponent(window.location.hash.substring(1).replace(/^\/+/, ''));
+            }
+
+            return '';
+        }
+
+        // 页面加载时，自动提取 URL 中的数据号并填充
+        window.addEventListener('DOMContentLoaded', () => {
+            let param = extractInitialOpValue();
+
             if (param) {
-                param = param.replace(/^\/+/, '');
-                param = decodeURIComponent(param);
                 document.getElementById('url').value = param;
                 
                 // 如果提取到了参数，可以通过取消注释下面这行来自动触发提交
