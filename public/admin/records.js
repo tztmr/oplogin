@@ -153,11 +153,30 @@ function renderPagination(data) {
   nextButton.disabled = isAllPageSize || data.page >= totalPages;
 }
 
+function renderPublicBatchEligibility(data) {
+  const card = document.getElementById('publicBatchEligibilityCard');
+  const summary = document.getElementById('publicBatchEligibilitySummary');
+  const details = document.getElementById('publicBatchEligibilityDetails');
+  const stats = data.publicBatchEligibility;
+
+  if (!stats) {
+    card.hidden = true;
+    return;
+  }
+
+  card.hidden = false;
+  card.classList.toggle('has-warning', stats.blockedTotalCount > 0);
+  summary.textContent = `可进入公开批次 ${stats.eligibleCount} 条，受阻 ${stats.blockedTotalCount} 条`;
+  details.textContent =
+    `缺谷歌号 ${stats.missingGoogleAccountCount} 条，缺谷歌密码 ${stats.missingGooglePasswordCount} 条，缺 OP ${stats.missingOpCount} 条，已有 UID ${stats.filledUidCount} 条。`;
+}
+
 async function loadRecords() {
   const queryString = toQueryString(collectRecordFilters());
   const data = await adminFetch(`/api/admin/records?${queryString}`, {
     method: 'GET',
   });
+  renderPublicBatchEligibility(data);
   renderRows(data);
   renderPagination(data);
 }

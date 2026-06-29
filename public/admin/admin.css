@@ -153,6 +153,7 @@ textarea {
 
 .admin-section,
 .action-bar,
+.public-batch-eligibility,
 .filter-section,
 .table-wrap,
 .pagination-bar {
@@ -174,6 +175,41 @@ textarea {
   display: flex;
   gap: 12px;
   align-items: center;
+}
+
+.public-batch-eligibility {
+  padding: 16px 20px;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.public-batch-eligibility.has-warning {
+  background: #fff7ed;
+  border-color: #fdba74;
+}
+
+.public-batch-eligibility-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.public-batch-eligibility-head strong {
+  font-size: 15px;
+}
+
+.public-batch-eligibility-head span,
+.public-batch-eligibility-details {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.public-batch-eligibility-details {
+  margin: 0;
 }
 
 .filter-section {

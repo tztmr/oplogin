@@ -1,6 +1,11 @@
 const express = require('express');
 const { findAdminByIdentifier } = require('../lib/admin-users');
 const { decryptGooglePassword } = require('../lib/google-password-crypto');
+const {
+  getCurrentBatch,
+  submitBatchSlotUid,
+  advanceBatch,
+} = require('../lib/public-user-batches');
 
 function createUserPublicRouter({ pool, config }) {
   const router = express.Router();
@@ -27,6 +32,49 @@ function createUserPublicRouter({ pool, config }) {
     return currentIndex;
   }
 
+  async function findActiveUser(username) {
+    const user = await findAdminByIdentifier(pool, username);
+    if (!user || user.status !== 'active') {
+      throw Object.assign(new Error('User not found or disabled'), { statusCode: 404 });
+    }
+    return user;
+  }
+
+  router.get('/:username/batch', async (req, res, next) => {
+    try {
+      const user = await findActiveUser(req.params.username);
+      const batch = await getCurrentBatch(pool, config, user);
+      return res.status(200).json({ batch });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/:username/batch/slots/:slot/uid', async (req, res, next) => {
+    try {
+      const user = await findActiveUser(req.params.username);
+      const slotNumber = Number.parseInt(String(req.params.slot || '').trim(), 10);
+      if (!Number.isInteger(slotNumber) || slotNumber < 1 || slotNumber > 6) {
+        return res.status(400).json({ error: '槽位必须在 1 到 6 之间' });
+      }
+
+      const batch = await submitBatchSlotUid(pool, config, user, slotNumber, req.body || {});
+      return res.status(200).json({ status: 'success', batch });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/:username/batch/advance', async (req, res, next) => {
+    try {
+      const user = await findActiveUser(req.params.username);
+      const batch = await advanceBatch(pool, config, user);
+      return res.status(200).json({ status: 'success', batch });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
   router.get('/:username/record', async (req, res, next) => {
     try {
       const username = req.params.username;
@@ -34,11 +82,7 @@ function createUserPublicRouter({ pool, config }) {
       const direction = String(req.query.direction || '').trim().toLowerCase();
       const jumpSlotValue = Number.parseInt(String(req.query.jumpSlot || '').trim(), 10);
       const jumpSlot = Number.isNaN(jumpSlotValue) ? null : jumpSlotValue;
-      const user = await findAdminByIdentifier(pool, username);
-
-      if (!user || user.status !== 'active') {
-        return res.status(404).json({ error: 'User not found or disabled' });
-      }
+      const user = await findActiveUser(username);
 
       // 获取当前用户下，有谷歌号且未被提取过的记录（uid_value 为空）
       const countResult = await pool.query(
@@ -114,10 +158,7 @@ function createUserPublicRouter({ pool, config }) {
         return res.status(400).json({ error: 'UID 不能为空' });
       }
 
-      const user = await findAdminByIdentifier(pool, username);
-      if (!user || user.status !== 'active') {
-        return res.status(404).json({ error: 'User not found or disabled' });
-      }
+      const user = await findActiveUser(username);
 
       let query = `update managed_records 
          set uid_value = $1, uid_created_at = now(), updated_at = now()`;

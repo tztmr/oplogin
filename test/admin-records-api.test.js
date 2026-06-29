@@ -307,6 +307,113 @@ test('record list stays available when historical passwords cannot be decrypted'
   assert.equal(response.body.items[0].googlePasswordDecryptionFailed, true);
 });
 
+test('record list returns public batch eligibility stats for incomplete inventory', async () => {
+  const { agent, pool, config } = await createAdminTestContext();
+  const operatorId = crypto.randomUUID();
+  await pool.query(
+    `
+      insert into admin_users (id, login, email, password_hash, role, status)
+      values ($1, $2, $3, $4, 'operator', 'active')
+    `,
+    [
+      operatorId,
+      'eligibility-operator',
+      'eligibility-operator@example.com',
+      await hashAdminPassword('operator-pass'),
+    ],
+  );
+  await agent.post('/api/admin/auth/login').send({
+    identifier: 'eligibility-operator',
+    password: 'operator-pass',
+  });
+
+  const values = [
+    [
+      crypto.randomUUID(),
+      'eligible@gmail.com',
+      'eligible-pass',
+      'eligible assist',
+      '',
+      'eligible-op',
+      'eligible row',
+    ],
+    [
+      crypto.randomUUID(),
+      'missing-password@gmail.com',
+      '',
+      'missing password assist',
+      '',
+      'missing-password-op',
+      'missing password row',
+    ],
+    [
+      crypto.randomUUID(),
+      'missing-op@gmail.com',
+      'missing-op-pass',
+      'missing op assist',
+      '',
+      '',
+      'missing op row',
+    ],
+    [
+      crypto.randomUUID(),
+      'used@gmail.com',
+      'used-pass',
+      'used assist',
+      'uid-used',
+      'used-op',
+      'used row',
+    ],
+  ];
+
+  for (const [id, googleAccount, googlePassword, googleAssist, uidValue, opValue, remark] of values) {
+    await pool.query(
+      `
+        insert into managed_records (
+          id,
+          owner_id,
+          google_account,
+          google_password_encrypted,
+          google_password_search_hash,
+          google_assist,
+          google_expire_at,
+          uid_value,
+          uid_created_at,
+          op_value,
+          op_link,
+          op_expire_at,
+          remark
+        ) values (
+          $1, $2, $3, $4, $5, $6, null, $7, null, $8, '', null, $9
+        )
+      `,
+      [
+        id,
+        operatorId,
+        googleAccount,
+        encryptGooglePassword(googlePassword, config.googlePasswordEncryptionKey),
+        buildGooglePasswordSearchHash(googlePassword, config.googlePasswordEncryptionKey),
+        googleAssist,
+        uidValue,
+        opValue,
+        remark,
+      ],
+    );
+  }
+
+  const response = await agent.get('/api/admin/records');
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body.publicBatchEligibility, {
+    eligibleCount: 1,
+    missingGoogleAccountCount: 0,
+    missingGooglePasswordCount: 1,
+    missingOpCount: 1,
+    filledUidCount: 1,
+    blockedTotalCount: 3,
+  });
+});
+
 test('text import creates records and derives op link plus op expiry time', async () => {
   const { agent, config } = await createAdminTestContext();
   await loginAsSuperAdmin(agent, config);

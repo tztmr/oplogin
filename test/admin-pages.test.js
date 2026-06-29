@@ -42,6 +42,8 @@ test('GET /admin serves the record management shell', async () => {
   assert.match(response.text, /id="batchDeleteProgressSection"/);
   assert.match(response.text, /id="batchDeleteProgressBar"/);
   assert.match(response.text, /id="batchDeleteProgressText"/);
+  assert.match(response.text, /id="publicBatchEligibilityCard"/);
+  assert.match(response.text, /id="publicBatchEligibilitySummary"/);
 });
 
 test('admin records UI truncates long OP fields in the table', async () => {
@@ -72,6 +74,8 @@ test('admin common UI exposes custom feedback dialogs for export confirmation an
   assert.match(pageResponse.text, /function setBatchDeleteProgressState\(/);
   assert.match(pageResponse.text, /setBatchDeleteProgressState\(20,\s*'正在删除勾选记录\.\.\.'\)/);
   assert.match(pageResponse.text, /setBatchDeleteProgressState\(100,\s*'删除完成'\)/);
+  assert.match(pageResponse.text, /function renderPublicBatchEligibility\(/);
+  assert.match(pageResponse.text, /publicBatchEligibilitySummary/);
   assert.match(commonResponse.text, /function showConfirm\(/);
   assert.match(commonResponse.text, /function showToast\(/);
 });

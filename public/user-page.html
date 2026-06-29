@@ -12,8 +12,11 @@
             --bg-gradient-2: #fbcfe8;
             --text-main: #1F2937;
             --text-muted: #6B7280;
-            --card-bg: rgba(255, 255, 255, 0.7);
+            --card-bg: rgba(255, 255, 255, 0.74);
             --card-border: rgba(255, 255, 255, 0.5);
+            --slot-red: #ef4444;
+            --slot-green: #10b981;
+            --slot-gray: #9ca3af;
         }
 
         body {
@@ -29,7 +32,6 @@
             overflow-x: hidden;
         }
 
-        /* 背景装饰圆 */
         .bg-shape {
             position: absolute;
             border-radius: 50%;
@@ -37,6 +39,7 @@
             z-index: -1;
             opacity: 0.6;
         }
+
         .shape-1 {
             width: 300px;
             height: 300px;
@@ -44,6 +47,7 @@
             top: -50px;
             left: -50px;
         }
+
         .shape-2 {
             width: 400px;
             height: 400px;
@@ -85,49 +89,91 @@
             text-align: center;
             color: var(--text-muted);
             font-size: 14px;
-            margin: 0 0 28px 0;
+            margin: 0 0 18px 0;
+            line-height: 1.6;
         }
 
-        .form-group {
-            margin-bottom: 20px;
+        .batch-action-row {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            margin-bottom: 14px;
         }
 
         .quick-slot-buttons {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 8px;
-            margin-bottom: 18px;
+            margin-bottom: 20px;
         }
 
         .quick-slot-button {
-            padding: 10px 0;
+            padding: 11px 0;
             font-size: 14px;
-            font-weight: 600;
-            color: var(--primary);
-            background: rgba(79, 70, 229, 0.08);
-            border: 1px solid rgba(79, 70, 229, 0.16);
+            font-weight: 700;
+            color: white;
+            border: none;
             border-radius: 10px;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+            box-shadow: 0 4px 14px rgba(31, 41, 55, 0.12);
         }
 
         .quick-slot-button:hover:not(:disabled) {
-            background: rgba(79, 70, 229, 0.14);
+            transform: translateY(-1px);
+        }
+
+        .quick-slot-button.slot-available {
+            background: var(--slot-red);
+        }
+
+        .quick-slot-button.slot-done {
+            background: var(--slot-green);
+        }
+
+        .quick-slot-button.slot-empty {
+            background: var(--slot-gray);
         }
 
         .quick-slot-button.is-active {
-            color: white;
-            background: var(--primary);
-            border-color: var(--primary);
-            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
+            outline: 3px solid rgba(79, 70, 229, 0.22);
+            outline-offset: 2px;
         }
 
         .quick-slot-button:disabled {
-            color: #9CA3AF;
-            background: rgba(229, 231, 235, 0.7);
-            border-color: rgba(209, 213, 219, 0.8);
             cursor: not-allowed;
-            box-shadow: none;
+            opacity: 0.7;
+            transform: none;
+        }
+
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 18px;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        .legend span::before {
+            content: "";
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 999px;
+            margin-right: 6px;
+        }
+
+        .legend .legend-available::before {
+            background: var(--slot-red);
+        }
+
+        .legend .legend-done::before {
+            background: var(--slot-green);
+        }
+
+        .legend .legend-empty::before {
+            background: var(--slot-gray);
         }
 
         .info-row {
@@ -138,10 +184,11 @@
         }
 
         .info-row .label {
-            width: 80px;
+            width: 92px;
             font-size: 14px;
-            font-weight: 500;
+            font-weight: 600;
             color: var(--text-muted);
+            flex-shrink: 0;
         }
 
         .info-row .value {
@@ -149,8 +196,8 @@
             font-family: monospace;
             font-size: 15px;
             padding: 10px 12px;
-            background: rgba(255, 255, 255, 0.5);
-            border: 1px solid rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.55);
+            border: 1px solid rgba(255, 255, 255, 0.9);
             border-radius: 8px;
             word-break: break-all;
         }
@@ -163,16 +210,18 @@
             border: 1px solid rgba(79, 70, 229, 0.2);
             border-radius: 8px;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.2s ease;
             white-space: nowrap;
         }
 
         .btn-copy:hover {
-            background: rgba(79, 70, 229, 0.2);
+            background: rgba(79, 70, 229, 0.18);
         }
 
-        .btn-copy:active {
-            transform: scale(0.95);
+        .divider {
+            height: 1px;
+            background: rgba(0, 0, 0, 0.1);
+            margin: 24px 0;
         }
 
         label {
@@ -189,7 +238,7 @@
             font-size: 15px;
             border: 1px solid rgba(255, 255, 255, 0.8);
             border-radius: 12px;
-            background: rgba(255, 255, 255, 0.5);
+            background: rgba(255, 255, 255, 0.55);
             color: var(--text-main);
             box-sizing: border-box;
             transition: all 0.3s ease;
@@ -197,7 +246,7 @@
         }
 
         input[type="text"]:focus, select:focus {
-            background: rgba(255, 255, 255, 0.9);
+            background: rgba(255, 255, 255, 0.92);
             border-color: var(--primary);
             box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
         }
@@ -210,11 +259,15 @@
             background-size: 16px;
         }
 
+        .form-group {
+            margin-bottom: 18px;
+        }
+
         .btn-submit {
             width: 100%;
-            padding: 16px;
-            font-size: 16px;
-            font-weight: 600;
+            padding: 15px 16px;
+            font-size: 15px;
+            font-weight: 700;
             color: white;
             background: var(--primary);
             border: none;
@@ -225,14 +278,10 @@
             margin-top: 8px;
         }
 
-        .btn-submit:hover {
+        .btn-submit:hover:not(:disabled) {
             background: var(--primary-hover);
             transform: translateY(-1px);
             box-shadow: 0 6px 16px rgba(79, 70, 229, 0.3);
-        }
-
-        .btn-submit:active {
-            transform: translateY(1px);
         }
 
         .btn-submit:disabled {
@@ -247,47 +296,34 @@
             box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
         }
 
-        .btn-secondary:hover {
+        .btn-secondary:hover:not(:disabled) {
             background: #059669;
             box-shadow: 0 6px 16px rgba(16, 185, 129, 0.3);
         }
 
-        .nav-actions {
-            display: grid;
-            grid-template-columns: 1fr auto 1fr;
-            gap: 12px;
-            margin-top: 16px;
+        .btn-danger {
+            background: #ef4444;
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
         }
 
-        .nav-actions .btn-submit {
-            margin-top: 0;
-            padding: 16px 12px;
+        .btn-danger:hover:not(:disabled) {
+            background: #dc2626;
+            box-shadow: 0 6px 16px rgba(239, 68, 68, 0.28);
         }
 
-        .nav-actions .btn-refresh {
-            padding: 16px 20px;
-            background: #6B7280;
-            box-shadow: 0 4px 12px rgba(107, 114, 128, 0.2);
+        .status-note {
+            margin-top: 10px;
+            color: var(--text-muted);
+            font-size: 13px;
+            text-align: center;
         }
 
-        .nav-actions .btn-refresh:hover {
-            background: #4B5563;
-            box-shadow: 0 6px 16px rgba(107, 114, 128, 0.3);
-        }
-
-        .divider {
-            height: 1px;
-            background: rgba(0, 0, 0, 0.1);
-            margin: 24px 0;
-        }
-
-        /* Toast 提示框 */
         .toast {
             position: fixed;
             top: 20px;
             left: 50%;
             transform: translateX(-50%) translateY(-100%);
-            background: rgba(255, 255, 255, 0.9);
+            background: rgba(255, 255, 255, 0.92);
             backdrop-filter: blur(10px);
             color: var(--text-main);
             padding: 12px 24px;
@@ -296,7 +332,7 @@
             font-weight: 500;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
             opacity: 0;
-            transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            transition: all 0.35s ease;
             z-index: 1000;
         }
 
@@ -305,15 +341,20 @@
             opacity: 1;
         }
 
-        .toast.success { border-left: 4px solid #10B981; }
-        .toast.error { border-left: 4px solid #EF4444; }
+        .toast.success {
+            border-left: 4px solid #10B981;
+        }
+
+        .toast.error {
+            border-left: 4px solid #EF4444;
+        }
 
         .empty-state {
             text-align: center;
             padding: 40px 0;
             color: var(--text-muted);
         }
-        
+
         .empty-state svg {
             width: 48px;
             height: 48px;
@@ -329,19 +370,33 @@
     <div class="container">
         <div class="glass-card" id="mainCard" style="display: none;">
             <h1 id="pageTitle">专属数据中心</h1>
-            <p class="subtitle" id="pageSubtitle">正在加载数据...</p>
+            <p class="subtitle" id="pageSubtitle">正在加载批次...</p>
 
             <div id="dataContainer" style="display: none;">
-                <div class="quick-slot-buttons" id="quickSlotButtons">
-                    <button type="button" class="quick-slot-button" data-slot="1" onclick="switchQuickSlot(1)">1</button>
-                    <button type="button" class="quick-slot-button" data-slot="2" onclick="switchQuickSlot(2)">2</button>
-                    <button type="button" class="quick-slot-button" data-slot="3" onclick="switchQuickSlot(3)">3</button>
-                    <button type="button" class="quick-slot-button" data-slot="4" onclick="switchQuickSlot(4)">4</button>
-                    <button type="button" class="quick-slot-button" data-slot="5" onclick="switchQuickSlot(5)">5</button>
-                    <button type="button" class="quick-slot-button" data-slot="6" onclick="switchQuickSlot(6)">6</button>
+                <div class="batch-action-row">
+                    <button type="button" id="refreshBatchBtn" class="btn-submit" onclick="refreshBatch()">刷新本组</button>
+                    <button type="button" id="advanceBatchBtn" class="btn-submit btn-danger" onclick="advanceBatchGroup()">放弃剩余并换组</button>
                 </div>
 
-                <!-- 数据信息区 -->
+                <div class="legend">
+                    <span class="legend-available">红色待处理</span>
+                    <span class="legend-done">绿色已保存</span>
+                    <span class="legend-empty">灰色空槽</span>
+                </div>
+
+                <div class="quick-slot-buttons" id="quickSlotButtons">
+                    <button type="button" class="quick-slot-button slot-available" data-slot="1" onclick="switchSlot(1)">1</button>
+                    <button type="button" class="quick-slot-button slot-available" data-slot="2" onclick="switchSlot(2)">2</button>
+                    <button type="button" class="quick-slot-button slot-available" data-slot="3" onclick="switchSlot(3)">3</button>
+                    <button type="button" class="quick-slot-button slot-available" data-slot="4" onclick="switchSlot(4)">4</button>
+                    <button type="button" class="quick-slot-button slot-available" data-slot="5" onclick="switchSlot(5)">5</button>
+                    <button type="button" class="quick-slot-button slot-available" data-slot="6" onclick="switchSlot(6)">6</button>
+                </div>
+
+                <div class="info-row">
+                    <div class="label">当前槽位</div>
+                    <div class="value" id="slotStateText"></div>
+                </div>
                 <div class="info-row">
                     <div class="label">序号</div>
                     <div class="value" id="recordIndexText"></div>
@@ -356,15 +411,11 @@
                     <div class="value" id="googlePasswordText"></div>
                     <button class="btn-copy" onclick="copyText('googlePasswordText')">复制</button>
                 </div>
-                <div class="nav-actions">
-                    <button type="button" id="previousRecordBtn" class="btn-submit" onclick="switchRecord('prev')">上一个账号</button>
-                    <button type="button" id="refreshRecordBtn" class="btn-submit btn-refresh" onclick="switchRecord('refresh')">刷新当前</button>
-                    <button type="button" id="nextRecordBtn" class="btn-submit" onclick="switchRecord('next')">下一个账号</button>
-                </div>
+
+                <div class="status-note" id="batchSummaryText"></div>
 
                 <div class="divider"></div>
 
-                <!-- OP登录区 -->
                 <div class="form-group">
                     <label for="game">OP 目标应用</label>
                     <select id="game" name="game">
@@ -421,7 +472,6 @@
 
                 <div class="divider"></div>
 
-                <!-- UID提交区 -->
                 <div class="form-group">
                     <label for="uid">确认使用 (填写 UID)</label>
                     <input type="text" id="uid" placeholder="请在此处填写提取的 UID" required>
@@ -430,7 +480,7 @@
                     <label for="remark">备注 (选填)</label>
                     <input type="text" id="remark" placeholder="备注默认为空 可填可不填">
                 </div>
-                <button type="button" id="submitUidBtn" class="btn-submit btn-secondary" onclick="submitUid()">保存 UID 并获取下一条</button>
+                <button type="button" id="submitUidBtn" class="btn-submit btn-secondary" onclick="submitUid()">保存 UID</button>
             </div>
 
             <div id="emptyContainer" class="empty-state" style="display: none;">
@@ -446,12 +496,10 @@
     <div id="toast" class="toast"></div>
 
     <script>
-        let currentRecordId = null;
-        let currentOpValue = null;
         let username = '';
-        let canGoPrevious = false;
-        let canGoNext = false;
-        let availableCount = 0;
+        let currentBatch = null;
+        let currentSlotNumber = 1;
+        let currentRecord = null;
 
         function getRemarkInput() {
             return document.getElementById('remark');
@@ -481,21 +529,6 @@
             getRemarkInput().value = loadRemarkDraft();
         }
 
-        function setRecordNavigationState(hasPrevious, hasNext) {
-            canGoPrevious = Boolean(hasPrevious);
-            canGoNext = Boolean(hasNext);
-        }
-
-        function updateQuickSlotButtons(count, activeSlot = null) {
-            const buttons = document.querySelectorAll('#quickSlotButtons .quick-slot-button');
-            buttons.forEach((button) => {
-                const slot = Number(button.dataset.slot);
-                const enabled = slot <= count;
-                button.disabled = !enabled;
-                button.classList.toggle('is-active', enabled && slot === activeSlot);
-            });
-        }
-
         function showToast(message, type = 'success') {
             const toast = document.getElementById('toast');
             toast.textContent = message;
@@ -510,24 +543,148 @@
             try {
                 await navigator.clipboard.writeText(text);
                 showToast('复制成功');
-            } catch (err) {
+            } catch (error) {
                 showToast('复制失败，请手动复制', 'error');
             }
         }
 
         function extractUsername() {
             const pathParts = window.location.pathname.split('/').filter(Boolean);
-            if (pathParts.length > 0) {
-                return pathParts[0];
-            }
-            return '';
+            return pathParts.length > 0 ? pathParts[0] : '';
         }
 
-        async function loadRecord(direction = '', jumpSlot = null) {
+        function countSlotsByStatus(status) {
+            return (currentBatch && currentBatch.slots || []).filter((slot) => slot.status === status).length;
+        }
+
+        function getSlot(slotNumber) {
+            if (!currentBatch) {
+                return null;
+            }
+            return currentBatch.slots.find((slot) => slot.slot === slotNumber) || null;
+        }
+
+        function getFirstSelectableSlot() {
+            if (!currentBatch) {
+                return 1;
+            }
+            const availableSlot = currentBatch.slots.find((slot) => slot.status === 'available');
+            if (availableSlot) {
+                return availableSlot.slot;
+            }
+            const doneSlot = currentBatch.slots.find((slot) => slot.status === 'done');
+            return doneSlot ? doneSlot.slot : 1;
+        }
+
+        function getNextAvailableSlot(afterSlotNumber) {
+            if (!currentBatch) {
+                return null;
+            }
+            const availableSlots = currentBatch.slots.filter((slot) => slot.status === 'available');
+            if (!availableSlots.length) {
+                return null;
+            }
+            const nextSlot = availableSlots.find((slot) => slot.slot > afterSlotNumber);
+            return (nextSlot || availableSlots[0]).slot;
+        }
+
+        function renderBatchSlots() {
+            const buttons = document.querySelectorAll('#quickSlotButtons .quick-slot-button');
+            buttons.forEach((button) => {
+                const slotNumber = Number(button.dataset.slot);
+                const slot = getSlot(slotNumber);
+                if (!slot) {
+                    button.className = 'quick-slot-button slot-empty';
+                    button.disabled = true;
+                    return;
+                }
+                if (slot.status === 'done') {
+                    button.className = 'quick-slot-button slot-done';
+                } else if (slot.status === 'empty') {
+                    button.className = 'quick-slot-button slot-empty';
+                } else {
+                    button.className = 'quick-slot-button slot-available';
+                }
+                button.classList.toggle('is-active', currentSlotNumber === slotNumber);
+                button.disabled = slot.status === 'empty';
+                if (slot.status === 'done') {
+                    button.textContent = `${slotNumber} 已保存`;
+                    return;
+                }
+                if (slot.status === 'empty') {
+                    button.textContent = `${slotNumber} 空槽`;
+                    return;
+                }
+                button.textContent = `${slotNumber}`;
+            });
+        }
+
+        function renderSelectedSlot() {
+            const slot = getSlot(currentSlotNumber);
+            const submitButton = document.getElementById('submitUidBtn');
+            const opButton = document.getElementById('opLoginBtn');
+            const enterOpButton = document.getElementById('enterOpBtn');
+
+            if (!slot || !slot.record) {
+                currentRecord = null;
+                document.getElementById('slotStateText').textContent = `槽位 ${currentSlotNumber} / 空槽`;
+                document.getElementById('recordIndexText').textContent = '--';
+                document.getElementById('googleAccountText').textContent = '--';
+                document.getElementById('googlePasswordText').textContent = '--';
+                document.getElementById('uid').value = '';
+                getRemarkInput().value = '';
+                submitButton.disabled = true;
+                opButton.disabled = true;
+                enterOpButton.disabled = true;
+                return;
+            }
+
+            currentRecord = slot.record;
+            document.getElementById('slotStateText').textContent = `槽位 ${slot.slot} / ${slot.status === 'done' ? '已保存' : '待处理'}`;
+            document.getElementById('recordIndexText').textContent = `${slot.record.distributionOrder} / ${slot.record.total}`;
+            document.getElementById('googleAccountText').textContent = slot.record.googleAccount;
+            document.getElementById('googlePasswordText').textContent = slot.record.googlePassword;
+            document.getElementById('uid').value = '';
+            restoreRemarkDraft();
+            submitButton.disabled = slot.status !== 'available';
+            opButton.disabled = !slot.record.opValue;
+            enterOpButton.disabled = !slot.record.opValue;
+        }
+
+        function renderBatchSummary() {
+            const doneCount = countSlotsByStatus('done');
+            const availableCount = countSlotsByStatus('available');
+            const emptyCount = countSlotsByStatus('empty');
+            document.getElementById('batchSummaryText').textContent = `本组已保存 ${doneCount} 条，待处理 ${availableCount} 条，空槽 ${emptyCount} 条`;
+        }
+
+        function showEmptyState() {
             document.getElementById('mainCard').style.display = 'block';
             document.getElementById('dataContainer').style.display = 'none';
+            document.getElementById('emptyContainer').style.display = 'block';
+            document.getElementById('pageSubtitle').textContent = '当前没有可分配批次';
+        }
+
+        function applyBatch(batch, preferredSlotNumber = null) {
+            currentBatch = batch;
+            currentSlotNumber = preferredSlotNumber || getFirstSelectableSlot();
+
+            const hasRealRecord = batch.slots.some((slot) => Boolean(slot.record));
+            document.getElementById('mainCard').style.display = 'block';
+            if (!hasRealRecord) {
+                showEmptyState();
+                return;
+            }
+
+            document.getElementById('dataContainer').style.display = 'block';
             document.getElementById('emptyContainer').style.display = 'none';
-            
+            document.getElementById('pageSubtitle').textContent = `当前批次 ${batch.id.slice(0, 8)}，红色待处理，绿色已保存`;
+            renderBatchSlots();
+            renderSelectedSlot();
+            renderBatchSummary();
+        }
+
+        async function fetchBatch() {
             username = extractUsername();
             if (!username) {
                 showToast('无法识别用户身份', 'error');
@@ -535,132 +692,124 @@
             }
 
             document.getElementById('pageTitle').textContent = `${username} 的数据中心`;
-            document.getElementById('pageSubtitle').textContent = '加载中...';
+            document.getElementById('pageSubtitle').textContent = '正在加载批次...';
 
+            const response = await fetch(`/api/public/user/${encodeURIComponent(username)}/batch`);
+            if (!response.ok) {
+                throw new Error('加载失败，可能用户不存在或被禁用');
+            }
+            const data = await response.json();
+            return data.batch;
+        }
+
+        async function loadBatch() {
             try {
-                const requestUrl = new URL(`/api/public/user/${encodeURIComponent(username)}/record`, window.location.origin);
-                if (jumpSlot) {
-                    requestUrl.searchParams.set('jumpSlot', jumpSlot);
-                }
-                if (currentRecordId) {
-                    requestUrl.searchParams.set('currentRecordId', currentRecordId);
-                    requestUrl.searchParams.set('direction', direction);
-                }
-                const response = await fetch(requestUrl);
-                if (!response.ok) {
-                    throw new Error('加载失败，可能用户不存在或被禁用');
-                }
-                
-                const data = await response.json();
-                if (!data.record) {
-                    currentRecordId = null;
-                    currentOpValue = null;
-                    availableCount = 0;
-                    setRecordNavigationState(false, false);
-                    updateQuickSlotButtons(0);
-                    document.getElementById('pageSubtitle').textContent = '库存耗尽';
-                    document.getElementById('emptyContainer').style.display = 'block';
-                    return;
-                }
-
-                const record = data.record;
-                currentRecordId = record.id;
-                currentOpValue = record.opValue;
-                availableCount = record.availableCount || 0;
-
-                const distributionOrder = record.distributionOrder || record.index;
-                document.getElementById('recordIndexText').textContent = `${distributionOrder} / ${record.total}`;
-                document.getElementById('googleAccountText').textContent = record.googleAccount;
-                document.getElementById('googlePasswordText').textContent = record.googlePassword;
-                document.getElementById('uid').value = '';
-                restoreRemarkDraft();
-                setRecordNavigationState(record.hasPrevious, record.hasNext);
-                updateQuickSlotButtons(availableCount, jumpSlot);
-
-                document.getElementById('pageSubtitle').textContent = '提取数据并绑定 UID';
-                document.getElementById('dataContainer').style.display = 'block';
-
+                const batch = await fetchBatch();
+                applyBatch(batch);
             } catch (error) {
                 showToast(error.message, 'error');
                 document.getElementById('pageSubtitle').textContent = '加载出错';
             }
         }
 
-        function switchRecord(direction) {
-            if (direction === 'prev' && !canGoPrevious) {
-                showToast('当前已经是第一条账号', 'error');
+        function switchSlot(slotNumber) {
+            const slot = getSlot(slotNumber);
+            if (!slot) {
                 return;
             }
-            if (direction === 'next' && !canGoNext) {
-                showToast('当前已经是最后一条账号', 'error');
+            if (slot.status === 'empty') {
+                showToast('当前槽位没有数据', 'error');
                 return;
             }
-            if (direction === 'refresh') {
-                direction = ''; // 让后端通过当前 ID 重新定位
-            }
-            loadRecord(direction);
+            currentSlotNumber = slotNumber;
+            renderBatchSlots();
+            renderSelectedSlot();
         }
 
-        function switchQuickSlot(slot) {
-            if (slot > availableCount) {
-                showToast('当前没有对应序号数据', 'error');
-                return;
+        async function refreshBatch() {
+            try {
+                const batch = await fetchBatch();
+                const preferredSlot = getSlot(currentSlotNumber) ? currentSlotNumber : null;
+                applyBatch(batch, preferredSlot || getFirstSelectableSlot());
+                showToast('本组状态已刷新');
+            } catch (error) {
+                showToast(error.message, 'error');
             }
-            loadRecord('', slot);
+        }
+
+        async function advanceBatchGroup() {
+            const button = document.getElementById('advanceBatchBtn');
+            const originalText = button.innerText;
+            button.innerText = '换组中...';
+            button.disabled = true;
+            try {
+                const response = await fetch(`/api/public/user/${encodeURIComponent(username)}/batch/advance`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({}),
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || '换组失败');
+                }
+                applyBatch(data.batch);
+                showToast('已放弃剩余槽位并切换到下一组');
+            } catch (error) {
+                showToast(error.message, 'error');
+            } finally {
+                button.innerText = originalText;
+                button.disabled = false;
+            }
         }
 
         async function submitOpLogin() {
-            if (!currentOpValue) {
-                showToast('该记录没有 OP 数据，无法唤起', 'error');
+            if (!currentRecord || !currentRecord.opValue) {
+                showToast('该槽位没有 OP 数据，无法唤起', 'error');
                 return;
             }
 
             const gameInput = document.getElementById('game').value;
-            const btn = document.getElementById('opLoginBtn');
-            const originalText = btn.innerText;
-            
-            btn.innerText = '正在处理...';
-            btn.disabled = true;
+            const button = document.getElementById('opLoginBtn');
+            const originalText = button.innerText;
+            button.innerText = '正在处理...';
+            button.disabled = true;
 
             try {
                 const response = await fetch('/api/submit', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url: currentOpValue, game: gameInput })
+                    body: JSON.stringify({ url: currentRecord.opValue, game: gameInput }),
                 });
-                
-                if (response.status === 200) {
-                    const data = await response.json();
-                    if (data.status === 'success' && data.url) {
-                        showToast('上号成功，正在唤起应用...');
-                        setTimeout(() => {
-                            window.location.href = data.url;
-                        }, 800);
-                    } else {
-                        showToast('上号失败，未获取到唤起链接', 'error');
-                    }
-                } else {
-                    showToast('接口请求失败', 'error');
+                const data = await response.json();
+                if (!response.ok || data.status !== 'success' || !data.url) {
+                    throw new Error(data.error || '上号失败，未获取到唤起链接');
                 }
+                showToast('上号成功，正在唤起应用...');
+                setTimeout(() => {
+                    window.location.href = data.url;
+                }, 800);
             } catch (error) {
-                console.error(error);
-                showToast('网络异常，请重试', 'error');
+                showToast(error.message || '网络异常，请重试', 'error');
             } finally {
-                btn.innerText = originalText;
-                btn.disabled = false;
+                button.innerText = originalText;
+                button.disabled = false;
             }
         }
 
         function enterOpPage() {
-            if (!currentOpValue) {
-                showToast('该记录没有 OP 数据，无法进入', 'error');
+            if (!currentRecord || !currentRecord.opValue) {
+                showToast('该槽位没有 OP 数据，无法进入', 'error');
                 return;
             }
-            // 跳转到 /oplogin/OP数据 页面
-            window.open(`/oplogin/${encodeURIComponent(currentOpValue)}`, '_blank');
+            window.open(`/oplogin/${encodeURIComponent(currentRecord.opValue)}`, '_blank');
         }
 
         async function submitUid() {
+            if (!currentRecord) {
+                showToast('请先选择有效槽位', 'error');
+                return;
+            }
+
             const uidInput = document.getElementById('uid').value.trim();
             const remarkInput = document.getElementById('remark').value.trim();
             if (!uidInput) {
@@ -668,43 +817,45 @@
                 return;
             }
 
-            const btn = document.getElementById('submitUidBtn');
-            const originalText = btn.innerText;
-            btn.innerText = '保存中...';
-            btn.disabled = true;
+            const button = document.getElementById('submitUidBtn');
+            const originalText = button.innerText;
+            button.innerText = '保存中...';
+            button.disabled = true;
 
             try {
-                const response = await fetch(`/api/public/user/${encodeURIComponent(username)}/record/${currentRecordId}/uid`, {
+                const response = await fetch(`/api/public/user/${encodeURIComponent(username)}/batch/slots/${currentSlotNumber}/uid`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ uid: uidInput, remark: remarkInput })
+                    body: JSON.stringify({ uid: uidInput, remark: remarkInput }),
                 });
-
-                if (response.ok) {
-                    getRemarkInput().value = '';
-                    showToast('UID 保存成功，获取下一条数据...');
-                    setTimeout(() => {
-                        loadRecord();
-                    }, 1000);
-                } else {
-                    const errorData = await response.json();
-                    showToast(errorData.error || '保存失败', 'error');
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || '保存失败');
                 }
+
+                getRemarkInput().value = '';
+                currentBatch = data.batch;
+                const nextSlot = getNextAvailableSlot(currentSlotNumber);
+                currentSlotNumber = nextSlot || currentSlotNumber;
+                renderBatchSlots();
+                renderSelectedSlot();
+                renderBatchSummary();
+                document.getElementById('pageSubtitle').textContent = `当前批次 ${currentBatch.id.slice(0, 8)}，红色待处理，绿色已保存`;
+                showToast(`槽位 ${data.batch.slots[currentSlotNumber - 1] && data.batch.slots[currentSlotNumber - 1].status === 'done' ? currentSlotNumber : ''} 保存成功`.trim() || 'UID 保存成功');
             } catch (error) {
-                showToast('网络异常，保存失败', 'error');
+                showToast(error.message || '网络异常，保存失败', 'error');
             } finally {
-                btn.innerText = originalText;
-                btn.disabled = false;
+                button.innerText = originalText;
+                renderSelectedSlot();
             }
         }
 
-        // 初始化加载
         window.addEventListener('DOMContentLoaded', () => {
             document.getElementById('remark').addEventListener('input', (event) => {
                 saveRemarkDraft(event.target.value);
             });
             restoreRemarkDraft();
-            loadRecord();
+            loadBatch();
         });
     </script>
 </body>
