@@ -76,6 +76,7 @@
             font-weight: 700;
             margin: 0 0 8px 0;
             background: linear-gradient(to right, #4F46E5, #EC4899);
+            background-clip: text;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
@@ -213,6 +214,29 @@
             box-shadow: 0 6px 16px rgba(16, 185, 129, 0.3);
         }
 
+        .nav-actions {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .nav-actions .btn-submit {
+            margin-top: 0;
+            padding: 16px 12px;
+        }
+
+        .nav-actions .btn-refresh {
+            padding: 16px 20px;
+            background: #6B7280;
+            box-shadow: 0 4px 12px rgba(107, 114, 128, 0.2);
+        }
+
+        .nav-actions .btn-refresh:hover {
+            background: #4B5563;
+            box-shadow: 0 6px 16px rgba(107, 114, 128, 0.3);
+        }
+
         .divider {
             height: 1px;
             background: rgba(0, 0, 0, 0.1);
@@ -270,7 +294,11 @@
             <p class="subtitle" id="pageSubtitle">正在加载数据...</p>
 
             <div id="dataContainer" style="display: none;">
-                <!-- 谷歌账号密码区 -->
+                <!-- 数据信息区 -->
+                <div class="info-row">
+                    <div class="label">序号</div>
+                    <div class="value" id="recordIndexText"></div>
+                </div>
                 <div class="info-row">
                     <div class="label">谷歌号</div>
                     <div class="value" id="googleAccountText"></div>
@@ -280,6 +308,11 @@
                     <div class="label">谷歌密码</div>
                     <div class="value" id="googlePasswordText"></div>
                     <button class="btn-copy" onclick="copyText('googlePasswordText')">复制</button>
+                </div>
+                <div class="nav-actions">
+                    <button type="button" id="previousRecordBtn" class="btn-submit" onclick="switchRecord('prev')">上一个账号</button>
+                    <button type="button" id="refreshRecordBtn" class="btn-submit btn-refresh" onclick="switchRecord('refresh')">刷新当前</button>
+                    <button type="button" id="nextRecordBtn" class="btn-submit" onclick="switchRecord('next')">下一个账号</button>
                 </div>
 
                 <div class="divider"></div>
@@ -346,6 +379,10 @@
                     <label for="uid">确认使用 (填写 UID)</label>
                     <input type="text" id="uid" placeholder="请在此处填写提取的 UID" required>
                 </div>
+                <div class="form-group">
+                    <label for="remark">备注 (选填)</label>
+                    <input type="text" id="remark" placeholder="备注默认为空 可填可不填">
+                </div>
                 <button type="button" id="submitUidBtn" class="btn-submit btn-secondary" onclick="submitUid()">保存 UID 并获取下一条</button>
             </div>
 
@@ -365,6 +402,13 @@
         let currentRecordId = null;
         let currentOpValue = null;
         let username = '';
+        let canGoPrevious = false;
+        let canGoNext = false;
+
+        function setRecordNavigationState(hasPrevious, hasNext) {
+            canGoPrevious = Boolean(hasPrevious);
+            canGoNext = Boolean(hasNext);
+        }
 
         function showToast(message, type = 'success') {
             const toast = document.getElementById('toast');
@@ -393,7 +437,7 @@
             return '';
         }
 
-        async function loadRecord() {
+        async function loadRecord(direction = '') {
             document.getElementById('mainCard').style.display = 'block';
             document.getElementById('dataContainer').style.display = 'none';
             document.getElementById('emptyContainer').style.display = 'none';
@@ -408,13 +452,21 @@
             document.getElementById('pageSubtitle').textContent = '加载中...';
 
             try {
-                const response = await fetch(`/api/public/user/${encodeURIComponent(username)}/record`);
+                const requestUrl = new URL(`/api/public/user/${encodeURIComponent(username)}/record`, window.location.origin);
+                if (currentRecordId) {
+                    requestUrl.searchParams.set('currentRecordId', currentRecordId);
+                    requestUrl.searchParams.set('direction', direction);
+                }
+                const response = await fetch(requestUrl);
                 if (!response.ok) {
                     throw new Error('加载失败，可能用户不存在或被禁用');
                 }
                 
                 const data = await response.json();
                 if (!data.record) {
+                    currentRecordId = null;
+                    currentOpValue = null;
+                    setRecordNavigationState(false, false);
                     document.getElementById('pageSubtitle').textContent = '库存耗尽';
                     document.getElementById('emptyContainer').style.display = 'block';
                     return;
@@ -424,9 +476,13 @@
                 currentRecordId = record.id;
                 currentOpValue = record.opValue;
 
+                const distributionOrder = record.distributionOrder || record.index;
+                document.getElementById('recordIndexText').textContent = `${distributionOrder} / ${record.total}`;
                 document.getElementById('googleAccountText').textContent = record.googleAccount;
                 document.getElementById('googlePasswordText').textContent = record.googlePassword;
                 document.getElementById('uid').value = '';
+                document.getElementById('remark').value = '';
+                setRecordNavigationState(record.hasPrevious, record.hasNext);
 
                 document.getElementById('pageSubtitle').textContent = '提取数据并绑定 UID';
                 document.getElementById('dataContainer').style.display = 'block';
@@ -435,6 +491,21 @@
                 showToast(error.message, 'error');
                 document.getElementById('pageSubtitle').textContent = '加载出错';
             }
+        }
+
+        function switchRecord(direction) {
+            if (direction === 'prev' && !canGoPrevious) {
+                showToast('当前已经是第一条账号', 'error');
+                return;
+            }
+            if (direction === 'next' && !canGoNext) {
+                showToast('当前已经是最后一条账号', 'error');
+                return;
+            }
+            if (direction === 'refresh') {
+                direction = ''; // 让后端通过当前 ID 重新定位
+            }
+            loadRecord(direction);
         }
 
         async function submitOpLogin() {
@@ -490,6 +561,7 @@
 
         async function submitUid() {
             const uidInput = document.getElementById('uid').value.trim();
+            const remarkInput = document.getElementById('remark').value.trim();
             if (!uidInput) {
                 showToast('请填写 UID', 'error');
                 return;
@@ -504,7 +576,7 @@
                 const response = await fetch(`/api/public/user/${encodeURIComponent(username)}/record/${currentRecordId}/uid`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ uid: uidInput })
+                    body: JSON.stringify({ uid: uidInput, remark: remarkInput })
                 });
 
                 if (response.ok) {

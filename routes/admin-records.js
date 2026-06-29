@@ -87,6 +87,15 @@ function createAdminRecordsRouter({ pool, config, requireAdminAuth }) {
     }
   });
 
+  router.post('/batch-delete', async (req, res, next) => {
+    try {
+      const deletedCount = await deleteManagedRecords(pool, req.body.ids, req.adminUser);
+      return res.status(200).json({ deletedCount });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
   router.delete('/', async (req, res, next) => {
     try {
       const deletedCount = await deleteManagedRecords(pool, req.body.ids, req.adminUser);

@@ -133,6 +133,86 @@ test('operator can create and read managed records', async () => {
   assert.equal(listResponse.body.items.length, 1);
 });
 
+test('record list returns stable distribution order independent from display order', async () => {
+  const { agent, pool } = await createAdminTestContext();
+
+  await pool.query(
+    `
+      insert into admin_users (id, login, email, password_hash, role, status)
+      values ($1, $2, $3, $4, 'operator', 'active')
+    `,
+    [
+      crypto.randomUUID(),
+      'distribution-operator',
+      'distribution-operator@example.com',
+      await hashAdminPassword('operator-pass'),
+    ],
+  );
+
+  await agent.post('/api/admin/auth/login').send({
+    identifier: 'distribution-operator',
+    password: 'operator-pass',
+  });
+
+  const first = await agent.post('/api/admin/records').send({
+    googleAccount: 'distribution-1@gmail.com',
+    googlePassword: 'distribution-pass-1',
+    googleAssist: 'assist-1',
+    googleExpireAt: '2026-12-31T00:00:00.000Z',
+    uidValue: '',
+    opValue: 'distribution-op-1',
+    opLink: 'https://example.com/distribution-1',
+    opExpireAt: '2026-12-31T00:00:00.000Z',
+    remark: 'row-1',
+  });
+  const second = await agent.post('/api/admin/records').send({
+    googleAccount: 'distribution-2@gmail.com',
+    googlePassword: 'distribution-pass-2',
+    googleAssist: 'assist-2',
+    googleExpireAt: '2026-12-31T00:00:00.000Z',
+    uidValue: '',
+    opValue: 'distribution-op-2',
+    opLink: 'https://example.com/distribution-2',
+    opExpireAt: '2026-12-31T00:00:00.000Z',
+    remark: 'row-2',
+  });
+  const third = await agent.post('/api/admin/records').send({
+    googleAccount: 'distribution-3@gmail.com',
+    googlePassword: 'distribution-pass-3',
+    googleAssist: 'assist-3',
+    googleExpireAt: '2026-12-31T00:00:00.000Z',
+    uidValue: '',
+    opValue: 'distribution-op-3',
+    opLink: 'https://example.com/distribution-3',
+    opExpireAt: '2026-12-31T00:00:00.000Z',
+    remark: 'row-3',
+  });
+
+  await agent.put(`/api/admin/records/${second.body.item.id}`).send({
+    googleAccount: 'distribution-2@gmail.com',
+    googlePassword: 'distribution-pass-2',
+    googleAssist: 'assist-2-updated',
+    googleExpireAt: '2026-12-31T00:00:00.000Z',
+    uidValue: '',
+    opValue: 'distribution-op-2',
+    opLink: 'https://example.com/distribution-2',
+    opExpireAt: '2026-12-31T00:00:00.000Z',
+    remark: 'row-2-updated',
+  });
+
+  const listResponse = await agent.get('/api/admin/records');
+
+  assert.equal(listResponse.status, 200);
+  assert.equal(listResponse.body.items.length, 3);
+
+  const distributionOrderById = new Map(
+    listResponse.body.items.map((item) => [item.id, item.distributionOrder]),
+  );
+  assert.equal(distributionOrderById.get(first.body.item.id), 1);
+  assert.equal(distributionOrderById.get(second.body.item.id), 2);
+  assert.equal(distributionOrderById.get(third.body.item.id), 3);
+});
+
 test('batch delete removes selected records and keeps unselected rows', async () => {
   const { agent, config } = await createAdminTestContext();
   await loginAsSuperAdmin(agent, config);
@@ -171,7 +251,7 @@ test('batch delete removes selected records and keeps unselected rows', async ()
     remark: 'keep',
   });
 
-  const deleteResponse = await agent.delete('/api/admin/records').send({
+  const deleteResponse = await agent.post('/api/admin/records/batch-delete').send({
     ids: [first.body.item.id, second.body.item.id],
   });
   const listResponse = await agent.get('/api/admin/records');
@@ -277,6 +357,35 @@ test('text import keeps google account and op value unique for the same owner', 
   assert.equal(listResponse.body.items[0].opValue, opValue);
 });
 
+test('text import keeps google account unique across repeated import requests', async () => {
+  const { agent, config } = await createAdminTestContext();
+  await loginAsSuperAdmin(agent, config);
+
+  const firstResponse = await agent.post('/api/admin/records/import-text').send({
+    rowsText:
+      'repeat@gmail.com----first-pass----first-assist@outlook.com',
+  });
+  const secondResponse = await agent.post('/api/admin/records/import-text').send({
+    rowsText:
+      'repeat@gmail.com----second-pass----second-assist@outlook.com',
+  });
+  const listResponse = await agent.get('/api/admin/records').query({
+    googleAccount: 'repeat@gmail.com',
+  });
+
+  assert.equal(firstResponse.status, 201);
+  assert.equal(secondResponse.status, 201);
+  assert.equal(firstResponse.body.importedCount, 1);
+  assert.equal(secondResponse.body.importedCount, 1);
+  assert.equal(listResponse.body.total, 1);
+  assert.equal(listResponse.body.items[0].googleAccount, 'repeat@gmail.com');
+  assert.equal(listResponse.body.items[0].googlePassword, 'second-pass');
+  assert.equal(
+    listResponse.body.items[0].googleAssist,
+    'second-assist@outlook.com',
+  );
+});
+
 test('uidCreatedAt is written the first time a blank-uid imported record gets a uid', async () => {
   const { agent, config } = await createAdminTestContext();
   await loginAsSuperAdmin(agent, config);
@@ -363,7 +472,7 @@ test('record list accepts pageSize=all and returns every matching row', async ()
   const { agent, config } = await createAdminTestContext();
   await loginAsSuperAdmin(agent, config);
 
-  for (let index = 0; index < 3; index += 1) {
+  for (let index = 0; index < 120; index += 1) {
     await agent.post('/api/admin/records').send({
       googleAccount: `all-${index}@gmail.com`,
       googlePassword: `all-pass-${index}`,
@@ -380,9 +489,14 @@ test('record list accepts pageSize=all and returns every matching row', async ()
   const response = await agent.get('/api/admin/records').query({ pageSize: 'all' });
 
   assert.equal(response.status, 200);
-  assert.equal(response.body.total, 3);
-  assert.equal(response.body.items.length, 3);
-  assert.equal(response.body.pageSize, 3);
+  assert.equal(response.body.total, 120);
+  assert.equal(response.body.items.length, 120);
+  assert.equal(response.body.page, 1);
+  assert.equal(response.body.pageSize, 120);
+  assert.equal(response.body.items[0].googleAccount, 'all-119@gmail.com');
+  assert.equal(response.body.items[0].distributionOrder, 120);
+  assert.equal(response.body.items[119].googleAccount, 'all-0@gmail.com');
+  assert.equal(response.body.items[119].distributionOrder, 1);
 });
 
 test('CSV export can return only the selected record ids', async () => {

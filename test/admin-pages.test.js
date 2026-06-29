@@ -36,6 +36,12 @@ test('GET /admin serves the record management shell', async () => {
   assert.match(response.text, /<option value="50">50<\/option>/);
   assert.match(response.text, /<option value="100">100<\/option>/);
   assert.match(response.text, /<option value="all">全部<\/option>/);
+  assert.match(response.text, /id="batchImportProgressSection"/);
+  assert.match(response.text, /id="batchImportProgressBar"/);
+  assert.match(response.text, /id="batchImportProgressText"/);
+  assert.match(response.text, /id="batchDeleteProgressSection"/);
+  assert.match(response.text, /id="batchDeleteProgressBar"/);
+  assert.match(response.text, /id="batchDeleteProgressText"/);
 });
 
 test('admin records UI truncates long OP fields in the table', async () => {
@@ -60,6 +66,12 @@ test('admin common UI exposes custom feedback dialogs for export confirmation an
   assert.equal(commonResponse.status, 200);
   assert.match(pageResponse.text, /showConfirm\('已导出勾选数据，是否删除这些数据？'\)/);
   assert.match(pageResponse.text, /window\.location\.href = `\/api\/admin\/records\/export\.csv/);
+  assert.match(pageResponse.text, /function setBatchImportProgressState\(/);
+  assert.match(pageResponse.text, /setBatchImportProgressState\(15,\s*'正在上传导入数据\.\.\.'\)/);
+  assert.match(pageResponse.text, /setBatchImportProgressState\(100,\s*'导入完成'\)/);
+  assert.match(pageResponse.text, /function setBatchDeleteProgressState\(/);
+  assert.match(pageResponse.text, /setBatchDeleteProgressState\(20,\s*'正在删除勾选记录\.\.\.'\)/);
+  assert.match(pageResponse.text, /setBatchDeleteProgressState\(100,\s*'删除完成'\)/);
   assert.match(commonResponse.text, /function showConfirm\(/);
   assert.match(commonResponse.text, /function showToast\(/);
 });

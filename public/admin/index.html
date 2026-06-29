@@ -34,6 +34,17 @@
     </div>
   </section>
 
+  <div id="batchDeleteProgressSection" class="batch-action-progress hidden" aria-live="polite">
+    <div class="batch-action-progress-head">
+      <span>批量删除进度</span>
+      <span id="batchDeleteProgressValue">0%</span>
+    </div>
+    <div class="batch-action-progress-track">
+      <div id="batchDeleteProgressBar" class="batch-action-progress-bar danger"></div>
+    </div>
+    <p id="batchDeleteProgressText" class="batch-action-progress-text">等待开始删除</p>
+  </div>
+
   <section class="filter-section hidden" id="filterSection">
     <div class="filter-grid">
       <div class="filter-item"><label>谷歌号</label><input id="filterGoogleAccount" placeholder="模糊搜索" /></div>
@@ -60,8 +71,9 @@
     <table id="recordTable">
       <thead>
         <tr>
-          <th><input id="selectAllRecordsCheckbox" type="checkbox" aria-label="全选当前页" /></th>
-          <th>谷歌号</th>
+            <th><input id="selectAllRecordsCheckbox" type="checkbox" aria-label="全选当前页" /></th>
+            <th>分发顺位</th>
+            <th>谷歌号</th>
           <th>谷歌密码</th>
           <th>谷歌辅助</th>
           <th>谷歌到期时间</th>
@@ -146,9 +158,19 @@
         placeholder="示例一 (谷歌号): ezbprtcqxcgpn@goosttle.top----xowyiihpoe1fx----ehi3dzlerlyki@outlook.com&#10;示例二 (OP数据): AD9E11313002BC4FC8C01217A304D6A9|BA8E369FEE524F5D6A4DCD3496590019|242A2540CED09DD813D0D01CCE0A6593|f131d4565ab3470029209feab7437bc8|1781212159&#10;示例三 (综合): ezbprtcqxcgpn@goosttle.top----xowyiihpoe1fx----ehi3dzlerlyki@outlook.com----AD9E11313002BC4FC8C01217A304D6A9|BA8E369FEE524F5D6A4DCD3496590019|242A2540CED09DD813D0D01CCE0A6593|f131d4565ab3470029209feab7437bc8|1781212159"
         required
       ></textarea>
+      <div id="batchImportProgressSection" class="batch-import-progress hidden" aria-live="polite">
+        <div class="batch-import-progress-head">
+          <span>导入进度</span>
+          <span id="batchImportProgressValue">0%</span>
+        </div>
+        <div class="batch-import-progress-track">
+          <div id="batchImportProgressBar" class="batch-import-progress-bar"></div>
+        </div>
+        <p id="batchImportProgressText" class="batch-import-progress-text">等待开始导入</p>
+      </div>
       <menu class="dialog-menu">
         <button type="button" id="batchImportCancelButton" class="btn-cancel">取消</button>
-        <button type="submit" class="btn-primary">开始导入</button>
+        <button type="submit" id="batchImportSubmitButton" class="btn-primary">开始导入</button>
       </menu>
     </form>
   </dialog>

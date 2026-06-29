@@ -2,6 +2,8 @@ let currentPage = 1;
 let currentPageSize = '20';
 const selectedRecordIds = new Set();
 let currentPageRecordIds = [];
+let batchImportProgressTimer = null;
+let batchDeleteProgressTimer = null;
 
 function buildDerivedOpLink(opValue) {
   const normalizedOpValue = String(opValue || '').trim();
@@ -81,7 +83,12 @@ function renderTruncatedLink(value) {
   return `<a class="cell-truncate cell-truncate-link" href="${normalizedValue}" target="_blank" rel="noreferrer" title="${safeValue}">${normalizedValue}</a>`;
 }
 
-function renderRows(items) {
+function renderRows(data) {
+  const items = data.items;
+  const isAllPageSize = currentPageSize === 'all';
+  const effectivePageSize = isAllPageSize ? Math.max(data.total, 1) : data.pageSize;
+  const startIndex = isAllPageSize ? 0 : (data.page - 1) * effectivePageSize;
+
   const tbody = document.getElementById('recordTableBody');
   currentPageRecordIds = items.map((item) => item.id);
   for (const selectedId of Array.from(selectedRecordIds)) {
@@ -91,7 +98,7 @@ function renderRows(items) {
   }
   tbody.innerHTML = items
     .map(
-      (item) => `
+      (item, index) => `
         <tr>
           <td>
             <input
@@ -101,6 +108,7 @@ function renderRows(items) {
               onchange="window.toggleRecordSelection('${item.id}', this.checked)"
             />
           </td>
+          <td>${item.distributionOrder || (startIndex + index + 1)}</td>
           <td>${item.googleAccount}</td>
           <td>${item.googlePassword}</td>
           <td>${item.googleAssist}</td>
@@ -150,7 +158,7 @@ async function loadRecords() {
   const data = await adminFetch(`/api/admin/records?${queryString}`, {
     method: 'GET',
   });
-  renderRows(data.items);
+  renderRows(data);
   renderPagination(data);
 }
 
@@ -216,23 +224,158 @@ async function submitRecordForm(event) {
   await loadRecords();
 }
 
+function setBatchImportProgressState(percent, text) {
+  const progressSection = document.getElementById('batchImportProgressSection');
+  const progressBar = document.getElementById('batchImportProgressBar');
+  const progressValue = document.getElementById('batchImportProgressValue');
+  const progressText = document.getElementById('batchImportProgressText');
+  const normalizedPercent = Math.max(0, Math.min(100, Number(percent) || 0));
+
+  progressSection.classList.remove('hidden');
+  progressBar.style.width = `${normalizedPercent}%`;
+  progressValue.textContent = `${Math.round(normalizedPercent)}%`;
+  progressText.textContent = text;
+}
+
+function resetBatchImportProgressState() {
+  const progressSection = document.getElementById('batchImportProgressSection');
+  const progressBar = document.getElementById('batchImportProgressBar');
+  const progressValue = document.getElementById('batchImportProgressValue');
+  const progressText = document.getElementById('batchImportProgressText');
+  const submitButton = document.getElementById('batchImportSubmitButton');
+  const cancelButton = document.getElementById('batchImportCancelButton');
+
+  if (batchImportProgressTimer) {
+    window.clearInterval(batchImportProgressTimer);
+    batchImportProgressTimer = null;
+  }
+
+  progressSection.classList.add('hidden');
+  progressBar.style.width = '0%';
+  progressValue.textContent = '0%';
+  progressText.textContent = '等待开始导入';
+  submitButton.disabled = false;
+  submitButton.textContent = '开始导入';
+  cancelButton.disabled = false;
+}
+
+function startBatchImportProgress() {
+  const submitButton = document.getElementById('batchImportSubmitButton');
+  const cancelButton = document.getElementById('batchImportCancelButton');
+  let currentProgress = 15;
+
+  submitButton.disabled = true;
+  submitButton.textContent = '导入中...';
+  cancelButton.disabled = true;
+  setBatchImportProgressState(15, '正在上传导入数据...');
+
+  if (batchImportProgressTimer) {
+    window.clearInterval(batchImportProgressTimer);
+  }
+
+  batchImportProgressTimer = window.setInterval(() => {
+    currentProgress = Math.min(currentProgress + 8, 90);
+    setBatchImportProgressState(currentProgress, '正在解析并写入数据...');
+    if (currentProgress >= 90) {
+      window.clearInterval(batchImportProgressTimer);
+      batchImportProgressTimer = null;
+    }
+  }, 220);
+}
+
+function setBatchDeleteProgressState(percent, text) {
+  const progressSection = document.getElementById('batchDeleteProgressSection');
+  const progressBar = document.getElementById('batchDeleteProgressBar');
+  const progressValue = document.getElementById('batchDeleteProgressValue');
+  const progressText = document.getElementById('batchDeleteProgressText');
+  const normalizedPercent = Math.max(0, Math.min(100, Number(percent) || 0));
+
+  progressSection.classList.remove('hidden');
+  progressBar.style.width = `${normalizedPercent}%`;
+  progressValue.textContent = `${Math.round(normalizedPercent)}%`;
+  progressText.textContent = text;
+}
+
+function resetBatchDeleteProgressState() {
+  const progressSection = document.getElementById('batchDeleteProgressSection');
+  const progressBar = document.getElementById('batchDeleteProgressBar');
+  const progressValue = document.getElementById('batchDeleteProgressValue');
+  const progressText = document.getElementById('batchDeleteProgressText');
+  const batchDeleteButton = document.getElementById('batchDeleteButton');
+
+  if (batchDeleteProgressTimer) {
+    window.clearInterval(batchDeleteProgressTimer);
+    batchDeleteProgressTimer = null;
+  }
+
+  progressSection.classList.add('hidden');
+  progressBar.style.width = '0%';
+  progressValue.textContent = '0%';
+  progressText.textContent = '等待开始删除';
+  syncBatchDeleteState();
+  batchDeleteButton.disabled = selectedRecordIds.size === 0;
+}
+
+function startBatchDeleteProgress() {
+  const batchDeleteButton = document.getElementById('batchDeleteButton');
+  let currentProgress = 20;
+
+  batchDeleteButton.disabled = true;
+  batchDeleteButton.textContent = '删除中...';
+  setBatchDeleteProgressState(20, '正在删除勾选记录...');
+
+  if (batchDeleteProgressTimer) {
+    window.clearInterval(batchDeleteProgressTimer);
+  }
+
+  batchDeleteProgressTimer = window.setInterval(() => {
+    currentProgress = Math.min(currentProgress + 10, 88);
+    setBatchDeleteProgressState(currentProgress, '正在同步删除结果...');
+    if (currentProgress >= 88) {
+      window.clearInterval(batchDeleteProgressTimer);
+      batchDeleteProgressTimer = null;
+    }
+  }, 180);
+}
+
+function stopBatchDeleteProgressTimer() {
+  if (batchDeleteProgressTimer) {
+    window.clearInterval(batchDeleteProgressTimer);
+    batchDeleteProgressTimer = null;
+  }
+}
+
 async function submitBatchImportForm(event) {
   event.preventDefault();
 
   const rowsText = document.getElementById('batchImportText').value.trim();
-  const data = await adminFetch('/api/admin/records/import-text', {
-    method: 'POST',
-    body: JSON.stringify({ rowsText }),
-  });
+  startBatchImportProgress();
 
-  document.getElementById('batchImportDialog').close();
-  document.getElementById('batchImportForm').reset();
-  await loadRecords();
-  showToast(
-    data.skippedCount
-      ? `已导入 ${data.importedCount} 条记录，跳过重复 ${data.skippedCount} 条`
-      : `已导入 ${data.importedCount} 条记录`,
-  );
+  try {
+    const data = await adminFetch('/api/admin/records/import-text', {
+      method: 'POST',
+      body: JSON.stringify({ rowsText }),
+    });
+
+    setBatchImportProgressState(100, '导入完成');
+    await loadRecords();
+    window.setTimeout(() => {
+      document.getElementById('batchImportDialog').close();
+      document.getElementById('batchImportForm').reset();
+      resetBatchImportProgressState();
+      showToast(
+        data.skippedCount
+          ? `已导入 ${data.importedCount} 条记录，跳过重复 ${data.skippedCount} 条`
+          : `已导入 ${data.importedCount} 条记录`,
+      );
+    }, 320);
+  } catch (error) {
+    setBatchImportProgressState(100, '导入失败，请检查内容后重试');
+    document.getElementById('batchImportCancelButton').disabled = false;
+    document.getElementById('batchImportSubmitButton').disabled = false;
+    document.getElementById('batchImportSubmitButton').textContent = '重新导入';
+    throw error;
+  }
 }
 
 window.openEditRecord = async function openEditRecord(id) {
@@ -296,13 +439,38 @@ async function deleteSelectedRecords() {
     return;
   }
 
-  const data = await adminFetch('/api/admin/records', {
-    method: 'DELETE',
-    body: JSON.stringify({ ids }),
-  });
-  selectedRecordIds.clear();
-  await loadRecords();
-  showToast(`已删除 ${data.deletedCount} 条记录`);
+  startBatchDeleteProgress();
+
+  try {
+    const data = await adminFetch('/api/admin/records/batch-delete', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    });
+
+    stopBatchDeleteProgressTimer();
+    setBatchDeleteProgressState(100, '删除完成');
+    if (data.deletedCount > 0) {
+      selectedRecordIds.clear();
+      await loadRecords();
+      window.setTimeout(() => {
+        resetBatchDeleteProgressState();
+        showToast(`已删除 ${data.deletedCount} 条记录`);
+      }, 220);
+      return;
+    }
+
+    window.setTimeout(() => {
+      resetBatchDeleteProgressState();
+      showToast('未删除任何记录，请重新勾选后再试');
+    }, 220);
+  } catch (error) {
+    stopBatchDeleteProgressTimer();
+    const errMsg = error.message || '请稍后重试';
+    setBatchDeleteProgressState(100, `删除失败: ${errMsg}`);
+    document.getElementById('batchDeleteButton').disabled = false;
+    document.getElementById('batchDeleteButton').textContent = '重新删除';
+    throw error;
+  }
 }
 
 async function exportSelectedRecords() {
@@ -427,6 +595,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     .getElementById('batchImportButton')
     .addEventListener('click', () => {
       document.getElementById('batchImportForm').reset();
+      resetBatchImportProgressState();
       document.getElementById('batchImportDialog').showModal();
     });
   document
@@ -467,6 +636,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   document
     .getElementById('batchImportCancelButton')
     .addEventListener('click', () => {
+      resetBatchImportProgressState();
       document.getElementById('batchImportDialog').close();
     });
   document
