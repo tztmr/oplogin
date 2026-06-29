@@ -92,6 +92,44 @@
             margin-bottom: 20px;
         }
 
+        .quick-slot-buttons {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+            margin-bottom: 18px;
+        }
+
+        .quick-slot-button {
+            padding: 10px 0;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--primary);
+            background: rgba(79, 70, 229, 0.08);
+            border: 1px solid rgba(79, 70, 229, 0.16);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .quick-slot-button:hover:not(:disabled) {
+            background: rgba(79, 70, 229, 0.14);
+        }
+
+        .quick-slot-button.is-active {
+            color: white;
+            background: var(--primary);
+            border-color: var(--primary);
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
+        }
+
+        .quick-slot-button:disabled {
+            color: #9CA3AF;
+            background: rgba(229, 231, 235, 0.7);
+            border-color: rgba(209, 213, 219, 0.8);
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
         .info-row {
             display: flex;
             align-items: center;
@@ -294,6 +332,15 @@
             <p class="subtitle" id="pageSubtitle">正在加载数据...</p>
 
             <div id="dataContainer" style="display: none;">
+                <div class="quick-slot-buttons" id="quickSlotButtons">
+                    <button type="button" class="quick-slot-button" data-slot="1" onclick="switchQuickSlot(1)">1</button>
+                    <button type="button" class="quick-slot-button" data-slot="2" onclick="switchQuickSlot(2)">2</button>
+                    <button type="button" class="quick-slot-button" data-slot="3" onclick="switchQuickSlot(3)">3</button>
+                    <button type="button" class="quick-slot-button" data-slot="4" onclick="switchQuickSlot(4)">4</button>
+                    <button type="button" class="quick-slot-button" data-slot="5" onclick="switchQuickSlot(5)">5</button>
+                    <button type="button" class="quick-slot-button" data-slot="6" onclick="switchQuickSlot(6)">6</button>
+                </div>
+
                 <!-- 数据信息区 -->
                 <div class="info-row">
                     <div class="label">序号</div>
@@ -404,10 +451,49 @@
         let username = '';
         let canGoPrevious = false;
         let canGoNext = false;
+        let availableCount = 0;
+
+        function getRemarkInput() {
+            return document.getElementById('remark');
+        }
+
+        function getRemarkDraftStorageKey() {
+            return `user-page-remark-draft:${extractUsername()}`;
+        }
+
+        function loadRemarkDraft() {
+            try {
+                return localStorage.getItem(getRemarkDraftStorageKey()) || '';
+            } catch (error) {
+                return '';
+            }
+        }
+
+        function saveRemarkDraft(value) {
+            try {
+                localStorage.setItem(getRemarkDraftStorageKey(), value);
+            } catch (error) {
+                // 本地存储不可用时静默忽略，不影响主流程
+            }
+        }
+
+        function restoreRemarkDraft() {
+            getRemarkInput().value = loadRemarkDraft();
+        }
 
         function setRecordNavigationState(hasPrevious, hasNext) {
             canGoPrevious = Boolean(hasPrevious);
             canGoNext = Boolean(hasNext);
+        }
+
+        function updateQuickSlotButtons(count, activeSlot = null) {
+            const buttons = document.querySelectorAll('#quickSlotButtons .quick-slot-button');
+            buttons.forEach((button) => {
+                const slot = Number(button.dataset.slot);
+                const enabled = slot <= count;
+                button.disabled = !enabled;
+                button.classList.toggle('is-active', enabled && slot === activeSlot);
+            });
         }
 
         function showToast(message, type = 'success') {
@@ -437,7 +523,7 @@
             return '';
         }
 
-        async function loadRecord(direction = '') {
+        async function loadRecord(direction = '', jumpSlot = null) {
             document.getElementById('mainCard').style.display = 'block';
             document.getElementById('dataContainer').style.display = 'none';
             document.getElementById('emptyContainer').style.display = 'none';
@@ -453,6 +539,9 @@
 
             try {
                 const requestUrl = new URL(`/api/public/user/${encodeURIComponent(username)}/record`, window.location.origin);
+                if (jumpSlot) {
+                    requestUrl.searchParams.set('jumpSlot', jumpSlot);
+                }
                 if (currentRecordId) {
                     requestUrl.searchParams.set('currentRecordId', currentRecordId);
                     requestUrl.searchParams.set('direction', direction);
@@ -466,7 +555,9 @@
                 if (!data.record) {
                     currentRecordId = null;
                     currentOpValue = null;
+                    availableCount = 0;
                     setRecordNavigationState(false, false);
+                    updateQuickSlotButtons(0);
                     document.getElementById('pageSubtitle').textContent = '库存耗尽';
                     document.getElementById('emptyContainer').style.display = 'block';
                     return;
@@ -475,14 +566,16 @@
                 const record = data.record;
                 currentRecordId = record.id;
                 currentOpValue = record.opValue;
+                availableCount = record.availableCount || 0;
 
                 const distributionOrder = record.distributionOrder || record.index;
                 document.getElementById('recordIndexText').textContent = `${distributionOrder} / ${record.total}`;
                 document.getElementById('googleAccountText').textContent = record.googleAccount;
                 document.getElementById('googlePasswordText').textContent = record.googlePassword;
                 document.getElementById('uid').value = '';
-                document.getElementById('remark').value = '';
+                restoreRemarkDraft();
                 setRecordNavigationState(record.hasPrevious, record.hasNext);
+                updateQuickSlotButtons(availableCount, jumpSlot);
 
                 document.getElementById('pageSubtitle').textContent = '提取数据并绑定 UID';
                 document.getElementById('dataContainer').style.display = 'block';
@@ -506,6 +599,14 @@
                 direction = ''; // 让后端通过当前 ID 重新定位
             }
             loadRecord(direction);
+        }
+
+        function switchQuickSlot(slot) {
+            if (slot > availableCount) {
+                showToast('当前没有对应序号数据', 'error');
+                return;
+            }
+            loadRecord('', slot);
         }
 
         async function submitOpLogin() {
@@ -580,6 +681,7 @@
                 });
 
                 if (response.ok) {
+                    getRemarkInput().value = '';
                     showToast('UID 保存成功，获取下一条数据...');
                     setTimeout(() => {
                         loadRecord();
@@ -597,7 +699,13 @@
         }
 
         // 初始化加载
-        window.addEventListener('DOMContentLoaded', loadRecord);
+        window.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('remark').addEventListener('input', (event) => {
+                saveRemarkDraft(event.target.value);
+            });
+            restoreRemarkDraft();
+            loadRecord();
+        });
     </script>
 </body>
 </html>

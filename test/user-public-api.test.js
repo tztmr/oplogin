@@ -120,6 +120,51 @@ test('public user record API supports previous and next available records', asyn
   assert.equal(lastResponse.body.record.hasNext, false);
 });
 
+test('public user record API supports fixed quick slot jumps for the first available records', async () => {
+  const { app, pool, config } = await createAdminTestContext();
+  const operator = await createAdminUser(pool, {
+    login: 'lz',
+    email: 'lz@example.com',
+    password: 'change-me-now',
+    role: 'operator',
+  });
+
+  for (let index = 1; index <= 7; index += 1) {
+    await insertManagedRecord(pool, config, operator.id, {
+      googleAccount: `used-${index}@gmail.com`,
+      opValue: `used-${index}`,
+      uidValue: `uid-${index}`,
+    });
+  }
+
+  await insertManagedRecord(pool, config, operator.id, {
+    googleAccount: 'available-8@gmail.com',
+    opValue: 'op-8',
+  });
+  await insertManagedRecord(pool, config, operator.id, {
+    googleAccount: 'available-9@gmail.com',
+    opValue: 'op-9',
+  });
+  await insertManagedRecord(pool, config, operator.id, {
+    googleAccount: 'available-10@gmail.com',
+    opValue: 'op-10',
+  });
+
+  const firstResponse = await request(app).get('/api/public/user/lz/record');
+  const secondSlotResponse = await request(app)
+    .get('/api/public/user/lz/record')
+    .query({ jumpSlot: 2 });
+
+  assert.equal(firstResponse.status, 200);
+  assert.equal(firstResponse.body.record.distributionOrder, 8);
+  assert.equal(firstResponse.body.record.availableCount, 3);
+
+  assert.equal(secondSlotResponse.status, 200);
+  assert.equal(secondSlotResponse.body.record.distributionOrder, 9);
+  assert.equal(secondSlotResponse.body.record.googleAccount, 'available-9@gmail.com');
+  assert.equal(secondSlotResponse.body.record.availableCount, 3);
+});
+
 test('public user page renders previous and next account buttons', async () => {
   const { app, pool } = await createAdminTestContext();
   await createAdminUser(pool, {
@@ -132,6 +177,11 @@ test('public user page renders previous and next account buttons', async () => {
   const response = await request(app).get('/lz');
 
   assert.equal(response.status, 200);
+  assert.match(response.text, /id="quickSlotButtons"/);
+  assert.match(response.text, /\.quick-slot-buttons\s*\{[\s\S]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\);/);
+  assert.match(response.text, /switchQuickSlot\(1\)/);
+  assert.match(response.text, /switchQuickSlot\(6\)/);
+  assert.match(response.text, /function updateQuickSlotButtons\(/);
   assert.match(response.text, /id="previousRecordBtn"/);
   assert.match(response.text, /上一个账号/);
   assert.match(response.text, /id="nextRecordBtn"/);
@@ -140,6 +190,26 @@ test('public user page renders previous and next account buttons', async () => {
   assert.match(response.text, /let canGoNext = false;/);
   assert.match(response.text, /showToast\('当前已经是第一条账号'/);
   assert.match(response.text, /showToast\('当前已经是最后一条账号'/);
+});
+
+test('public user page caches remark input locally', async () => {
+  const { app, pool } = await createAdminTestContext();
+  await createAdminUser(pool, {
+    login: 'lz',
+    email: 'lz@example.com',
+    password: 'change-me-now',
+    role: 'operator',
+  });
+
+  const response = await request(app).get('/lz');
+
+  assert.equal(response.status, 200);
+  assert.match(response.text, /function getRemarkDraftStorageKey\(\)/);
+  assert.match(response.text, /localStorage\.getItem\(getRemarkDraftStorageKey\(\)\)/);
+  assert.match(response.text, /localStorage\.setItem\(getRemarkDraftStorageKey\(\), value\)/);
+  assert.match(response.text, /document\.getElementById\('remark'\)\.addEventListener\('input'/);
+  assert.doesNotMatch(response.text, /document\.getElementById\('uid'\)\.addEventListener\('input'/);
+  assert.doesNotMatch(response.text, /localStorage\.removeItem\(getRemarkDraftStorageKey\(\)\)/);
 });
 
 test('public user record API supports submitting uid and remark', async () => {

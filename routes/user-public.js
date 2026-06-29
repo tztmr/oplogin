@@ -5,9 +5,13 @@ const { decryptGooglePassword } = require('../lib/google-password-crypto');
 function createUserPublicRouter({ pool, config }) {
   const router = express.Router();
 
-  function chooseRecordIndex(records, currentRecordId, direction) {
+  function chooseRecordIndex(records, currentRecordId, direction, jumpSlot) {
     if (!records.length) {
       return -1;
+    }
+
+    if (Number.isInteger(jumpSlot) && jumpSlot >= 1 && jumpSlot <= records.length) {
+      return jumpSlot - 1;
     }
 
     const currentIndex = records.findIndex((row) => row.id === currentRecordId);
@@ -28,6 +32,8 @@ function createUserPublicRouter({ pool, config }) {
       const username = req.params.username;
       const currentRecordId = String(req.query.currentRecordId || '').trim();
       const direction = String(req.query.direction || '').trim().toLowerCase();
+      const jumpSlotValue = Number.parseInt(String(req.query.jumpSlot || '').trim(), 10);
+      const jumpSlot = Number.isNaN(jumpSlotValue) ? null : jumpSlotValue;
       const user = await findAdminByIdentifier(pool, username);
 
       if (!user || user.status !== 'active') {
@@ -58,6 +64,7 @@ function createUserPublicRouter({ pool, config }) {
         result.rows,
         currentRecordId,
         direction,
+        jumpSlot,
       );
       const row = result.rows[recordIndex];
 
@@ -82,6 +89,7 @@ function createUserPublicRouter({ pool, config }) {
           distributionOrder: absoluteIndex,
           index: absoluteIndex,
           total: totalRecords,
+          availableCount: result.rows.length,
           googleAccount: row.google_account,
           googlePassword: decryptGooglePassword(
             row.google_password_encrypted,
