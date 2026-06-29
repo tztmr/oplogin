@@ -258,6 +258,35 @@ test('public user batch API keeps fixed slots after partial submissions', async 
   assert.equal(sixthRow.rows[0].remark, 'done sixth');
 });
 
+test('public user batch API preserves distribution order for microsecond timestamps', async () => {
+  const { app, pool, config } = await createAdminTestContext();
+  const operator = await createAdminUser(pool, {
+    login: 'lz',
+    email: 'lz@example.com',
+    password: 'change-me-now',
+    role: 'operator',
+  });
+
+  await insertManagedRecord(pool, config, operator.id, {
+    googleAccount: 'micro-1@gmail.com',
+    opValue: 'micro-1',
+    createdAt: '2024-01-01T00:00:00.123456Z',
+  });
+  await insertManagedRecord(pool, config, operator.id, {
+    googleAccount: 'micro-2@gmail.com',
+    opValue: 'micro-2',
+    createdAt: '2024-01-01T00:00:00.123789Z',
+  });
+
+  const batchResponse = await request(app).get('/api/public/user/lz/batch');
+
+  assert.equal(batchResponse.status, 200);
+  assert.equal(batchResponse.body.batch.slots[0].record.distributionOrder, 1);
+  assert.equal(batchResponse.body.batch.slots[0].record.total, 2);
+  assert.equal(batchResponse.body.batch.slots[1].record.distributionOrder, 2);
+  assert.equal(batchResponse.body.batch.slots[1].record.total, 2);
+});
+
 test('public user batch API only includes records with google account, password, op, and blank uid', async () => {
   const { app, pool, config } = await createAdminTestContext();
   const operator = await createAdminUser(pool, {
