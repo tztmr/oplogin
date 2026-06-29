@@ -1,5 +1,5 @@
 let currentPage = 1;
-const currentPageSize = 20;
+let currentPageSize = '20';
 const selectedRecordIds = new Set();
 let currentPageRecordIds = [];
 
@@ -41,6 +41,10 @@ function collectRecordFilters() {
     opExpireTo: document.getElementById('filterOpExpireTo').value,
     remark: document.getElementById('filterRemark').value.trim(),
   };
+}
+
+function getSelectedRecordIds() {
+  return Array.from(selectedRecordIds);
 }
 
 function toQueryString(filters) {
@@ -128,11 +132,17 @@ function renderPagination(data) {
   const pageStatus = document.getElementById('pageStatus');
   const previousButton = document.getElementById('previousPageButton');
   const nextButton = document.getElementById('nextPageButton');
-  const totalPages = Math.max(1, Math.ceil(data.total / data.pageSize));
+  const isAllPageSize = currentPageSize === 'all';
+  const effectivePageSize = isAllPageSize ? Math.max(data.total, 1) : data.pageSize;
+  const totalPages = isAllPageSize
+    ? 1
+    : Math.max(1, Math.ceil(data.total / effectivePageSize));
 
-  pageStatus.textContent = `第 ${data.page} / ${totalPages} 页，共 ${data.total} 条`;
-  previousButton.disabled = data.page <= 1;
-  nextButton.disabled = data.page >= totalPages;
+  pageStatus.textContent = isAllPageSize
+    ? `已显示全部 ${data.total} 条记录`
+    : `第 ${data.page} / ${totalPages} 页，共 ${data.total} 条`;
+  previousButton.disabled = isAllPageSize || data.page <= 1;
+  nextButton.disabled = isAllPageSize || data.page >= totalPages;
 }
 
 async function loadRecords() {
@@ -218,7 +228,11 @@ async function submitBatchImportForm(event) {
   document.getElementById('batchImportDialog').close();
   document.getElementById('batchImportForm').reset();
   await loadRecords();
-  showToast(`已导入 ${data.importedCount} 条记录`);
+  showToast(
+    data.skippedCount
+      ? `已导入 ${data.importedCount} 条记录，跳过重复 ${data.skippedCount} 条`
+      : `已导入 ${data.importedCount} 条记录`,
+  );
 }
 
 window.openEditRecord = async function openEditRecord(id) {
@@ -244,7 +258,12 @@ window.openEditRecord = async function openEditRecord(id) {
 };
 
 window.deleteRecord = async function deleteRecord(id) {
-  if (!window.confirm('确认永久删除这条记录吗？')) {
+  if (
+    !(await showConfirm('确认永久删除这条记录吗？', {
+      confirmText: '删除',
+      tone: 'danger',
+    }))
+  ) {
     return;
   }
 
@@ -262,13 +281,18 @@ window.toggleRecordSelection = function toggleRecordSelection(id, checked) {
 };
 
 async function deleteSelectedRecords() {
-  const ids = Array.from(selectedRecordIds);
+  const ids = getSelectedRecordIds();
   if (!ids.length) {
     showToast('请先勾选要删除的记录');
     return;
   }
 
-  if (!window.confirm(`确认永久删除已勾选的 ${ids.length} 条记录吗？`)) {
+  if (
+    !(await showConfirm(`确认永久删除已勾选的 ${ids.length} 条记录吗？`, {
+      confirmText: '删除',
+      tone: 'danger',
+    }))
+  ) {
     return;
   }
 
@@ -279,6 +303,64 @@ async function deleteSelectedRecords() {
   selectedRecordIds.clear();
   await loadRecords();
   showToast(`已删除 ${data.deletedCount} 条记录`);
+}
+
+async function exportSelectedRecords() {
+  const ids = getSelectedRecordIds();
+  if (!ids.length) {
+    showToast('请先勾选要导出的记录');
+    return;
+  }
+
+  const response = await fetch('/api/admin/records/export.csv', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ ids }),
+  });
+
+  if (!response.ok) {
+    const contentType = response.headers.get('content-type') || '';
+    const errorPayload = contentType.includes('application/json')
+      ? await response.json()
+      : { error: await response.text() };
+    throw new Error(errorPayload.error || '导出失败');
+  }
+
+  const csvBlob = await response.blob();
+  const downloadUrl = window.URL.createObjectURL(csvBlob);
+  const downloadLink = document.createElement('a');
+  downloadLink.href = downloadUrl;
+  downloadLink.download = 'managed-records.csv';
+  document.body.appendChild(downloadLink);
+  downloadLink.click();
+  downloadLink.remove();
+  window.URL.revokeObjectURL(downloadUrl);
+
+  if (await showConfirm('已导出勾选数据，是否删除这些数据？')) {
+    const data = await adminFetch('/api/admin/records', {
+      method: 'DELETE',
+      body: JSON.stringify({ ids }),
+    });
+    selectedRecordIds.clear();
+    await loadRecords();
+    showToast(`已删除 ${data.deletedCount} 条已导出记录`);
+    return;
+  }
+
+  showToast(`已导出 ${ids.length} 条记录`);
+}
+
+function exportFilteredRecords() {
+  const exportFilters = { ...collectRecordFilters() };
+  delete exportFilters.page;
+  delete exportFilters.pageSize;
+  const queryString = toQueryString(exportFilters);
+  window.location.href = `/api/admin/records/export.csv${
+    queryString ? `?${queryString}` : ''
+  }`;
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
@@ -326,6 +408,13 @@ window.addEventListener('DOMContentLoaded', async () => {
       loadRecords();
     });
   document
+    .getElementById('pageSizeSelect')
+    .addEventListener('change', (event) => {
+      currentPageSize = event.target.value;
+      currentPage = 1;
+      loadRecords();
+    });
+  document
     .getElementById('createRecordButton')
     .addEventListener('click', () => {
       document.getElementById('recordForm').reset();
@@ -360,15 +449,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     });
   document
     .getElementById('exportCsvButton')
-    .addEventListener('click', () => {
-      const exportFilters = { ...collectRecordFilters() };
-      delete exportFilters.page;
-      delete exportFilters.pageSize;
-      const queryString = toQueryString(exportFilters);
-      window.location.href = `/api/admin/records/export.csv${
-        queryString ? `?${queryString}` : ''
-      }`;
-    });
+    .addEventListener('click', exportSelectedRecords);
+  document
+    .getElementById('exportFilteredCsvButton')
+    .addEventListener('click', exportFilteredRecords);
   document
     .getElementById('recordForm')
     .addEventListener('submit', submitRecordForm);

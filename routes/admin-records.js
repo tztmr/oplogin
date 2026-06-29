@@ -49,7 +49,33 @@ function createAdminRecordsRouter({ pool, config, requireAdminAuth }) {
 
   router.get('/export.csv', async (req, res, next) => {
     try {
-      const csvContent = await exportManagedRecordsCsv(pool, config, req.query, req.adminUser);
+      const csvContent = await exportManagedRecordsCsv(
+        pool,
+        config,
+        req.query,
+        req.adminUser,
+        req.query.ids,
+      );
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader(
+        'Content-Disposition',
+        'attachment; filename="managed-records.csv"',
+      );
+      return res.status(200).send(csvContent);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/export.csv', async (req, res, next) => {
+    try {
+      const csvContent = await exportManagedRecordsCsv(
+        pool,
+        config,
+        req.body.filters || {},
+        req.adminUser,
+        req.body.ids,
+      );
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader(
         'Content-Disposition',

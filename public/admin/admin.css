@@ -71,6 +71,16 @@ button.btn-cancel {
   border: 1px solid var(--border-color);
 }
 
+button.btn-danger {
+  background: #dc2626;
+  color: #ffffff;
+  border-color: #dc2626;
+}
+
+button.btn-danger:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.6;
@@ -283,9 +293,27 @@ td .row-actions {
   box-shadow: var(--shadow-sm);
 }
 
+.page-size-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.page-size-control select {
+  width: auto;
+  min-width: 92px;
+}
+
 .stack-form {
   display: grid;
   gap: 16px;
+}
+
+.dialog-heading {
+  display: grid;
+  gap: 6px;
 }
 
 .stack-form label {
@@ -314,9 +342,16 @@ dialog::backdrop {
 }
 
 dialog h3 {
-  margin-top: 0;
+  margin: 0;
   font-size: 20px;
   font-weight: 600;
+}
+
+.dialog-subtitle {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 .import-help {
@@ -345,10 +380,48 @@ dialog h3 {
   border-radius: 4px;
 }
 
+.dialog-menu,
 menu {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
   margin: 16px 0 0;
   padding: 0;
+  border-top: 1px solid var(--border-color);
+  padding-top: 16px;
+}
+
+#adminToastStack {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 1200;
+  display: grid;
+  gap: 12px;
+}
+
+.admin-toast {
+  min-width: 240px;
+  max-width: 360px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(17, 24, 39, 0.96);
+  color: #ffffff;
+  box-shadow: var(--shadow-md);
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.admin-toast.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.feedback-dialog {
+  width: min(440px, calc(100vw - 32px));
+}
+
+.feedback-dialog-form {
+  gap: 20px;
 }

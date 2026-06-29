@@ -29,7 +29,8 @@
       <button id="batchImportButton" type="button" class="btn-primary">批量导入</button>
       <button id="createRecordButton" type="button" class="btn-primary">新增记录</button>
       <button id="batchDeleteButton" type="button" class="btn-cancel" disabled>批量删除</button>
-      <button id="exportCsvButton" type="button" class="btn-cancel">导出 CSV</button>
+      <button id="exportCsvButton" type="button" class="btn-primary">导出勾选</button>
+      <button id="exportFilteredCsvButton" type="button" class="btn-cancel">按筛选导出全部</button>
     </div>
   </section>
 
@@ -78,6 +79,15 @@
   </div>
 
   <div class="pagination-bar">
+    <label class="page-size-control" for="pageSizeSelect">
+      每页显示
+      <select id="pageSizeSelect">
+        <option value="20" selected>20</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+        <option value="all">全部</option>
+      </select>
+    </label>
     <button id="previousPageButton" type="button">上一页</button>
     <span id="pageStatus"></span>
     <button id="nextPageButton" type="button">下一页</button>
@@ -85,6 +95,10 @@
 
   <dialog id="recordDialog">
     <form id="recordForm" method="dialog" class="stack-form">
+      <div class="dialog-heading">
+        <h3>记录详情</h3>
+        <p class="dialog-subtitle">支持新增或编辑谷歌号、UID、OP 与备注信息。</p>
+      </div>
       <input id="recordId" type="hidden" />
       <label for="recordGoogleAccount">谷歌号</label>
       <input id="recordGoogleAccount" placeholder="谷歌号" required />
@@ -106,7 +120,7 @@
       <input id="recordOpExpireAt" type="datetime-local" />
       <label for="recordRemark">备注</label>
       <textarea id="recordRemark" placeholder="备注"></textarea>
-      <menu>
+      <menu class="dialog-menu">
         <button type="button" id="recordCancelButton">取消</button>
         <button type="submit">保存</button>
       </menu>
@@ -115,7 +129,10 @@
 
   <dialog id="batchImportDialog">
     <form id="batchImportForm" method="dialog" class="stack-form">
-      <h3>批量导入</h3>
+      <div class="dialog-heading">
+        <h3>批量导入</h3>
+        <p class="dialog-subtitle">自动识别谷歌、OP、综合格式，并保持谷歌号与 OP 数据唯一。</p>
+      </div>
       <div class="import-help">
         <p>系统会自动识别每行数据格式，支持以下三种导入模式：</p>
         <ul>
@@ -129,7 +146,7 @@
         placeholder="示例一 (谷歌号): ezbprtcqxcgpn@goosttle.top----xowyiihpoe1fx----ehi3dzlerlyki@outlook.com&#10;示例二 (OP数据): AD9E11313002BC4FC8C01217A304D6A9|BA8E369FEE524F5D6A4DCD3496590019|242A2540CED09DD813D0D01CCE0A6593|f131d4565ab3470029209feab7437bc8|1781212159&#10;示例三 (综合): ezbprtcqxcgpn@goosttle.top----xowyiihpoe1fx----ehi3dzlerlyki@outlook.com----AD9E11313002BC4FC8C01217A304D6A9|BA8E369FEE524F5D6A4DCD3496590019|242A2540CED09DD813D0D01CCE0A6593|f131d4565ab3470029209feab7437bc8|1781212159"
         required
       ></textarea>
-      <menu>
+      <menu class="dialog-menu">
         <button type="button" id="batchImportCancelButton" class="btn-cancel">取消</button>
         <button type="submit" class="btn-primary">开始导入</button>
       </menu>
@@ -138,13 +155,17 @@
 
   <dialog id="selfPasswordDialog">
     <form id="selfPasswordForm" method="dialog" class="stack-form">
+      <div class="dialog-heading">
+        <h3>修改密码</h3>
+        <p class="dialog-subtitle">请输入当前密码，并设置一个新的登录密码。</p>
+      </div>
       <label for="selfCurrentPassword">当前密码</label>
       <input id="selfCurrentPassword" type="password" placeholder="当前密码" required />
       <label for="selfNewPassword">新密码</label>
       <input id="selfNewPassword" type="password" placeholder="新密码" required />
       <label for="selfConfirmPassword">确认新密码</label>
       <input id="selfConfirmPassword" type="password" placeholder="再次输入新密码" required />
-      <menu>
+      <menu class="dialog-menu">
         <button type="button" id="selfPasswordCancelButton">取消</button>
         <button type="submit">保存新密码</button>
       </menu>

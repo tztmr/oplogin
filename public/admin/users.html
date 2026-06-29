@@ -41,6 +41,10 @@
 
   <dialog id="userDialog">
     <form id="userForm" method="dialog" class="stack-form">
+      <div class="dialog-heading">
+        <h3>账号信息</h3>
+        <p class="dialog-subtitle">创建或维护运营账号的登录信息、角色与状态。</p>
+      </div>
       <input id="userId" type="hidden" />
       <label for="userLogin">登录名</label>
       <input id="userLogin" placeholder="登录名" required />
@@ -58,7 +62,7 @@
       </select>
       <label for="userPassword">密码</label>
       <input id="userPassword" type="password" placeholder="创建时输入密码" />
-      <menu>
+      <menu class="dialog-menu">
         <button type="button" id="userCancelButton">取消</button>
         <button type="submit">保存</button>
       </menu>
@@ -67,10 +71,14 @@
 
   <dialog id="passwordDialog">
     <form id="passwordForm" method="dialog" class="stack-form">
+      <div class="dialog-heading">
+        <h3>重置密码</h3>
+        <p class="dialog-subtitle">为该账号设置一个新的登录密码。</p>
+      </div>
       <input id="passwordTargetUserId" type="hidden" />
       <label for="newPassword">新密码</label>
       <input id="newPassword" type="password" placeholder="新密码" required />
-      <menu>
+      <menu class="dialog-menu">
         <button type="button" id="passwordCancelButton">取消</button>
         <button type="submit">重置密码</button>
       </menu>
@@ -79,13 +87,17 @@
 
   <dialog id="selfPasswordDialog">
     <form id="selfPasswordForm" method="dialog" class="stack-form">
+      <div class="dialog-heading">
+        <h3>修改密码</h3>
+        <p class="dialog-subtitle">请输入当前密码，并设置一个新的登录密码。</p>
+      </div>
       <label for="selfCurrentPassword">当前密码</label>
       <input id="selfCurrentPassword" type="password" placeholder="当前密码" required />
       <label for="selfNewPassword">新密码</label>
       <input id="selfNewPassword" type="password" placeholder="新密码" required />
       <label for="selfConfirmPassword">确认新密码</label>
       <input id="selfConfirmPassword" type="password" placeholder="再次输入新密码" required />
-      <menu>
+      <menu class="dialog-menu">
         <button type="button" id="selfPasswordCancelButton">取消</button>
         <button type="submit">保存新密码</button>
       </menu>

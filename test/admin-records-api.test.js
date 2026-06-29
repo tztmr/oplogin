@@ -253,6 +253,30 @@ test('text import creates records and derives op link plus op expiry time', asyn
   assert.equal(response.body.items[0].opExpireAt, '2026-07-11T21:09:19.000Z');
 });
 
+test('text import keeps google account and op value unique for the same owner', async () => {
+  const { agent, config } = await createAdminTestContext();
+  await loginAsSuperAdmin(agent, config);
+
+  const opValue =
+    'E664A92F61406CBFACBC6731501CB3C7|E7ECF19761C547C56F64C1F7F8859075|CFCFDD188F536A7F093169DD5C20D052|523d749e2523f41e0c07cf56207837b8|1781212159';
+  const rowsText = [
+    `bdmcrfujvluip@goosttle.top----gqlpinw1pilsy----zdsys3rzyvbh3@outlook.com----${opValue}`,
+    `bdmcrfujvluip@goosttle.top----gqlpinw1pilsy----zdsys3rzyvbh3@outlook.com----${opValue}`,
+  ].join('\n');
+
+  const response = await agent.post('/api/admin/records/import-text').send({
+    rowsText,
+  });
+  const listResponse = await agent.get('/api/admin/records');
+
+  assert.equal(response.status, 201);
+  assert.equal(response.body.importedCount, 1);
+  assert.equal(response.body.skippedCount, 1);
+  assert.equal(listResponse.body.total, 1);
+  assert.equal(listResponse.body.items[0].googleAccount, 'bdmcrfujvluip@goosttle.top');
+  assert.equal(listResponse.body.items[0].opValue, opValue);
+});
+
 test('uidCreatedAt is written the first time a blank-uid imported record gets a uid', async () => {
   const { agent, config } = await createAdminTestContext();
   await loginAsSuperAdmin(agent, config);
@@ -333,4 +357,67 @@ test('CSV export returns all matching records with full columns', async () => {
   assert.match(response.text, /assist-1/);
   assert.match(response.text, /remark-1/);
   assert.doesNotMatch(response.text, /csv-other@gmail\.com/);
+});
+
+test('record list accepts pageSize=all and returns every matching row', async () => {
+  const { agent, config } = await createAdminTestContext();
+  await loginAsSuperAdmin(agent, config);
+
+  for (let index = 0; index < 3; index += 1) {
+    await agent.post('/api/admin/records').send({
+      googleAccount: `all-${index}@gmail.com`,
+      googlePassword: `all-pass-${index}`,
+      googleAssist: `assist-${index}`,
+      googleExpireAt: '2026-12-31T00:00:00.000Z',
+      uidValue: '',
+      opValue: `all-op-${index}`,
+      opLink: `https://example.com/all-${index}`,
+      opExpireAt: '2026-12-31T00:00:00.000Z',
+      remark: `row-${index}`,
+    });
+  }
+
+  const response = await agent.get('/api/admin/records').query({ pageSize: 'all' });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.total, 3);
+  assert.equal(response.body.items.length, 3);
+  assert.equal(response.body.pageSize, 3);
+});
+
+test('CSV export can return only the selected record ids', async () => {
+  const { agent, config } = await createAdminTestContext();
+  await loginAsSuperAdmin(agent, config);
+
+  const first = await agent.post('/api/admin/records').send({
+    googleAccount: 'selected-a@gmail.com',
+    googlePassword: 'selected-pass-a',
+    googleAssist: 'selected-assist-a',
+    googleExpireAt: '2026-12-31T00:00:00.000Z',
+    uidValue: 'selected-uid-a',
+    opValue: 'selected-op-a',
+    opLink: 'https://example.com/selected-a',
+    opExpireAt: '2026-12-31T00:00:00.000Z',
+    remark: 'selected-a',
+  });
+  await agent.post('/api/admin/records').send({
+    googleAccount: 'selected-b@gmail.com',
+    googlePassword: 'selected-pass-b',
+    googleAssist: 'selected-assist-b',
+    googleExpireAt: '2026-12-31T00:00:00.000Z',
+    uidValue: 'selected-uid-b',
+    opValue: 'selected-op-b',
+    opLink: 'https://example.com/selected-b',
+    opExpireAt: '2026-12-31T00:00:00.000Z',
+    remark: 'selected-b',
+  });
+
+  const response = await agent.post('/api/admin/records/export.csv').send({
+    ids: [first.body.item.id],
+  });
+
+  assert.equal(response.status, 200);
+  assert.match(response.headers['content-type'], /^text\/csv/);
+  assert.match(response.text, /selected-a@gmail\.com/);
+  assert.doesNotMatch(response.text, /selected-b@gmail\.com/);
 });
