@@ -293,8 +293,10 @@
 
     <div id="toast" class="toast"></div>
 
-    <script src="/op-login-launcher.js"></script>
+    <script src="/op-wake-url-cache.js"></script>
     <script>
+        const wakeUrlCache = window.createWakeUrlCache();
+
         // 显示自定义 Toast 提示
         function showToast(message, type = 'success') {
             const toast = document.getElementById('toast');
@@ -323,76 +325,67 @@
             return '';
         }
 
+        async function prefetchWakeUrlForForm() {
+            const urlInput = document.getElementById('url').value.trim();
+            const gameInput = document.getElementById('game').value;
+            if (!urlInput || !gameInput) {
+                return '';
+            }
+
+            try {
+                return await wakeUrlCache.prefetch(urlInput, gameInput);
+            } catch (error) {
+                return '';
+            }
+        }
+
         // 页面加载时，自动提取 URL 中的数据号并填充
         window.addEventListener('DOMContentLoaded', () => {
             let param = extractInitialOpValue();
 
             if (param) {
                 document.getElementById('url').value = param;
-                
-                // 如果提取到了参数，可以通过取消注释下面这行来自动触发提交
-                // setTimeout(submitData, 500); 
             }
+
+            document.getElementById('url').addEventListener('change', () => {
+                void prefetchWakeUrlForForm();
+            });
+            document.getElementById('game').addEventListener('change', () => {
+                void prefetchWakeUrlForForm();
+            });
+            void prefetchWakeUrlForForm();
         });
 
         // 提交数据
-        function submitData() {
+        async function submitData() {
             const urlInput = document.getElementById('url').value.trim();
             const gameInput = document.getElementById('game').value;
             const btn = document.getElementById('submitBtn');
-            const wakeController = window.createWakeNavigationController();
             
             if (!urlInput) {
                 showToast('请输入数据号 URL', 'error');
                 return;
             }
 
-            wakeController.prepare();
-
             const originalText = btn.innerText;
             btn.innerText = '正在处理...';
             btn.disabled = true;
 
-            fetch('/api/submit', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ url: urlInput, game: gameInput })
-            })
-            .then(response => {
-                if (response.status === 200) {
-                    return response.json();
-                } else if (response.status === 400) {
-                    throw new Error('提取失败或数据号无效');
-                } else if (response.status === 500) {
-                    throw new Error('服务器编码失败');
-                } else {
-                    throw new Error('网络异常，请重试');
-                }
-            })
-            .then(data => {
-                if (data.status === 'success' && data.url) {
-                    showToast('上号成功，正在唤起应用...', 'success');
-                    // 延迟一点时间以确保用户能看到 Toast
-                    setTimeout(() => {
-                        wakeController.navigate(data.url);
-                    }, 800);
-                } else {
-                    wakeController.abort();
-                    showToast('上号失败，请检查数据号 URL 是否正确', 'error');
-                }
-            })
-            .catch(error => {
-                wakeController.abort();
+            try {
+                const wakeUrl =
+                    wakeUrlCache.get(urlInput, gameInput) ||
+                    await wakeUrlCache.prefetch(urlInput, gameInput);
+                showToast('上号成功，正在唤起应用...', 'success');
+                setTimeout(() => {
+                    window.location.href = wakeUrl;
+                }, 800);
+            } catch (error) {
                 console.error('Error:', error);
-                // 提示错误信息
                 showToast(error.message || '上号失败，请检查网络或数据号', 'error');
-            })
-            .finally(() => {
+            } finally {
                 btn.innerText = originalText;
                 btn.disabled = false;
-            });
+            }
         }
     </script>
 </body>

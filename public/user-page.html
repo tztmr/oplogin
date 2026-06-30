@@ -495,12 +495,13 @@
 
     <div id="toast" class="toast"></div>
 
-    <script src="/op-login-launcher.js"></script>
+    <script src="/op-wake-url-cache.js"></script>
     <script>
         let username = '';
         let currentBatch = null;
         let currentSlotNumber = 1;
         let currentRecord = null;
+        const wakeUrlCache = window.createWakeUrlCache();
 
         function getRemarkInput() {
             return document.getElementById('remark');
@@ -650,6 +651,22 @@
             submitButton.disabled = slot.status !== 'available';
             opButton.disabled = !slot.record.opValue;
             enterOpButton.disabled = !slot.record.opValue;
+            void prefetchCurrentWakeUrl();
+        }
+
+        async function prefetchCurrentWakeUrl() {
+            if (!currentRecord || !currentRecord.opValue) {
+                return '';
+            }
+
+            try {
+                return await wakeUrlCache.prefetch(
+                    currentRecord.opValue,
+                    document.getElementById('game').value,
+                );
+            } catch (error) {
+                return '';
+            }
         }
 
         function renderBatchSummary() {
@@ -772,27 +789,18 @@
             const gameInput = document.getElementById('game').value;
             const button = document.getElementById('opLoginBtn');
             const originalText = button.innerText;
-            const wakeController = window.createWakeNavigationController();
             button.innerText = '正在处理...';
             button.disabled = true;
-            wakeController.prepare();
 
             try {
-                const response = await fetch('/api/submit', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url: currentRecord.opValue, game: gameInput }),
-                });
-                const data = await response.json();
-                if (!response.ok || data.status !== 'success' || !data.url) {
-                    throw new Error(data.error || '上号失败，未获取到唤起链接');
-                }
+                const wakeUrl =
+                    wakeUrlCache.get(currentRecord.opValue, gameInput) ||
+                    await wakeUrlCache.prefetch(currentRecord.opValue, gameInput);
                 showToast('上号成功，正在唤起应用...');
                 setTimeout(() => {
-                    wakeController.navigate(data.url);
+                    window.location.href = wakeUrl;
                 }, 800);
             } catch (error) {
-                wakeController.abort();
                 showToast(error.message || '网络异常，请重试', 'error');
             } finally {
                 button.innerText = originalText;
@@ -857,6 +865,9 @@
         window.addEventListener('DOMContentLoaded', () => {
             document.getElementById('remark').addEventListener('input', (event) => {
                 saveRemarkDraft(event.target.value);
+            });
+            document.getElementById('game').addEventListener('change', () => {
+                void prefetchCurrentWakeUrl();
             });
             restoreRemarkDraft();
             loadBatch();
