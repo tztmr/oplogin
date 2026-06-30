@@ -462,6 +462,124 @@ test('public user page caches remark input locally', async () => {
   assert.doesNotMatch(response.text, /localStorage\.removeItem\(getRemarkDraftStorageKey\(\)\)/);
 });
 
+test('public user page keeps the current slot selected after saving uid', async () => {
+  const { app, pool } = await createAdminTestContext();
+  await createAdminUser(pool, {
+    login: 'lz',
+    email: 'lz@example.com',
+    password: 'change-me-now',
+    role: 'operator',
+  });
+
+  const response = await request(app).get('/lz');
+
+  assert.equal(response.status, 200);
+  assert.match(response.text, /currentBatch = data\.batch;/);
+  assert.doesNotMatch(response.text, /const nextSlot = getNextAvailableSlot\(currentSlotNumber\);/);
+  assert.doesNotMatch(response.text, /currentSlotNumber = nextSlot \|\| currentSlotNumber;/);
+});
+
+test('public user page auto-fills uid from numeric clipboard content when uid is unused', async () => {
+  const { app, pool } = await createAdminTestContext();
+  await createAdminUser(pool, {
+    login: 'lz',
+    email: 'lz@example.com',
+    password: 'change-me-now',
+    role: 'operator',
+  });
+
+  const response = await request(app).get('/lz');
+
+  assert.equal(response.status, 200);
+  assert.match(response.text, /navigator\.clipboard\.readText\(\)/);
+  assert.match(response.text, /uid-availability\?uid=\$\{encodeURIComponent\(uidValue\)\}/);
+  assert.match(response.text, /!\/\^\\d\+\$\/\.test\(clipboardText\)/);
+  assert.match(response.text, /document\.getElementById\('uid'\)\.value = clipboardText;/);
+});
+
+test('public user uid availability API rejects existing numeric uid values', async () => {
+  const { app, pool, config } = await createAdminTestContext();
+  const operator = await createAdminUser(pool, {
+    login: 'lz',
+    email: 'lz@example.com',
+    password: 'change-me-now',
+    role: 'operator',
+  });
+  await insertManagedRecord(pool, config, operator.id, {
+    googleAccount: 'used-uid@gmail.com',
+    uidValue: '123456',
+    opValue: 'used-op',
+  });
+
+  const existingResponse = await request(app)
+    .get('/api/public/user/lz/uid-availability')
+    .query({ uid: '123456' });
+  const availableResponse = await request(app)
+    .get('/api/public/user/lz/uid-availability')
+    .query({ uid: '987654' });
+
+  assert.equal(existingResponse.status, 200);
+  assert.deepEqual(existingResponse.body, { uid: '123456', available: false });
+  assert.equal(availableResponse.status, 200);
+  assert.deepEqual(availableResponse.body, { uid: '987654', available: true });
+});
+
+test('public user batch API returns wifi qr config for the user center', async () => {
+  const { app, pool, config } = await createAdminTestContext();
+  const operator = await createAdminUser(pool, {
+    login: 'mxw',
+    email: 'mxw@example.com',
+    password: 'change-me-now',
+    role: 'operator',
+  });
+  await pool.query(
+    `
+      update admin_users
+      set wifi_type = 'WPA',
+          wifi_ssid = '888800000',
+          wifi_password = 'qq123456',
+          wifi_hidden = false
+      where id = $1
+    `,
+    [operator.id],
+  );
+  await insertManagedRecord(pool, config, operator.id, {
+    googleAccount: 'qr-user@gmail.com',
+    opValue: 'qr-op',
+  });
+
+  const response = await request(app).get('/api/public/user/mxw/batch');
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body.qrConfig, {
+    login: 'mxw',
+    wifiQrConfig: {
+      type: 'WPA',
+      ssid: '888800000',
+      password: 'qq123456',
+      hidden: false,
+    },
+  });
+});
+
+test('public user page renders left and right qr card placeholders', async () => {
+  const { app, pool } = await createAdminTestContext();
+  await createAdminUser(pool, {
+    login: 'mxw',
+    email: 'mxw@example.com',
+    password: 'change-me-now',
+    role: 'operator',
+  });
+
+  const response = await request(app).get('/mxw');
+
+  assert.equal(response.status, 200);
+  assert.match(response.text, /id="userCenterQrImage"/);
+  assert.match(response.text, /id="wifiQrImage"/);
+  assert.match(response.text, /buildWifiQrPayload/);
+  assert.match(response.text, /buildQrImageUrl/);
+});
+
 test('public user record API supports submitting uid and remark', async () => {
   const { app, pool, config } = await createAdminTestContext();
   const operator = await createAdminUser(pool, {

@@ -108,3 +108,33 @@ test('changing own password requires the correct current password', async () => 
   assert.equal(changeResponse.status, 401);
   assert.match(changeResponse.body.error, /当前密码不正确/);
 });
+
+test('logged-in admin can update own wifi qr config', async () => {
+  const { agent, config } = await createAdminTestContext();
+
+  await agent.post('/api/admin/auth/login').send({
+    identifier: config.initialSuperAdminLogin,
+    password: config.initialSuperAdminPassword,
+  });
+  const updateResponse = await agent.post('/api/admin/auth/change-wifi').send({
+    wifiType: 'WPA',
+    wifiSsid: '888800000',
+    wifiPassword: 'qq123456',
+    wifiHidden: false,
+  });
+  const meResponse = await agent.get('/api/admin/auth/me');
+
+  assert.equal(updateResponse.status, 200);
+  assert.deepEqual(updateResponse.body.user.wifiQrConfig, {
+    type: 'WPA',
+    ssid: '888800000',
+    password: 'qq123456',
+    hidden: false,
+  });
+  assert.deepEqual(meResponse.body.user.wifiQrConfig, {
+    type: 'WPA',
+    ssid: '888800000',
+    password: 'qq123456',
+    hidden: false,
+  });
+});

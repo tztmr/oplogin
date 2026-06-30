@@ -10,6 +10,18 @@ const {
 function createUserPublicRouter({ pool, config }) {
   const router = express.Router();
 
+  function buildQrConfig(user) {
+    return {
+      login: user.login,
+      wifiQrConfig: {
+        type: String(user.wifi_type || 'WPA').trim() || 'WPA',
+        ssid: String(user.wifi_ssid || '').trim(),
+        password: String(user.wifi_password || '').trim(),
+        hidden: Boolean(user.wifi_hidden),
+      },
+    };
+  }
+
   function chooseRecordIndex(records, currentRecordId, direction, jumpSlot) {
     if (!records.length) {
       return -1;
@@ -44,7 +56,7 @@ function createUserPublicRouter({ pool, config }) {
     try {
       const user = await findActiveUser(req.params.username);
       const batch = await getCurrentBatch(pool, config, user);
-      return res.status(200).json({ batch });
+      return res.status(200).json({ batch, qrConfig: buildQrConfig(user) });
     } catch (error) {
       return next(error);
     }
@@ -59,7 +71,11 @@ function createUserPublicRouter({ pool, config }) {
       }
 
       const batch = await submitBatchSlotUid(pool, config, user, slotNumber, req.body || {});
-      return res.status(200).json({ status: 'success', batch });
+      return res.status(200).json({
+        status: 'success',
+        batch,
+        qrConfig: buildQrConfig(user),
+      });
     } catch (error) {
       return next(error);
     }
@@ -69,7 +85,38 @@ function createUserPublicRouter({ pool, config }) {
     try {
       const user = await findActiveUser(req.params.username);
       const batch = await advanceBatch(pool, config, user);
-      return res.status(200).json({ status: 'success', batch });
+      return res.status(200).json({
+        status: 'success',
+        batch,
+        qrConfig: buildQrConfig(user),
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get('/:username/uid-availability', async (req, res, next) => {
+    try {
+      await findActiveUser(req.params.username);
+      const uid = String(req.query.uid || '').trim();
+      if (!uid) {
+        return res.status(400).json({ error: 'UID 不能为空' });
+      }
+
+      const existingResult = await pool.query(
+        `
+          select 1
+          from managed_records
+          where uid_value = $1
+          limit 1
+        `,
+        [uid],
+      );
+
+      return res.status(200).json({
+        uid,
+        available: existingResult.rows.length === 0,
+      });
     } catch (error) {
       return next(error);
     }

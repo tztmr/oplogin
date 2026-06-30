@@ -44,6 +44,13 @@ test('GET /admin serves the record management shell', async () => {
   assert.match(response.text, /id="batchDeleteProgressText"/);
   assert.match(response.text, /id="publicBatchEligibilityCard"/);
   assert.match(response.text, /id="publicBatchEligibilitySummary"/);
+  assert.match(response.text, /id="changeOwnWifiButton"/);
+  assert.match(response.text, /设置Wi-Fi/);
+  assert.match(response.text, /id="selfWifiDialog"/);
+  assert.match(response.text, /id="selfWifiSsid"/);
+  assert.match(response.text, /id="selfWifiPreviewImage"/);
+  assert.match(response.text, /id="selfWifiPreviewText"/);
+  assert.match(response.text, /\/user-center-qr\.js/);
 });
 
 test('admin records UI truncates long OP fields in the table', async () => {
@@ -87,4 +94,20 @@ test('GET /admin/users serves the super admin user management shell', async () =
   assert.match(response.text, /账号管理/);
   assert.match(response.text, /id="userTable"/);
   assert.match(response.text, /id="selfPasswordDialog"/);
+  assert.match(response.text, /二维码配置/);
+  assert.match(response.text, /id="qrConfigDialog"/);
+  assert.match(response.text, /id="wifiSsid"/);
+  assert.match(response.text, /id="wifiQrPreviewImage"/);
+  assert.match(response.text, /id="wifiQrPreviewText"/);
+  assert.match(response.text, /\/user-center-qr\.js/);
+  assert.match(response.text, /实时预览/);
+});
+
+test('admin common UI exposes wifi qr preview helpers', async () => {
+  const response = await request(createTestApp()).get('/admin/common.js');
+
+  assert.equal(response.status, 200);
+  assert.match(response.text, /function initializeWifiQrPreview\(/);
+  assert.match(response.text, /window\.buildWifiQrPayload/);
+  assert.match(response.text, /window\.buildQrImageUrl/);
 });

@@ -4,6 +4,7 @@ const {
   listAdminUsers,
   resetAdminPassword,
   updateAdminUser,
+  updateAdminUserQrConfig,
 } = require('../lib/admin-users');
 const { requireSuperAdmin } = require('../lib/auth-middleware');
 
@@ -47,6 +48,19 @@ function createAdminUsersRouter({ pool, requireAdminAuth }) {
     try {
       await resetAdminPassword(pool, req.params.id, req.body.password);
       return res.status(204).end();
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.put('/:id/qrcode-config', async (req, res, next) => {
+    try {
+      const user = await updateAdminUserQrConfig(pool, req.params.id, req.body);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      return res.status(200).json({ user });
     } catch (error) {
       return next(error);
     }

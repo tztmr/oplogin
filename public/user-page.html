@@ -58,7 +58,7 @@
 
         .container {
             width: 100%;
-            max-width: 480px;
+            max-width: 640px;
             padding: 20px;
             box-sizing: border-box;
             z-index: 1;
@@ -91,6 +91,55 @@
             font-size: 14px;
             margin: 0 0 18px 0;
             line-height: 1.6;
+        }
+
+        .qr-card-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+            margin-bottom: 18px;
+        }
+
+        .qr-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            padding: 16px 14px;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.56);
+            border: 1px solid rgba(255, 255, 255, 0.9);
+            text-align: center;
+        }
+
+        .qr-card-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .qr-card-caption {
+            font-size: 12px;
+            line-height: 1.5;
+            color: var(--text-muted);
+            word-break: break-all;
+        }
+
+        .qr-card-image {
+            width: 160px;
+            height: 160px;
+            max-width: 100%;
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.82);
+            border: 1px solid rgba(229, 231, 235, 0.9);
+            object-fit: contain;
+        }
+
+        .qr-card-empty {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px;
         }
 
         .batch-action-row {
@@ -361,6 +410,12 @@
             margin-bottom: 16px;
             opacity: 0.5;
         }
+
+        @media (max-width: 640px) {
+            .qr-card-grid {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
@@ -371,6 +426,18 @@
         <div class="glass-card" id="mainCard" style="display: none;">
             <h1 id="pageTitle">专属数据中心</h1>
             <p class="subtitle" id="pageSubtitle">正在加载批次...</p>
+            <div class="qr-card-grid">
+                <div class="qr-card">
+                    <div class="qr-card-title">用户中心链接</div>
+                    <img id="userCenterQrImage" class="qr-card-image" alt="用户中心二维码" />
+                    <div class="qr-card-caption" id="userCenterQrText">正在生成当前用户中心二维码...</div>
+                </div>
+                <div class="qr-card">
+                    <div class="qr-card-title">Wi-Fi 连接</div>
+                    <img id="wifiQrImage" class="qr-card-image" alt="Wi-Fi 二维码" />
+                    <div class="qr-card-caption" id="wifiQrText">后台暂未配置 Wi-Fi 二维码</div>
+                </div>
+            </div>
 
             <div id="dataContainer" style="display: none;">
                 <div class="batch-action-row">
@@ -496,15 +563,23 @@
     <div id="toast" class="toast"></div>
 
     <script src="/op-wake-url-cache.js"></script>
+    <script src="/user-center-qr.js"></script>
     <script>
         let username = '';
         let currentBatch = null;
         let currentSlotNumber = 1;
         let currentRecord = null;
+        let currentQrConfig = null;
         const wakeUrlCache = window.createWakeUrlCache();
+        let uidClipboardPollingTimer = null;
+        let lastAutoFillClipboardText = '';
 
         function getRemarkInput() {
             return document.getElementById('remark');
+        }
+
+        function getUidInput() {
+            return document.getElementById('uid');
         }
 
         function getRemarkDraftStorageKey() {
@@ -555,6 +630,43 @@
             return pathParts.length > 0 ? pathParts[0] : '';
         }
 
+        function renderQrCards() {
+            const userCenterUrl = window.buildUserCenterUrl(window.location.origin, username);
+            const userCenterQrImage = document.getElementById('userCenterQrImage');
+            const userCenterQrText = document.getElementById('userCenterQrText');
+            userCenterQrImage.src = window.buildQrImageUrl(userCenterUrl, 180);
+            userCenterQrText.textContent = userCenterUrl;
+
+            const wifiQrImage = document.getElementById('wifiQrImage');
+            const wifiQrText = document.getElementById('wifiQrText');
+            const wifiPayload = window.buildWifiQrPayload(currentQrConfig && currentQrConfig.wifiQrConfig);
+
+            if (!wifiPayload) {
+                wifiQrImage.removeAttribute('src');
+                wifiQrImage.classList.add('qr-card-empty');
+                wifiQrText.textContent = '后台暂未配置 Wi-Fi 二维码';
+                return;
+            }
+
+            wifiQrImage.classList.remove('qr-card-empty');
+            wifiQrImage.src = window.buildQrImageUrl(wifiPayload, 180);
+            const wifiInfo = currentQrConfig.wifiQrConfig;
+            wifiQrText.textContent = `SSID: ${wifiInfo.ssid} | 加密: ${wifiInfo.type}`;
+        }
+
+        function applyQrConfig(qrConfig) {
+            currentQrConfig = qrConfig || {
+                login: username,
+                wifiQrConfig: {
+                    type: 'WPA',
+                    ssid: '',
+                    password: '',
+                    hidden: false,
+                },
+            };
+            renderQrCards();
+        }
+
         function countSlotsByStatus(status) {
             return (currentBatch && currentBatch.slots || []).filter((slot) => slot.status === status).length;
         }
@@ -588,6 +700,75 @@
             }
             const nextSlot = availableSlots.find((slot) => slot.slot > afterSlotNumber);
             return (nextSlot || availableSlots[0]).slot;
+        }
+
+        function shouldTryClipboardAutoFill() {
+            const slot = getSlot(currentSlotNumber);
+            return Boolean(
+                currentRecord &&
+                slot &&
+                slot.status === 'available' &&
+                document.activeElement === getUidInput() &&
+                !getUidInput().value.trim()
+            );
+        }
+
+        async function checkUidAvailability(uidValue) {
+            const response = await fetch(
+                `/api/public/user/${encodeURIComponent(username)}/uid-availability?uid=${encodeURIComponent(uidValue)}`,
+            );
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || 'UID 检查失败');
+            }
+            return data.available === true;
+        }
+
+        async function tryAutoFillUidFromClipboard() {
+            if (
+                !shouldTryClipboardAutoFill() ||
+                !navigator.clipboard ||
+                typeof navigator.clipboard.readText !== 'function'
+            ) {
+                return;
+            }
+
+            try {
+                const clipboardText = (await navigator.clipboard.readText()).trim();
+                if (!clipboardText || clipboardText === lastAutoFillClipboardText) {
+                    return;
+                }
+
+                lastAutoFillClipboardText = clipboardText;
+                if (!/^\d+$/.test(clipboardText)) {
+                    return;
+                }
+
+                const available = await checkUidAvailability(clipboardText);
+                if (!available || !shouldTryClipboardAutoFill()) {
+                    return;
+                }
+
+                document.getElementById('uid').value = clipboardText;
+                showToast('已自动填入剪贴板 UID');
+            } catch (error) {
+                // 浏览器拒绝读取剪贴板时静默忽略，不影响正常手动输入
+            }
+        }
+
+        function stopUidClipboardPolling() {
+            if (uidClipboardPollingTimer) {
+                clearInterval(uidClipboardPollingTimer);
+                uidClipboardPollingTimer = null;
+            }
+        }
+
+        function startUidClipboardPolling() {
+            stopUidClipboardPolling();
+            void tryAutoFillUidFromClipboard();
+            uidClipboardPollingTimer = setInterval(() => {
+                void tryAutoFillUidFromClipboard();
+            }, 1000);
         }
 
         function renderBatchSlots() {
@@ -647,6 +828,7 @@
             document.getElementById('googleAccountText').textContent = slot.record.googleAccount;
             document.getElementById('googlePasswordText').textContent = slot.record.googlePassword;
             document.getElementById('uid').value = '';
+            lastAutoFillClipboardText = '';
             restoreRemarkDraft();
             submitButton.disabled = slot.status !== 'available';
             opButton.disabled = !slot.record.opValue;
@@ -716,14 +898,14 @@
             if (!response.ok) {
                 throw new Error('加载失败，可能用户不存在或被禁用');
             }
-            const data = await response.json();
-            return data.batch;
+            return response.json();
         }
 
         async function loadBatch() {
             try {
-                const batch = await fetchBatch();
-                applyBatch(batch);
+                const data = await fetchBatch();
+                applyQrConfig(data.qrConfig);
+                applyBatch(data.batch);
             } catch (error) {
                 showToast(error.message, 'error');
                 document.getElementById('pageSubtitle').textContent = '加载出错';
@@ -746,7 +928,9 @@
 
         async function refreshBatch() {
             try {
-                const batch = await fetchBatch();
+                const data = await fetchBatch();
+                applyQrConfig(data.qrConfig);
+                const batch = data.batch;
                 const preferredSlot = getSlot(currentSlotNumber) ? currentSlotNumber : null;
                 applyBatch(batch, preferredSlot || getFirstSelectableSlot());
                 showToast('本组状态已刷新');
@@ -770,6 +954,7 @@
                 if (!response.ok) {
                     throw new Error(data.error || '换组失败');
                 }
+                applyQrConfig(data.qrConfig);
                 applyBatch(data.batch);
                 showToast('已放弃剩余槽位并切换到下一组');
             } catch (error) {
@@ -846,14 +1031,13 @@
                 }
 
                 getRemarkInput().value = '';
+                applyQrConfig(data.qrConfig);
                 currentBatch = data.batch;
-                const nextSlot = getNextAvailableSlot(currentSlotNumber);
-                currentSlotNumber = nextSlot || currentSlotNumber;
                 renderBatchSlots();
                 renderSelectedSlot();
                 renderBatchSummary();
                 document.getElementById('pageSubtitle').textContent = `当前批次 ${currentBatch.id.slice(0, 8)}，红色待处理，绿色已保存`;
-                showToast(`槽位 ${data.batch.slots[currentSlotNumber - 1] && data.batch.slots[currentSlotNumber - 1].status === 'done' ? currentSlotNumber : ''} 保存成功`.trim() || 'UID 保存成功');
+                showToast(`槽位 ${currentSlotNumber} 保存成功`);
             } catch (error) {
                 showToast(error.message || '网络异常，保存失败', 'error');
             } finally {
@@ -863,11 +1047,23 @@
         }
 
         window.addEventListener('DOMContentLoaded', () => {
+            const uidInput = document.getElementById('uid');
             document.getElementById('remark').addEventListener('input', (event) => {
                 saveRemarkDraft(event.target.value);
             });
             document.getElementById('game').addEventListener('change', () => {
                 void prefetchCurrentWakeUrl();
+            });
+            uidInput.addEventListener('focus', () => {
+                startUidClipboardPolling();
+            });
+            uidInput.addEventListener('blur', () => {
+                stopUidClipboardPolling();
+            });
+            uidInput.addEventListener('input', () => {
+                if (uidInput.value.trim()) {
+                    stopUidClipboardPolling();
+                }
             });
             restoreRemarkDraft();
             loadBatch();

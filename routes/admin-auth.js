@@ -3,6 +3,7 @@ const {
   changeOwnAdminPassword,
   findAdminByIdentifier,
   serializeAdminUser,
+  updateAdminUserQrConfig,
 } = require('../lib/admin-users');
 const { verifyAdminPassword } = require('../lib/admin-password');
 
@@ -51,6 +52,15 @@ function createAdminAuthRouter({ pool, requireAdminAuth }) {
         req.body.newPassword,
       );
       return res.status(204).end();
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/change-wifi', requireAdminAuth, async (req, res, next) => {
+    try {
+      const user = await updateAdminUserQrConfig(pool, req.adminUser.id, req.body || {});
+      return res.status(200).json({ user });
     } catch (error) {
       return next(error);
     }

@@ -78,3 +78,41 @@ test('super admin can reset an active operator password and the new password wor
   assert.equal(resetResponse.status, 204);
   assert.equal(reloginResponse.status, 200);
 });
+
+test('super admin can save wifi qr config for an operator', async () => {
+  const { agent, config } = await createAdminTestContext();
+  await login(agent, config.initialSuperAdminLogin, config.initialSuperAdminPassword);
+
+  const createResponse = await agent.post('/api/admin/users').send({
+    login: 'operator04',
+    email: 'operator04@example.com',
+    password: 'operator-pass',
+    role: 'operator',
+  });
+
+  const targetUserId = createResponse.body.user.id;
+  const updateResponse = await agent.put(`/api/admin/users/${targetUserId}/qrcode-config`).send({
+    wifiType: 'WPA',
+    wifiSsid: '888800000',
+    wifiPassword: 'qq123456',
+    wifiHidden: false,
+  });
+  const listResponse = await agent.get('/api/admin/users');
+
+  assert.equal(updateResponse.status, 200);
+  assert.deepEqual(updateResponse.body.user.wifiQrConfig, {
+    type: 'WPA',
+    ssid: '888800000',
+    password: 'qq123456',
+    hidden: false,
+  });
+  assert.deepEqual(
+    listResponse.body.users.find((item) => item.id === targetUserId).wifiQrConfig,
+    {
+      type: 'WPA',
+      ssid: '888800000',
+      password: 'qq123456',
+      hidden: false,
+    },
+  );
+});

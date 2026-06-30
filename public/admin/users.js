@@ -1,3 +1,14 @@
+const renderQrConfigPreview = window.initializeWifiQrPreview
+  ? window.initializeWifiQrPreview({
+      typeInputId: 'wifiType',
+      ssidInputId: 'wifiSsid',
+      passwordInputId: 'wifiPassword',
+      hiddenInputId: 'wifiHidden',
+      previewImageId: 'wifiQrPreviewImage',
+      previewTextId: 'wifiQrPreviewText',
+    })
+  : () => {};
+
 function renderUsers(users) {
   const tbody = document.getElementById('userTableBody');
   tbody.innerHTML = users
@@ -12,6 +23,7 @@ function renderUsers(users) {
           <td>
             <div class="row-actions">
               <button type="button" onclick="window.openEditUser('${user.id}')">编辑</button>
+              <button type="button" onclick="window.openQrConfig('${user.id}')">二维码配置</button>
               <button type="button" onclick="window.openResetPassword('${user.id}')">重置密码</button>
             </div>
           </td>
@@ -43,6 +55,19 @@ window.openResetPassword = async function openResetPassword(id) {
   document.getElementById('passwordTargetUserId').value = id;
   document.getElementById('newPassword').value = '';
   document.getElementById('passwordDialog').showModal();
+};
+
+window.openQrConfig = async function openQrConfig(id) {
+  const data = await adminFetch('/api/admin/users', { method: 'GET' });
+  const user = data.users.find((item) => item.id === id);
+
+  document.getElementById('qrConfigTargetUserId').value = user.id;
+  document.getElementById('wifiType').value = user.wifiQrConfig.type || 'WPA';
+  document.getElementById('wifiSsid').value = user.wifiQrConfig.ssid || '';
+  document.getElementById('wifiPassword').value = user.wifiQrConfig.password || '';
+  document.getElementById('wifiHidden').checked = Boolean(user.wifiQrConfig.hidden);
+  renderQrConfigPreview();
+  document.getElementById('qrConfigDialog').showModal();
 };
 
 async function submitUserForm(event) {
@@ -85,6 +110,25 @@ async function submitPasswordForm(event) {
   showToast('密码已重置');
 }
 
+async function submitQrConfigForm(event) {
+  event.preventDefault();
+
+  const userId = document.getElementById('qrConfigTargetUserId').value;
+  await adminFetch(`/api/admin/users/${userId}/qrcode-config`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      wifiType: document.getElementById('wifiType').value,
+      wifiSsid: document.getElementById('wifiSsid').value.trim(),
+      wifiPassword: document.getElementById('wifiPassword').value.trim(),
+      wifiHidden: document.getElementById('wifiHidden').checked,
+    }),
+  });
+
+  document.getElementById('qrConfigDialog').close();
+  showToast('二维码配置已保存');
+  await loadUsers();
+}
+
 window.addEventListener('DOMContentLoaded', async () => {
   const user = await requireAdminSession();
   if (!user) return;
@@ -110,6 +154,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     .getElementById('passwordForm')
     .addEventListener('submit', submitPasswordForm);
   document
+    .getElementById('qrConfigForm')
+    .addEventListener('submit', submitQrConfigForm);
+  document
     .getElementById('userCancelButton')
     .addEventListener('click', () => {
       document.getElementById('userDialog').close();
@@ -118,6 +165,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     .getElementById('passwordCancelButton')
     .addEventListener('click', () => {
       document.getElementById('passwordDialog').close();
+    });
+  document
+    .getElementById('qrConfigCancelButton')
+    .addEventListener('click', () => {
+      document.getElementById('qrConfigDialog').close();
     });
   document
     .getElementById('logoutButton')

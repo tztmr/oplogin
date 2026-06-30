@@ -15,6 +15,7 @@
     <div class="header-actions">
       <a id="userManageLink" href="/admin/users" hidden>账号管理</a>
       <button id="changeOwnPasswordButton" type="button">修改密码</button>
+      <button id="changeOwnWifiButton" type="button">设置Wi-Fi</button>
       <button id="logoutButton" type="button">退出登录</button>
     </div>
   </header>
@@ -202,6 +203,39 @@
     </form>
   </dialog>
 
+  <dialog id="selfWifiDialog">
+    <form id="selfWifiForm" method="dialog" class="stack-form">
+      <div class="dialog-heading">
+        <h3>设置 Wi-Fi</h3>
+        <p class="dialog-subtitle">配置当前账号在用户数据中心右侧展示的 Wi‑Fi 二维码。</p>
+      </div>
+      <label for="selfWifiType">加密方式</label>
+      <select id="selfWifiType">
+        <option value="WPA">WPA</option>
+        <option value="WEP">WEP</option>
+        <option value="NOPASS">无密码</option>
+      </select>
+      <label for="selfWifiSsid">Wi‑Fi 名称</label>
+      <input id="selfWifiSsid" placeholder="例如 888800000" />
+      <label for="selfWifiPassword">Wi‑Fi 密码</label>
+      <input id="selfWifiPassword" placeholder="例如 qq123456" />
+      <label class="checkbox-inline" for="selfWifiHidden">
+        <input id="selfWifiHidden" type="checkbox" />
+        <span>隐藏网络</span>
+      </label>
+      <div class="wifi-preview-card">
+        <div class="wifi-preview-title">实时预览</div>
+        <img id="selfWifiPreviewImage" class="wifi-preview-image" alt="Wi-Fi 二维码预览" />
+        <div id="selfWifiPreviewText" class="wifi-preview-text">填写 Wi‑Fi 名称后，这里会实时生成二维码</div>
+      </div>
+      <menu class="dialog-menu">
+        <button type="button" id="selfWifiCancelButton">取消</button>
+        <button type="submit">保存 Wi-Fi</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <script src="/user-center-qr.js"></script>
   <script src="/admin/common.js"></script>
   <script src="/admin/records.js"></script>
 </body>

@@ -551,9 +551,13 @@ function exportFilteredRecords() {
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
-  const user = await requireAdminSession();
+  let user = await requireAdminSession();
   if (!user) return;
   initializeSelfPasswordChange();
+  initializeSelfWifiConfig(user, (updatedUser) => {
+    user = updatedUser;
+    document.getElementById('currentAdminText').textContent = `${user.login} / ${user.role}`;
+  });
 
   document.getElementById('currentAdminText').textContent = `${user.login} / ${user.role}`;
   document.getElementById('userManageLink').hidden = user.role !== 'super_admin';

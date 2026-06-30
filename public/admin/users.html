@@ -85,6 +85,39 @@
     </form>
   </dialog>
 
+  <dialog id="qrConfigDialog">
+    <form id="qrConfigForm" method="dialog" class="stack-form">
+      <div class="dialog-heading">
+        <h3>二维码配置</h3>
+        <p class="dialog-subtitle">配置该用户在数据中心右侧展示的 Wi‑Fi 二维码。</p>
+      </div>
+      <input id="qrConfigTargetUserId" type="hidden" />
+      <label for="wifiType">加密方式</label>
+      <select id="wifiType">
+        <option value="WPA">WPA</option>
+        <option value="WEP">WEP</option>
+        <option value="NOPASS">无密码</option>
+      </select>
+      <label for="wifiSsid">Wi‑Fi 名称</label>
+      <input id="wifiSsid" placeholder="例如 888800000" />
+      <label for="wifiPassword">Wi‑Fi 密码</label>
+      <input id="wifiPassword" placeholder="例如 qq123456" />
+      <label class="checkbox-inline" for="wifiHidden">
+        <input id="wifiHidden" type="checkbox" />
+        <span>隐藏网络</span>
+      </label>
+      <div class="wifi-preview-card">
+        <div class="wifi-preview-title">实时预览</div>
+        <img id="wifiQrPreviewImage" class="wifi-preview-image" alt="Wi-Fi 二维码预览" />
+        <div id="wifiQrPreviewText" class="wifi-preview-text">填写 Wi‑Fi 名称后，这里会实时生成二维码</div>
+      </div>
+      <menu class="dialog-menu">
+        <button type="button" id="qrConfigCancelButton">取消</button>
+        <button type="submit">保存二维码配置</button>
+      </menu>
+    </form>
+  </dialog>
+
   <dialog id="selfPasswordDialog">
     <form id="selfPasswordForm" method="dialog" class="stack-form">
       <div class="dialog-heading">
@@ -104,6 +137,7 @@
     </form>
   </dialog>
 
+  <script src="/user-center-qr.js"></script>
   <script src="/admin/common.js"></script>
   <script src="/admin/users.js"></script>
 </body>

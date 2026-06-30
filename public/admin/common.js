@@ -162,3 +162,119 @@ function initializeSelfPasswordChange() {
     showToast('密码修改成功，请使用新密码重新记住');
   });
 }
+
+function initializeWifiQrPreview(options) {
+  const typeInput = document.getElementById(options.typeInputId);
+  const ssidInput = document.getElementById(options.ssidInputId);
+  const passwordInput = document.getElementById(options.passwordInputId);
+  const hiddenInput = document.getElementById(options.hiddenInputId);
+  const previewImage = document.getElementById(options.previewImageId);
+  const previewText = document.getElementById(options.previewTextId);
+  const emptyText = options.emptyText || '填写 Wi‑Fi 名称后，这里会实时生成二维码';
+
+  if (
+    !typeInput ||
+    !ssidInput ||
+    !passwordInput ||
+    !hiddenInput ||
+    !previewImage ||
+    !previewText ||
+    typeof window.buildWifiQrPayload !== 'function' ||
+    typeof window.buildQrImageUrl !== 'function'
+  ) {
+    return () => {};
+  }
+
+  const render = () => {
+    const payload = window.buildWifiQrPayload({
+      type: typeInput.value,
+      ssid: ssidInput.value.trim(),
+      password: passwordInput.value.trim(),
+      hidden: hiddenInput.checked,
+    });
+
+    if (!payload) {
+      previewImage.removeAttribute('src');
+      previewText.textContent = emptyText;
+      return;
+    }
+
+    previewImage.src = window.buildQrImageUrl(payload, 200);
+    previewText.textContent = payload;
+  };
+
+  [typeInput, ssidInput, passwordInput].forEach((element) => {
+    element.addEventListener('input', render);
+    element.addEventListener('change', render);
+  });
+  hiddenInput.addEventListener('change', render);
+  render();
+
+  return render;
+}
+
+function initializeSelfWifiConfig(initialUser, onUpdated) {
+  const openButton = document.getElementById('changeOwnWifiButton');
+  const dialog = document.getElementById('selfWifiDialog');
+  const form = document.getElementById('selfWifiForm');
+  const cancelButton = document.getElementById('selfWifiCancelButton');
+  if (!openButton || !dialog || !form || !cancelButton) {
+    return;
+  }
+
+  let currentUser = initialUser || {
+    wifiQrConfig: {
+      type: 'WPA',
+      ssid: '',
+      password: '',
+      hidden: false,
+    },
+  };
+  const renderPreview = initializeWifiQrPreview({
+    typeInputId: 'selfWifiType',
+    ssidInputId: 'selfWifiSsid',
+    passwordInputId: 'selfWifiPassword',
+    hiddenInputId: 'selfWifiHidden',
+    previewImageId: 'selfWifiPreviewImage',
+    previewTextId: 'selfWifiPreviewText',
+  });
+
+  function fillForm(user) {
+    const wifiQrConfig = user && user.wifiQrConfig ? user.wifiQrConfig : {};
+    document.getElementById('selfWifiType').value = wifiQrConfig.type || 'WPA';
+    document.getElementById('selfWifiSsid').value = wifiQrConfig.ssid || '';
+    document.getElementById('selfWifiPassword').value = wifiQrConfig.password || '';
+    document.getElementById('selfWifiHidden').checked = Boolean(wifiQrConfig.hidden);
+    renderPreview();
+  }
+
+  openButton.addEventListener('click', () => {
+    fillForm(currentUser);
+    dialog.showModal();
+  });
+
+  cancelButton.addEventListener('click', () => {
+    dialog.close();
+  });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+
+    const data = await adminFetch('/api/admin/auth/change-wifi', {
+      method: 'POST',
+      body: JSON.stringify({
+        wifiType: document.getElementById('selfWifiType').value,
+        wifiSsid: document.getElementById('selfWifiSsid').value.trim(),
+        wifiPassword: document.getElementById('selfWifiPassword').value.trim(),
+        wifiHidden: document.getElementById('selfWifiHidden').checked,
+      }),
+    });
+
+    currentUser = data.user;
+    dialog.close();
+    showToast('Wi-Fi 配置已保存');
+    if (typeof onUpdated === 'function') {
+      onUpdated(data.user);
+    }
+  });
+}

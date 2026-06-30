@@ -296,6 +296,7 @@ tbody tr:hover {
 td .row-actions {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .cell-truncate {
@@ -357,6 +358,51 @@ td .row-actions {
   font-size: 14px;
   margin-bottom: -8px;
   color: var(--text-main);
+}
+
+.checkbox-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 0;
+}
+
+.checkbox-inline input[type="checkbox"] {
+  width: auto;
+}
+
+.wifi-preview-card {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: #f9fafb;
+  text-align: center;
+}
+
+.wifi-preview-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.wifi-preview-image {
+  width: 180px;
+  height: 180px;
+  max-width: 100%;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+  object-fit: contain;
+}
+
+.wifi-preview-text {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  word-break: break-all;
 }
 
 .form-error {
