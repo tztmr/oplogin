@@ -495,6 +495,7 @@
 
     <div id="toast" class="toast"></div>
 
+    <script src="/op-login-launcher.js"></script>
     <script>
         let username = '';
         let currentBatch = null;
@@ -771,8 +772,10 @@
             const gameInput = document.getElementById('game').value;
             const button = document.getElementById('opLoginBtn');
             const originalText = button.innerText;
+            const wakeController = window.createWakeNavigationController();
             button.innerText = '正在处理...';
             button.disabled = true;
+            wakeController.prepare();
 
             try {
                 const response = await fetch('/api/submit', {
@@ -786,9 +789,10 @@
                 }
                 showToast('上号成功，正在唤起应用...');
                 setTimeout(() => {
-                    window.location.href = data.url;
+                    wakeController.navigate(data.url);
                 }, 800);
             } catch (error) {
+                wakeController.abort();
                 showToast(error.message || '网络异常，请重试', 'error');
             } finally {
                 button.innerText = originalText;

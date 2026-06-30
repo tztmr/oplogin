@@ -293,6 +293,7 @@
 
     <div id="toast" class="toast"></div>
 
+    <script src="/op-login-launcher.js"></script>
     <script>
         // 显示自定义 Toast 提示
         function showToast(message, type = 'success') {
@@ -339,11 +340,14 @@
             const urlInput = document.getElementById('url').value.trim();
             const gameInput = document.getElementById('game').value;
             const btn = document.getElementById('submitBtn');
+            const wakeController = window.createWakeNavigationController();
             
             if (!urlInput) {
                 showToast('请输入数据号 URL', 'error');
                 return;
             }
+
+            wakeController.prepare();
 
             const originalText = btn.innerText;
             btn.innerText = '正在处理...';
@@ -372,13 +376,15 @@
                     showToast('上号成功，正在唤起应用...', 'success');
                     // 延迟一点时间以确保用户能看到 Toast
                     setTimeout(() => {
-                        window.location.href = data.url;
+                        wakeController.navigate(data.url);
                     }, 800);
                 } else {
+                    wakeController.abort();
                     showToast('上号失败，请检查数据号 URL 是否正确', 'error');
                 }
             })
             .catch(error => {
+                wakeController.abort();
                 console.error('Error:', error);
                 // 提示错误信息
                 showToast(error.message || '上号失败，请检查网络或数据号', 'error');

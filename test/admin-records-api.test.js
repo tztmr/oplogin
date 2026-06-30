@@ -575,6 +575,60 @@ test('CSV export returns all matching records with full columns', async () => {
   assert.doesNotMatch(response.text, /csv-other@gmail\.com/);
 });
 
+test('CSV export formats all datetime columns as Asia Shanghai local time', async () => {
+  const { agent, pool, config } = await createAdminTestContext();
+  await loginAsSuperAdmin(agent, config);
+
+  await pool.query(
+    `
+      insert into managed_records (
+        id,
+        owner_id,
+        google_account,
+        google_password_encrypted,
+        google_password_search_hash,
+        google_assist,
+        google_expire_at,
+        uid_value,
+        uid_created_at,
+        op_value,
+        op_link,
+        op_expire_at,
+        remark
+      ) values (
+        $1, null, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+      )
+    `,
+    [
+      crypto.randomUUID(),
+      'csv-datetime@gmail.com',
+      encryptGooglePassword('csv-datetime-pass', config.googlePasswordEncryptionKey),
+      buildGooglePasswordSearchHash(
+        'csv-datetime-pass',
+        config.googlePasswordEncryptionKey,
+      ),
+      'csv-datetime-assist',
+      '2026-06-29T21:18:07.924Z',
+      'uid-datetime',
+      '2026-06-29T22:19:08.555Z',
+      'op-datetime',
+      'https://example.com/op/datetime',
+      '2026-06-29T23:20:09.111Z',
+      'datetime-row',
+    ],
+  );
+
+  const response = await agent
+    .get('/api/admin/records/export.csv')
+    .query({ googleAccount: 'csv-datetime@gmail.com' });
+
+  assert.equal(response.status, 200);
+  assert.match(
+    response.text,
+    /"csv-datetime@gmail\.com","csv-datetime-pass","csv-datetime-assist","2026\/6\/30 05:18:07","uid-datetime","2026\/6\/30 06:19:08","op-datetime","https:\/\/example\.com\/op\/datetime","2026\/6\/30 07:20:09","datetime-row"/,
+  );
+});
+
 test('record list accepts pageSize=all and returns every matching row', async () => {
   const { agent, config } = await createAdminTestContext();
   await loginAsSuperAdmin(agent, config);
