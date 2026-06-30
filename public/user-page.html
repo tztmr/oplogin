@@ -17,6 +17,7 @@
             --slot-red: #ef4444;
             --slot-green: #10b981;
             --slot-gray: #9ca3af;
+            --slot-blue: #3b82f6;
         }
 
         body {
@@ -185,8 +186,10 @@
         }
 
         .quick-slot-button.is-active {
+            background: #3b82f6;
             outline: 3px solid rgba(79, 70, 229, 0.22);
             outline-offset: 2px;
+            box-shadow: 0 8px 18px rgba(59, 130, 246, 0.32);
         }
 
         .quick-slot-button:disabled {
@@ -412,6 +415,10 @@
         }
 
         @media (max-width: 640px) {
+            .qr-card-grid {
+                display: none;
+            }
+
             .qr-card-grid {
                 grid-template-columns: 1fr;
             }

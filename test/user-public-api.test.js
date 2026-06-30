@@ -580,6 +580,25 @@ test('public user page renders left and right qr card placeholders', async () =>
   assert.match(response.text, /buildQrImageUrl/);
 });
 
+test('public user page hides qr cards on mobile and highlights selected slot in blue', async () => {
+  const { app, pool } = await createAdminTestContext();
+  await createAdminUser(pool, {
+    login: 'mxw',
+    email: 'mxw@example.com',
+    password: 'change-me-now',
+    role: 'operator',
+  });
+
+  const response = await request(app).get('/mxw');
+
+  assert.equal(response.status, 200);
+  assert.match(
+    response.text,
+    /@media \(max-width: 640px\)\s*\{[\s\S]*\.qr-card-grid\s*\{[\s\S]*display:\s*none;/,
+  );
+  assert.match(response.text, /\.quick-slot-button\.is-active\s*\{[\s\S]*background:\s*#3b82f6;/);
+});
+
 test('public user record API supports submitting uid and remark', async () => {
   const { app, pool, config } = await createAdminTestContext();
   const operator = await createAdminUser(pool, {
