@@ -497,39 +497,6 @@ test('public user page auto-fills uid from numeric clipboard content when uid is
   assert.match(response.text, /document\.getElementById\('uid'\)\.value = clipboardText;/);
 });
 
-test('public user page supports paste fallback and shows a toast when clipboard read is blocked', async () => {
-  const { app, pool } = await createAdminTestContext();
-  await createAdminUser(pool, {
-    login: 'lz',
-    email: 'lz@example.com',
-    password: 'change-me-now',
-    role: 'operator',
-  });
-
-  const response = await request(app).get('/lz');
-
-  assert.equal(response.status, 200);
-  assert.match(response.text, /uidInput\.addEventListener\('paste', async \(event\) => \{/);
-  assert.match(response.text, /event\.clipboardData.*getData\('text'\)/);
-  assert.match(response.text, /showToast\('当前浏览器限制自动读取，请直接粘贴 UID', 'error'\)/);
-});
-
-test('public user page renders a paste button beside the uid input', async () => {
-  const { app, pool } = await createAdminTestContext();
-  await createAdminUser(pool, {
-    login: 'lz',
-    email: 'lz@example.com',
-    password: 'change-me-now',
-    role: 'operator',
-  });
-
-  const response = await request(app).get('/lz');
-
-  assert.equal(response.status, 200);
-  assert.match(response.text, /class="uid-input-row"/);
-  assert.match(response.text, /<button type="button" id="pasteUidBtn" class="btn-copy" onclick="pasteUidFromClipboard\(\)">粘贴<\/button>/);
-});
-
 test('public user uid availability API rejects existing numeric uid values', async () => {
   const { app, pool, config } = await createAdminTestContext();
   const operator = await createAdminUser(pool, {

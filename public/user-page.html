@@ -315,23 +315,6 @@
             margin-bottom: 18px;
         }
 
-        .uid-input-row {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .uid-input-row input[type="text"] {
-            flex: 1;
-        }
-
-        .uid-input-row .btn-copy {
-            flex-shrink: 0;
-            height: 49px;
-            padding: 0 16px;
-            border-radius: 12px;
-        }
-
         .btn-submit {
             width: 100%;
             padding: 15px 16px;
@@ -565,10 +548,7 @@
 
                 <div class="form-group">
                     <label for="uid">确认使用 (填写 UID)</label>
-                    <div class="uid-input-row">
-                        <input type="text" id="uid" placeholder="请在此处填写提取的 UID" required>
-                        <button type="button" id="pasteUidBtn" class="btn-copy" onclick="pasteUidFromClipboard()">粘贴</button>
-                    </div>
+                    <input type="text" id="uid" placeholder="请在此处填写提取的 UID" required>
                 </div>
                 <div class="form-group">
                     <label for="remark">备注 (选填)</label>
@@ -600,7 +580,6 @@
         const wakeUrlCache = window.createWakeUrlCache();
         let uidClipboardPollingTimer = null;
         let lastAutoFillClipboardText = '';
-        let hasShownClipboardFallbackToast = false;
 
         function getRemarkInput() {
             return document.getElementById('remark');
@@ -752,71 +731,35 @@
             return data.available === true;
         }
 
-        function showClipboardFallbackToast() {
-            if (hasShownClipboardFallbackToast) {
-                return;
-            }
-            hasShownClipboardFallbackToast = true;
-            showToast('当前浏览器限制自动读取，请直接粘贴 UID', 'error');
-        }
-
-        async function applyClipboardUidValue(clipboardText) {
-            clipboardText = String(clipboardText || '').trim();
-            if (!clipboardText || clipboardText === lastAutoFillClipboardText) {
-                return false;
-            }
-
-            lastAutoFillClipboardText = clipboardText;
-            if (!/^\d+$/.test(clipboardText)) {
-                return false;
-            }
-
-            const available = await checkUidAvailability(clipboardText);
-            if (!available || !shouldTryClipboardAutoFill()) {
-                return false;
-            }
-
-            document.getElementById('uid').value = clipboardText;
-            stopUidClipboardPolling();
-            showToast('已自动填入剪贴板 UID');
-            return true;
-        }
-
         async function tryAutoFillUidFromClipboard() {
-            if (!shouldTryClipboardAutoFill()) {
-                return;
-            }
-
-            if (!navigator.clipboard || typeof navigator.clipboard.readText !== 'function') {
-                showClipboardFallbackToast();
+            if (
+                !shouldTryClipboardAutoFill() ||
+                !navigator.clipboard ||
+                typeof navigator.clipboard.readText !== 'function'
+            ) {
                 return;
             }
 
             try {
                 const clipboardText = (await navigator.clipboard.readText()).trim();
-                await applyClipboardUidValue(clipboardText);
-            } catch (error) {
-                showClipboardFallbackToast();
-            }
-        }
-
-        async function pasteUidFromClipboard() {
-            const uidInput = getUidInput();
-            uidInput.focus();
-
-            if (!navigator.clipboard || typeof navigator.clipboard.readText !== 'function') {
-                showClipboardFallbackToast();
-                return;
-            }
-
-            try {
-                const clipboardText = await navigator.clipboard.readText();
-                const applied = await applyClipboardUidValue(clipboardText);
-                if (!applied) {
-                    showToast('剪贴板里没有可用的纯数字 UID', 'error');
+                if (!clipboardText || clipboardText === lastAutoFillClipboardText) {
+                    return;
                 }
+
+                lastAutoFillClipboardText = clipboardText;
+                if (!/^\d+$/.test(clipboardText)) {
+                    return;
+                }
+
+                const available = await checkUidAvailability(clipboardText);
+                if (!available || !shouldTryClipboardAutoFill()) {
+                    return;
+                }
+
+                document.getElementById('uid').value = clipboardText;
+                showToast('已自动填入剪贴板 UID');
             } catch (error) {
-                showClipboardFallbackToast();
+                // 浏览器拒绝读取剪贴板时静默忽略，不影响正常手动输入
             }
         }
 
@@ -893,7 +836,6 @@
             document.getElementById('googlePasswordText').textContent = slot.record.googlePassword;
             document.getElementById('uid').value = '';
             lastAutoFillClipboardText = '';
-            hasShownClipboardFallbackToast = false;
             restoreRemarkDraft();
             submitButton.disabled = slot.status !== 'available';
             opButton.disabled = !slot.record.opValue;
@@ -1120,36 +1062,10 @@
                 void prefetchCurrentWakeUrl();
             });
             uidInput.addEventListener('focus', () => {
-                hasShownClipboardFallbackToast = false;
                 startUidClipboardPolling();
             });
             uidInput.addEventListener('blur', () => {
                 stopUidClipboardPolling();
-            });
-            uidInput.addEventListener('paste', async (event) => {
-                if (!shouldTryClipboardAutoFill()) {
-                    return;
-                }
-                const clipboardText =
-                    event.clipboardData && typeof event.clipboardData.getData === 'function'
-                        ? event.clipboardData.getData('text')
-                        : '';
-                if (!clipboardText || !/^\d+$/.test(String(clipboardText).trim())) {
-                    return;
-                }
-
-                event.preventDefault();
-                try {
-                    const applied = await applyClipboardUidValue(clipboardText);
-                    if (!applied) {
-                        uidInput.value = String(clipboardText).trim();
-                        stopUidClipboardPolling();
-                    }
-                } catch (error) {
-                    uidInput.value = String(clipboardText).trim();
-                    stopUidClipboardPolling();
-                    showToast(error.message || 'UID 检查失败', 'error');
-                }
             });
             uidInput.addEventListener('input', () => {
                 if (uidInput.value.trim()) {
