@@ -337,7 +337,7 @@ test('public user batch API only includes records with google account, password,
   );
 });
 
-test('public user batch API can abandon remaining slots and create a fresh next batch', async () => {
+test('public user batch API carries abandoned remaining slots into the next batch before filling new stock', async () => {
   const { app, pool, config } = await createAdminTestContext();
   const operator = await createAdminUser(pool, {
     login: 'lz',
@@ -377,10 +377,19 @@ test('public user batch API can abandon remaining slots and create a fresh next 
   assert.notEqual(nextBatchResponse.body.batch.id, firstBatchResponse.body.batch.id);
   assert.deepEqual(
     nextBatchResponse.body.batch.slots.map((slot) => slot.status),
-    ['available', 'available', 'empty', 'empty', 'empty', 'empty'],
+    ['available', 'available', 'available', 'available', 'available', 'available'],
   );
-  assert.equal(nextBatchResponse.body.batch.slots[0].record.id, records[6].id);
-  assert.equal(nextBatchResponse.body.batch.slots[1].record.id, records[7].id);
+  assert.deepEqual(
+    nextBatchResponse.body.batch.slots.map((slot) => slot.record && slot.record.id),
+    [
+      records[2].id,
+      records[3].id,
+      records[4].id,
+      records[5].id,
+      records[6].id,
+      records[7].id,
+    ],
+  );
 });
 
 test('public user batch API rebuilds an empty open batch when new eligible records appear', async () => {
@@ -410,6 +419,55 @@ test('public user batch API rebuilds an empty open batch when new eligible recor
   assert.equal(refreshedBatchResponse.status, 200);
   assert.notEqual(refreshedBatchResponse.body.batch.id, emptyBatchResponse.body.batch.id);
   assert.equal(refreshedBatchResponse.body.batch.slots[0].record.id, eligible.id);
+  assert.deepEqual(
+    refreshedBatchResponse.body.batch.slots.map((slot) => slot.status),
+    ['available', 'empty', 'empty', 'empty', 'empty', 'empty'],
+  );
+});
+
+test('public user batch API advances past a consumed open batch with cleared slot records when new stock exists', async () => {
+  const { app, pool, config } = await createAdminTestContext();
+  const operator = await createAdminUser(pool, {
+    login: 'lz',
+    email: 'lz@example.com',
+    password: 'change-me-now',
+    role: 'operator',
+  });
+
+  const initialRecords = [];
+  for (let index = 1; index <= 6; index += 1) {
+    initialRecords.push(
+      await insertManagedRecord(pool, config, operator.id, {
+        googleAccount: `consumed-${index}@gmail.com`,
+        opValue: `consumed-${index}`,
+      }),
+    );
+  }
+
+  const firstBatchResponse = await request(app).get('/api/public/user/lz/batch');
+  assert.equal(firstBatchResponse.status, 200);
+
+  for (let slotNumber = 1; slotNumber <= 6; slotNumber += 1) {
+    const saveResponse = await request(app)
+      .post(`/api/public/user/lz/batch/slots/${slotNumber}/uid`)
+      .send({ uid: `done-${slotNumber}` });
+    assert.equal(saveResponse.status, 200);
+  }
+
+  await pool.query(
+    'delete from managed_records where id = any($1::uuid[])',
+    [initialRecords.map((record) => record.id)],
+  );
+
+  const nextRecord = await insertManagedRecord(pool, config, operator.id, {
+    googleAccount: 'next-batch@gmail.com',
+    opValue: 'next-batch-op',
+  });
+
+  const refreshedBatchResponse = await request(app).get('/api/public/user/lz/batch');
+  assert.equal(refreshedBatchResponse.status, 200);
+  assert.notEqual(refreshedBatchResponse.body.batch.id, firstBatchResponse.body.batch.id);
+  assert.equal(refreshedBatchResponse.body.batch.slots[0].record.id, nextRecord.id);
   assert.deepEqual(
     refreshedBatchResponse.body.batch.slots.map((slot) => slot.status),
     ['available', 'empty', 'empty', 'empty', 'empty', 'empty'],
