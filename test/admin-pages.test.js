@@ -71,6 +71,8 @@ test('GET /admin serves the record management shell', async () => {
   assert.match(response.text, /id="selfWifiPreviewImage"/);
   assert.match(response.text, /id="selfWifiPreviewText"/);
   assert.match(response.text, /\/user-center-qr\.js/);
+  assert.match(response.text, /id="openOwnUserPageButton"/);
+  assert.match(response.text, /进入我的页面/);
 });
 
 test('admin records UI truncates long OP fields in the table', async () => {
@@ -147,6 +149,8 @@ test('GET /admin/users serves the super admin user management shell', async () =
   assert.match(response.text, /id="wifiQrPreviewText"/);
   assert.match(response.text, /\/user-center-qr\.js/);
   assert.match(response.text, /实时预览/);
+  assert.match(response.text, /id="openOwnUserPageButton"/);
+  assert.match(response.text, /进入我的页面/);
 });
 
 test('admin common UI exposes wifi qr preview helpers', async () => {
@@ -156,4 +160,22 @@ test('admin common UI exposes wifi qr preview helpers', async () => {
   assert.match(response.text, /function initializeWifiQrPreview\(/);
   assert.match(response.text, /window\.buildWifiQrPayload/);
   assert.match(response.text, /window\.buildQrImageUrl/);
+});
+
+test('admin common UI exposes navigation to the current admin user page', async () => {
+  const response = await request(createTestApp()).get('/admin/common.js');
+
+  assert.equal(response.status, 200);
+  assert.match(response.text, /function initializeOwnUserPageButton\(/);
+  assert.match(response.text, /document\.getElementById\('openOwnUserPageButton'\)/);
+  assert.match(response.text, /window\.location\.href = `\/\$\{encodeURIComponent\(user\.login\)\}`;/);
+});
+
+test('admin common UI hides own user page button for admin login', async () => {
+  const response = await request(createTestApp()).get('/admin/common.js');
+
+  assert.equal(response.status, 200);
+  assert.match(response.text, /const normalizedLogin = String\(user\.login \|\| ''\)\.trim\(\)\.toLowerCase\(\);/);
+  assert.match(response.text, /openButton\.hidden = normalizedLogin === 'admin';/);
+  assert.match(response.text, /if \(openButton\.hidden\) \{\s*return;\s*\}/);
 });

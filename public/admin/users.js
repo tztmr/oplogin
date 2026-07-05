@@ -133,6 +133,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   const user = await requireAdminSession();
   if (!user) return;
   initializeSelfPasswordChange();
+  initializeOwnUserPageButton(user);
   if (user.role !== 'super_admin') {
     window.location.href = '/admin';
     return;

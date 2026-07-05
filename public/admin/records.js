@@ -631,6 +631,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   let user = await requireAdminSession();
   if (!user) return;
   initializeSelfPasswordChange();
+  initializeOwnUserPageButton(user);
   initializeSelfWifiConfig(user, (updatedUser) => {
     user = updatedUser;
     document.getElementById('currentAdminText').textContent = `${user.login} / ${user.role}`;

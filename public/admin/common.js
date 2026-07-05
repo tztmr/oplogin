@@ -163,6 +163,23 @@ function initializeSelfPasswordChange() {
   });
 }
 
+function initializeOwnUserPageButton(user) {
+  const openButton = document.getElementById('openOwnUserPageButton');
+  if (!openButton || !user || !user.login) {
+    return;
+  }
+
+  const normalizedLogin = String(user.login || '').trim().toLowerCase();
+  openButton.hidden = normalizedLogin === 'admin';
+  if (openButton.hidden) {
+    return;
+  }
+
+  openButton.addEventListener('click', () => {
+    window.location.href = `/${encodeURIComponent(user.login)}`;
+  });
+}
+
 function initializeWifiQrPreview(options) {
   const typeInput = document.getElementById(options.typeInputId);
   const ssidInput = document.getElementById(options.ssidInputId);
