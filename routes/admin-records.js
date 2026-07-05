@@ -4,6 +4,8 @@ const {
   listManagedRecords,
   getManagedRecordById,
   updateManagedRecord,
+  clearManagedRecordGoogleFields,
+  clearManagedRecordOpFields,
   deleteManagedRecord,
   deleteManagedRecords,
   exportManagedRecordsCsv,
@@ -126,6 +128,34 @@ function createAdminRecordsRouter({ pool, config, requireAdminAuth }) {
         req.params.id,
         req.body,
         req.adminUser
+      );
+      return res.status(200).json({ item });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.delete('/:id/google', async (req, res, next) => {
+    try {
+      const item = await clearManagedRecordGoogleFields(
+        pool,
+        config,
+        req.params.id,
+        req.adminUser,
+      );
+      return res.status(200).json({ item });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.delete('/:id/op', async (req, res, next) => {
+    try {
+      const item = await clearManagedRecordOpFields(
+        pool,
+        config,
+        req.params.id,
+        req.adminUser,
       );
       return res.status(200).json({ item });
     } catch (error) {

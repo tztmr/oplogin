@@ -2,6 +2,7 @@ let currentPage = 1;
 let currentPageSize = '20';
 const selectedRecordIds = new Set();
 let currentPageRecordIds = [];
+const currentRecordSummariesById = new Map();
 let batchImportProgressTimer = null;
 let batchDeleteProgressTimer = null;
 
@@ -83,6 +84,34 @@ function renderTruncatedLink(value) {
   return `<a class="cell-truncate cell-truncate-link" href="${normalizedValue}" target="_blank" rel="noreferrer" title="${safeValue}">${normalizedValue}</a>`;
 }
 
+function formatDeleteConfirmField(value) {
+  return String(value || '').trim() || '无';
+}
+
+function buildDeleteRecordConfirmMessage(record) {
+  return [
+    '确认永久删除这条记录吗？',
+    `谷歌号：${formatDeleteConfirmField(record?.googleAccount)}`,
+    `OP：${formatDeleteConfirmField(record?.opValue)}`,
+  ].join('\n');
+}
+
+function buildClearGoogleConfirmMessage(record) {
+  return [
+    '确认删除这条记录的谷歌号吗？',
+    `谷歌号：${formatDeleteConfirmField(record?.googleAccount)}`,
+    '将清空：谷歌号、谷歌密码、谷歌辅助',
+  ].join('\n');
+}
+
+function buildClearOpConfirmMessage(record) {
+  return [
+    '确认删除这条记录的 OP 吗？',
+    `OP：${formatDeleteConfirmField(record?.opValue)}`,
+    '将清空：OP、OP链接、OP到期时间',
+  ].join('\n');
+}
+
 function renderRows(data) {
   const items = data.items;
   const isAllPageSize = currentPageSize === 'all';
@@ -91,6 +120,13 @@ function renderRows(data) {
 
   const tbody = document.getElementById('recordTableBody');
   currentPageRecordIds = items.map((item) => item.id);
+  currentRecordSummariesById.clear();
+  items.forEach((item) => {
+    currentRecordSummariesById.set(item.id, {
+      googleAccount: item.googleAccount,
+      opValue: item.opValue,
+    });
+  });
   for (const selectedId of Array.from(selectedRecordIds)) {
     if (!currentPageRecordIds.includes(selectedId)) {
       selectedRecordIds.delete(selectedId);
@@ -122,6 +158,8 @@ function renderRows(data) {
           <td>
             <div class="row-actions">
               <button type="button" onclick="window.openEditRecord('${item.id}')">编辑</button>
+              <button type="button" onclick="window.clearRecordGoogleFields('${item.id}')">删除谷歌号</button>
+              <button type="button" onclick="window.clearRecordOpFields('${item.id}')">删除OP</button>
               <button type="button" onclick="window.deleteRecord('${item.id}')">删除</button>
             </div>
           </td>
@@ -421,16 +459,55 @@ window.openEditRecord = async function openEditRecord(id) {
 
 window.deleteRecord = async function deleteRecord(id) {
   if (
-    !(await showConfirm('确认永久删除这条记录吗？', {
-      confirmText: '删除',
-      tone: 'danger',
-    }))
+    !(await showConfirm(
+      buildDeleteRecordConfirmMessage(currentRecordSummariesById.get(id)),
+      {
+        confirmText: '删除',
+        tone: 'danger',
+      },
+    ))
   ) {
     return;
   }
 
   await adminFetch(`/api/admin/records/${id}`, { method: 'DELETE' });
   await loadRecords();
+};
+
+window.clearRecordGoogleFields = async function clearRecordGoogleFields(id) {
+  if (
+    !(await showConfirm(
+      buildClearGoogleConfirmMessage(currentRecordSummariesById.get(id)),
+      {
+        confirmText: '删除谷歌号',
+        tone: 'danger',
+      },
+    ))
+  ) {
+    return;
+  }
+
+  await adminFetch(`/api/admin/records/${id}/google`, { method: 'DELETE' });
+  await loadRecords();
+  showToast('已删除谷歌号、谷歌密码、谷歌辅助');
+};
+
+window.clearRecordOpFields = async function clearRecordOpFields(id) {
+  if (
+    !(await showConfirm(
+      buildClearOpConfirmMessage(currentRecordSummariesById.get(id)),
+      {
+        confirmText: '删除OP',
+        tone: 'danger',
+      },
+    ))
+  ) {
+    return;
+  }
+
+  await adminFetch(`/api/admin/records/${id}/op`, { method: 'DELETE' });
+  await loadRecords();
+  showToast('已删除OP、OP链接、OP到期时间');
 };
 
 window.toggleRecordSelection = function toggleRecordSelection(id, checked) {

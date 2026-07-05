@@ -262,6 +262,60 @@ test('batch delete removes selected records and keeps unselected rows', async ()
   assert.equal(listResponse.body.items[0].id, third.body.item.id);
 });
 
+test('single record delete actions can clear only Google fields or only OP fields', async () => {
+  const { agent, config } = await createAdminTestContext();
+  await loginAsSuperAdmin(agent, config);
+
+  const first = await agent.post('/api/admin/records').send({
+    googleAccount: 'clear-google@gmail.com',
+    googlePassword: 'clear-google-pass',
+    googleAssist: 'clear-google-assist',
+    googleExpireAt: '2026-12-31T00:00:00.000Z',
+    uidValue: '',
+    opValue: 'op-stays',
+    opLink: 'https://example.com/op-stays',
+    opExpireAt: '2026-12-31T00:00:00.000Z',
+    remark: 'clear google only',
+  });
+  const second = await agent.post('/api/admin/records').send({
+    googleAccount: 'google-stays@gmail.com',
+    googlePassword: 'google-stays-pass',
+    googleAssist: 'google-stays-assist',
+    googleExpireAt: '2026-12-31T00:00:00.000Z',
+    uidValue: '',
+    opValue: 'op-clears',
+    opLink: 'https://example.com/op-clears',
+    opExpireAt: '2026-12-31T00:00:00.000Z',
+    remark: 'clear op only',
+  });
+
+  const clearGoogleResponse = await agent.delete(
+    `/api/admin/records/${first.body.item.id}/google`,
+  );
+  const clearOpResponse = await agent.delete(
+    `/api/admin/records/${second.body.item.id}/op`,
+  );
+
+  assert.equal(clearGoogleResponse.status, 200);
+  assert.equal(clearGoogleResponse.body.item.googleAccount, '');
+  assert.equal(clearGoogleResponse.body.item.googlePassword, '');
+  assert.equal(clearGoogleResponse.body.item.googleAssist, '');
+  assert.equal(
+    clearGoogleResponse.body.item.googleExpireAt,
+    '2026-12-31T00:00:00.000Z',
+  );
+  assert.equal(clearGoogleResponse.body.item.opValue, 'op-stays');
+  assert.equal(clearGoogleResponse.body.item.opLink, 'https://example.com/op-stays');
+
+  assert.equal(clearOpResponse.status, 200);
+  assert.equal(clearOpResponse.body.item.googleAccount, 'google-stays@gmail.com');
+  assert.equal(clearOpResponse.body.item.googlePassword, 'google-stays-pass');
+  assert.equal(clearOpResponse.body.item.googleAssist, 'google-stays-assist');
+  assert.equal(clearOpResponse.body.item.opValue, '');
+  assert.equal(clearOpResponse.body.item.opLink, '');
+  assert.equal(clearOpResponse.body.item.opExpireAt, null);
+});
+
 test('record list stays available when historical passwords cannot be decrypted', async () => {
   const { agent, pool, config } = await createAdminTestContext();
   await loginAsSuperAdmin(agent, config);

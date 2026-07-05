@@ -1,5 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
 const request = require('supertest');
 
 const { createApp } = require('../app');
@@ -8,6 +11,23 @@ function createTestApp() {
   return createApp({
     buildWakeUrlImpl: () => 'tencent1105602870://qzapp/mqzone/0?pasteboard=test',
   });
+}
+
+function loadAdminRecordsScript() {
+  const script = fs.readFileSync(
+    path.join(__dirname, '..', 'public', 'admin', 'records.js'),
+    'utf8',
+  );
+  const sandbox = {
+    console,
+    URLSearchParams,
+    window: {
+      addEventListener() {},
+    },
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(script, sandbox);
+  return sandbox;
 }
 
 test('GET /admin/login serves the admin login shell', async () => {
@@ -64,6 +84,32 @@ test('admin records UI truncates long OP fields in the table', async () => {
   assert.match(pageResponse.text, /cell-truncate cell-truncate-link/);
   assert.match(styleResponse.text, /\.cell-truncate\s*\{/);
   assert.match(styleResponse.text, /text-overflow:\s*ellipsis/);
+});
+
+test('admin record row actions expose separate Google and OP delete buttons', async () => {
+  const app = createTestApp();
+  const pageResponse = await request(app).get('/admin/records.js');
+
+  assert.equal(pageResponse.status, 200);
+  assert.match(pageResponse.text, /删除谷歌号/);
+  assert.match(pageResponse.text, /删除OP/);
+  assert.match(pageResponse.text, /clearRecordGoogleFields/);
+  assert.match(pageResponse.text, /clearRecordOpFields/);
+});
+
+test('admin record delete confirmation names the google account and OP value', () => {
+  const sandbox = loadAdminRecordsScript();
+
+  assert.equal(typeof sandbox.buildDeleteRecordConfirmMessage, 'function');
+
+  const message = sandbox.buildDeleteRecordConfirmMessage({
+    googleAccount: 'delete-target@gmail.com',
+    opValue: 'openid|access-token|pay-token',
+  });
+
+  assert.match(message, /确认永久删除这条记录/);
+  assert.match(message, /谷歌号：delete-target@gmail\.com/);
+  assert.match(message, /OP：openid\|access-token\|pay-token/);
 });
 
 test('admin common UI exposes custom feedback dialogs for export confirmation and toast', async () => {

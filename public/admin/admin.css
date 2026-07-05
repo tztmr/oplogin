@@ -434,6 +434,8 @@ dialog h3 {
   color: var(--text-muted);
   font-size: 14px;
   line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 .import-help {
