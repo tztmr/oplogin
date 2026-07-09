@@ -164,6 +164,8 @@ textarea {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
   padding: 16px 24px;
   background: var(--card-bg);
   border-radius: var(--border-radius);
@@ -175,6 +177,11 @@ textarea {
   display: flex;
   gap: 12px;
   align-items: center;
+  flex-wrap: wrap;
+}
+
+.action-bar-right {
+  justify-content: flex-end;
 }
 
 .public-batch-eligibility {

@@ -31,6 +31,8 @@
       <button id="batchImportButton" type="button" class="btn-primary">批量导入</button>
       <button id="createRecordButton" type="button" class="btn-primary">新增记录</button>
       <button id="batchDeleteButton" type="button" class="btn-cancel" disabled>批量删除</button>
+      <button id="batchClearGoogleButton" type="button" class="btn-cancel" disabled>批量删除谷歌号</button>
+      <button id="batchClearOpButton" type="button" class="btn-cancel" disabled>批量删除OP</button>
       <button id="exportCsvButton" type="button" class="btn-primary">导出勾选</button>
       <button id="exportFilteredCsvButton" type="button" class="btn-cancel">按筛选导出全部</button>
     </div>
@@ -38,13 +40,13 @@
 
   <div id="batchDeleteProgressSection" class="batch-action-progress hidden" aria-live="polite">
     <div class="batch-action-progress-head">
-      <span>批量删除进度</span>
+      <span>批量操作进度</span>
       <span id="batchDeleteProgressValue">0%</span>
     </div>
     <div class="batch-action-progress-track">
       <div id="batchDeleteProgressBar" class="batch-action-progress-bar danger"></div>
     </div>
-    <p id="batchDeleteProgressText" class="batch-action-progress-text">等待开始删除</p>
+    <p id="batchDeleteProgressText" class="batch-action-progress-text">等待开始操作</p>
   </div>
 
   <section id="publicBatchEligibilityCard" class="public-batch-eligibility" aria-live="polite">

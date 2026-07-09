@@ -100,7 +100,7 @@ function buildClearGoogleConfirmMessage(record) {
   return [
     '确认删除这条记录的谷歌号吗？',
     `谷歌号：${formatDeleteConfirmField(record?.googleAccount)}`,
-    '将清空：谷歌号、谷歌密码、谷歌辅助',
+    '将清空：谷歌号、谷歌密码、谷歌辅助、谷歌到期时间',
   ].join('\n');
 }
 
@@ -108,6 +108,20 @@ function buildClearOpConfirmMessage(record) {
   return [
     '确认删除这条记录的 OP 吗？',
     `OP：${formatDeleteConfirmField(record?.opValue)}`,
+    '将清空：OP、OP链接、OP到期时间',
+  ].join('\n');
+}
+
+function buildBatchClearGoogleConfirmMessage(count) {
+  return [
+    `确认删除已勾选的 ${count} 条记录的谷歌号吗？`,
+    '将清空：谷歌号、谷歌密码、谷歌辅助、谷歌到期时间',
+  ].join('\n');
+}
+
+function buildBatchClearOpConfirmMessage(count) {
+  return [
+    `确认删除已勾选的 ${count} 条记录的 OP 吗？`,
     '将清空：OP、OP链接、OP到期时间',
   ].join('\n');
 }
@@ -220,12 +234,11 @@ async function loadRecords() {
 }
 
 function syncBatchDeleteState() {
-  const batchDeleteButton = document.getElementById('batchDeleteButton');
   const selectAllCheckbox = document.getElementById('selectAllRecordsCheckbox');
   const selectedCount = selectedRecordIds.size;
-  batchDeleteButton.disabled = selectedCount === 0;
-  batchDeleteButton.textContent =
-    selectedCount > 0 ? `批量删除 (${selectedCount})` : '批量删除';
+  syncBatchActionButton('batchDeleteButton', '批量删除', selectedCount);
+  syncBatchActionButton('batchClearGoogleButton', '批量删除谷歌号', selectedCount);
+  syncBatchActionButton('batchClearOpButton', '批量删除OP', selectedCount);
 
   const totalVisible = currentPageRecordIds.length;
   const selectedVisible = currentPageRecordIds.filter((id) =>
@@ -234,6 +247,17 @@ function syncBatchDeleteState() {
   selectAllCheckbox.checked = totalVisible > 0 && selectedVisible === totalVisible;
   selectAllCheckbox.indeterminate =
     selectedVisible > 0 && selectedVisible < totalVisible;
+}
+
+function syncBatchActionButton(buttonId, baseLabel, selectedCount) {
+  const actionButton = document.getElementById(buttonId);
+  if (!actionButton) {
+    return;
+  }
+
+  actionButton.disabled = selectedCount === 0;
+  actionButton.textContent =
+    selectedCount > 0 ? `${baseLabel} (${selectedCount})` : baseLabel;
 }
 
 function readRecordFormPayload() {
@@ -358,7 +382,6 @@ function resetBatchDeleteProgressState() {
   const progressBar = document.getElementById('batchDeleteProgressBar');
   const progressValue = document.getElementById('batchDeleteProgressValue');
   const progressText = document.getElementById('batchDeleteProgressText');
-  const batchDeleteButton = document.getElementById('batchDeleteButton');
 
   if (batchDeleteProgressTimer) {
     window.clearInterval(batchDeleteProgressTimer);
@@ -368,18 +391,22 @@ function resetBatchDeleteProgressState() {
   progressSection.classList.add('hidden');
   progressBar.style.width = '0%';
   progressValue.textContent = '0%';
-  progressText.textContent = '等待开始删除';
+  progressText.textContent = '等待开始操作';
   syncBatchDeleteState();
-  batchDeleteButton.disabled = selectedRecordIds.size === 0;
 }
 
-function startBatchDeleteProgress() {
-  const batchDeleteButton = document.getElementById('batchDeleteButton');
+function startBatchDeleteProgress({
+  buttonId = 'batchDeleteButton',
+  loadingButtonText = '删除中...',
+  startText = '正在删除勾选记录...',
+  runningText = '正在同步删除结果...',
+} = {}) {
+  const actionButton = document.getElementById(buttonId);
   let currentProgress = 20;
 
-  batchDeleteButton.disabled = true;
-  batchDeleteButton.textContent = '删除中...';
-  setBatchDeleteProgressState(20, '正在删除勾选记录...');
+  actionButton.disabled = true;
+  actionButton.textContent = loadingButtonText;
+  setBatchDeleteProgressState(20, startText);
 
   if (batchDeleteProgressTimer) {
     window.clearInterval(batchDeleteProgressTimer);
@@ -387,7 +414,7 @@ function startBatchDeleteProgress() {
 
   batchDeleteProgressTimer = window.setInterval(() => {
     currentProgress = Math.min(currentProgress + 10, 88);
-    setBatchDeleteProgressState(currentProgress, '正在同步删除结果...');
+    setBatchDeleteProgressState(currentProgress, runningText);
     if (currentProgress >= 88) {
       window.clearInterval(batchDeleteProgressTimer);
       batchDeleteProgressTimer = null;
@@ -489,7 +516,7 @@ window.clearRecordGoogleFields = async function clearRecordGoogleFields(id) {
 
   await adminFetch(`/api/admin/records/${id}/google`, { method: 'DELETE' });
   await loadRecords();
-  showToast('已删除谷歌号、谷歌密码、谷歌辅助');
+  showToast('已删除谷歌号、谷歌密码、谷歌辅助、谷歌到期时间');
 };
 
 window.clearRecordOpFields = async function clearRecordOpFields(id) {
@@ -535,7 +562,12 @@ async function deleteSelectedRecords() {
     return;
   }
 
-  startBatchDeleteProgress();
+  startBatchDeleteProgress({
+    buttonId: 'batchDeleteButton',
+    loadingButtonText: '删除中...',
+    startText: '正在删除勾选记录...',
+    runningText: '正在同步删除结果...',
+  });
 
   try {
     const data = await adminFetch('/api/admin/records/batch-delete', {
@@ -565,6 +597,118 @@ async function deleteSelectedRecords() {
     setBatchDeleteProgressState(100, `删除失败: ${errMsg}`);
     document.getElementById('batchDeleteButton').disabled = false;
     document.getElementById('batchDeleteButton').textContent = '重新删除';
+    throw error;
+  }
+}
+
+async function clearSelectedGoogleFields() {
+  const ids = getSelectedRecordIds();
+  if (!ids.length) {
+    showToast('请先勾选要删除谷歌号的记录');
+    return;
+  }
+
+  if (
+    !(await showConfirm(buildBatchClearGoogleConfirmMessage(ids.length), {
+      confirmText: '删除谷歌号',
+      tone: 'danger',
+    }))
+  ) {
+    return;
+  }
+
+  startBatchDeleteProgress({
+    buttonId: 'batchClearGoogleButton',
+    loadingButtonText: '删除谷歌号中...',
+    startText: '正在删除勾选记录的谷歌号...',
+    runningText: '正在同步谷歌号删除结果...',
+  });
+
+  try {
+    const data = await adminFetch('/api/admin/records/batch-clear-google', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    });
+
+    stopBatchDeleteProgressTimer();
+    setBatchDeleteProgressState(100, '谷歌号删除完成');
+    if (data.clearedCount > 0) {
+      selectedRecordIds.clear();
+      await loadRecords();
+      window.setTimeout(() => {
+        resetBatchDeleteProgressState();
+        showToast(
+          `已删除 ${data.clearedCount} 条记录的谷歌号、谷歌密码、谷歌辅助、谷歌到期时间`,
+        );
+      }, 220);
+      return;
+    }
+
+    window.setTimeout(() => {
+      resetBatchDeleteProgressState();
+      showToast('未删除任何谷歌号，请重新勾选后再试');
+    }, 220);
+  } catch (error) {
+    stopBatchDeleteProgressTimer();
+    const errMsg = error.message || '请稍后重试';
+    setBatchDeleteProgressState(100, `删除谷歌号失败: ${errMsg}`);
+    document.getElementById('batchClearGoogleButton').disabled = false;
+    document.getElementById('batchClearGoogleButton').textContent = '重新删除谷歌号';
+    throw error;
+  }
+}
+
+async function clearSelectedOpFields() {
+  const ids = getSelectedRecordIds();
+  if (!ids.length) {
+    showToast('请先勾选要删除 OP 的记录');
+    return;
+  }
+
+  if (
+    !(await showConfirm(buildBatchClearOpConfirmMessage(ids.length), {
+      confirmText: '删除OP',
+      tone: 'danger',
+    }))
+  ) {
+    return;
+  }
+
+  startBatchDeleteProgress({
+    buttonId: 'batchClearOpButton',
+    loadingButtonText: '删除OP中...',
+    startText: '正在删除勾选记录的 OP...',
+    runningText: '正在同步 OP 删除结果...',
+  });
+
+  try {
+    const data = await adminFetch('/api/admin/records/batch-clear-op', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    });
+
+    stopBatchDeleteProgressTimer();
+    setBatchDeleteProgressState(100, 'OP 删除完成');
+    if (data.clearedCount > 0) {
+      selectedRecordIds.clear();
+      await loadRecords();
+      window.setTimeout(() => {
+        resetBatchDeleteProgressState();
+        showToast(`已删除 ${data.clearedCount} 条记录的OP、OP链接、OP到期时间`);
+      }, 220);
+      return;
+    }
+
+    window.setTimeout(() => {
+      resetBatchDeleteProgressState();
+      showToast('未删除任何 OP，请重新勾选后再试');
+    }, 220);
+  } catch (error) {
+    stopBatchDeleteProgressTimer();
+    const errMsg = error.message || '请稍后重试';
+    setBatchDeleteProgressState(100, `删除 OP 失败: ${errMsg}`);
+    document.getElementById('batchClearOpButton').disabled = false;
+    document.getElementById('batchClearOpButton').textContent = '重新删除OP';
     throw error;
   }
 }
@@ -702,6 +846,12 @@ window.addEventListener('DOMContentLoaded', async () => {
   document
     .getElementById('batchDeleteButton')
     .addEventListener('click', deleteSelectedRecords);
+  document
+    .getElementById('batchClearGoogleButton')
+    .addEventListener('click', clearSelectedGoogleFields);
+  document
+    .getElementById('batchClearOpButton')
+    .addEventListener('click', clearSelectedOpFields);
   document
     .getElementById('selectAllRecordsCheckbox')
     .addEventListener('change', (event) => {

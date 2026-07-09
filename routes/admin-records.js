@@ -6,6 +6,8 @@ const {
   updateManagedRecord,
   clearManagedRecordGoogleFields,
   clearManagedRecordOpFields,
+  clearManagedRecordGoogleFieldsBatch,
+  clearManagedRecordOpFieldsBatch,
   deleteManagedRecord,
   deleteManagedRecords,
   exportManagedRecordsCsv,
@@ -93,6 +95,34 @@ function createAdminRecordsRouter({ pool, config, requireAdminAuth }) {
     try {
       const deletedCount = await deleteManagedRecords(pool, req.body.ids, req.adminUser);
       return res.status(200).json({ deletedCount });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/batch-clear-google', async (req, res, next) => {
+    try {
+      const clearedCount = await clearManagedRecordGoogleFieldsBatch(
+        pool,
+        config,
+        req.body.ids,
+        req.adminUser,
+      );
+      return res.status(200).json({ clearedCount });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/batch-clear-op', async (req, res, next) => {
+    try {
+      const clearedCount = await clearManagedRecordOpFieldsBatch(
+        pool,
+        config,
+        req.body.ids,
+        req.adminUser,
+      );
+      return res.status(200).json({ clearedCount });
     } catch (error) {
       return next(error);
     }

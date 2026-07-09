@@ -62,6 +62,10 @@ test('GET /admin serves the record management shell', async () => {
   assert.match(response.text, /id="batchDeleteProgressSection"/);
   assert.match(response.text, /id="batchDeleteProgressBar"/);
   assert.match(response.text, /id="batchDeleteProgressText"/);
+  assert.match(response.text, /id="batchClearGoogleButton"/);
+  assert.match(response.text, /批量删除谷歌号/);
+  assert.match(response.text, /id="batchClearOpButton"/);
+  assert.match(response.text, /批量删除OP/);
   assert.match(response.text, /id="publicBatchEligibilityCard"/);
   assert.match(response.text, /id="publicBatchEligibilitySummary"/);
   assert.match(response.text, /id="changeOwnWifiButton"/);
@@ -103,6 +107,8 @@ test('admin record row actions expose separate Google and OP delete buttons', as
   assert.match(pageResponse.text, /删除OP/);
   assert.match(pageResponse.text, /clearRecordGoogleFields/);
   assert.match(pageResponse.text, /clearRecordOpFields/);
+  assert.match(pageResponse.text, /clearSelectedGoogleFields/);
+  assert.match(pageResponse.text, /clearSelectedOpFields/);
 });
 
 test('admin record delete confirmation names the google account and OP value', () => {
@@ -133,8 +139,10 @@ test('admin common UI exposes custom feedback dialogs for export confirmation an
   assert.match(pageResponse.text, /setBatchImportProgressState\(15,\s*'正在上传导入数据\.\.\.'\)/);
   assert.match(pageResponse.text, /setBatchImportProgressState\(100,\s*'导入完成'\)/);
   assert.match(pageResponse.text, /function setBatchDeleteProgressState\(/);
-  assert.match(pageResponse.text, /setBatchDeleteProgressState\(20,\s*'正在删除勾选记录\.\.\.'\)/);
+  assert.match(pageResponse.text, /startText\s*=\s*'正在删除勾选记录\.\.\.'/);
   assert.match(pageResponse.text, /setBatchDeleteProgressState\(100,\s*'删除完成'\)/);
+  assert.match(pageResponse.text, /\/api\/admin\/records\/batch-clear-google/);
+  assert.match(pageResponse.text, /\/api\/admin\/records\/batch-clear-op/);
   assert.match(pageResponse.text, /function renderPublicBatchEligibility\(/);
   assert.match(pageResponse.text, /publicBatchEligibilitySummary/);
   assert.match(commonResponse.text, /function showConfirm\(/);

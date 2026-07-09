@@ -300,10 +300,7 @@ test('single record delete actions can clear only Google fields or only OP field
   assert.equal(clearGoogleResponse.body.item.googleAccount, '');
   assert.equal(clearGoogleResponse.body.item.googlePassword, '');
   assert.equal(clearGoogleResponse.body.item.googleAssist, '');
-  assert.equal(
-    clearGoogleResponse.body.item.googleExpireAt,
-    '2026-12-31T00:00:00.000Z',
-  );
+  assert.equal(clearGoogleResponse.body.item.googleExpireAt, null);
   assert.equal(clearGoogleResponse.body.item.opValue, 'op-stays');
   assert.equal(clearGoogleResponse.body.item.opLink, 'https://example.com/op-stays');
 
@@ -314,6 +311,92 @@ test('single record delete actions can clear only Google fields or only OP field
   assert.equal(clearOpResponse.body.item.opValue, '');
   assert.equal(clearOpResponse.body.item.opLink, '');
   assert.equal(clearOpResponse.body.item.opExpireAt, null);
+});
+
+test('batch clear actions can clear selected Google fields or OP fields', async () => {
+  const { agent, config } = await createAdminTestContext();
+  await loginAsSuperAdmin(agent, config);
+
+  const clearGoogleFirst = await agent.post('/api/admin/records').send({
+    googleAccount: 'batch-clear-google-1@gmail.com',
+    googlePassword: 'batch-clear-google-pass-1',
+    googleAssist: 'batch-clear-google-assist-1',
+    googleExpireAt: '2026-12-31T00:00:00.000Z',
+    uidValue: '',
+    opValue: 'google-op-1',
+    opLink: 'https://example.com/google-op-1',
+    opExpireAt: '2026-12-31T00:00:00.000Z',
+    remark: 'batch clear google 1',
+  });
+  const clearGoogleSecond = await agent.post('/api/admin/records').send({
+    googleAccount: 'batch-clear-google-2@gmail.com',
+    googlePassword: 'batch-clear-google-pass-2',
+    googleAssist: 'batch-clear-google-assist-2',
+    googleExpireAt: '2026-12-31T00:00:00.000Z',
+    uidValue: '',
+    opValue: 'google-op-2',
+    opLink: 'https://example.com/google-op-2',
+    opExpireAt: '2026-12-31T00:00:00.000Z',
+    remark: 'batch clear google 2',
+  });
+  const clearOpFirst = await agent.post('/api/admin/records').send({
+    googleAccount: 'batch-clear-op-1@gmail.com',
+    googlePassword: 'batch-clear-op-pass-1',
+    googleAssist: 'batch-clear-op-assist-1',
+    googleExpireAt: '2026-12-31T00:00:00.000Z',
+    uidValue: '',
+    opValue: 'batch-clear-op-1',
+    opLink: 'https://example.com/batch-clear-op-1',
+    opExpireAt: '2026-12-31T00:00:00.000Z',
+    remark: 'batch clear op 1',
+  });
+  const clearOpSecond = await agent.post('/api/admin/records').send({
+    googleAccount: 'batch-clear-op-2@gmail.com',
+    googlePassword: 'batch-clear-op-pass-2',
+    googleAssist: 'batch-clear-op-assist-2',
+    googleExpireAt: '2026-12-31T00:00:00.000Z',
+    uidValue: '',
+    opValue: 'batch-clear-op-2',
+    opLink: 'https://example.com/batch-clear-op-2',
+    opExpireAt: '2026-12-31T00:00:00.000Z',
+    remark: 'batch clear op 2',
+  });
+
+  const batchClearGoogleResponse = await agent
+    .post('/api/admin/records/batch-clear-google')
+    .send({ ids: [clearGoogleFirst.body.item.id, clearGoogleSecond.body.item.id] });
+  const batchClearOpResponse = await agent
+    .post('/api/admin/records/batch-clear-op')
+    .send({ ids: [clearOpFirst.body.item.id, clearOpSecond.body.item.id] });
+
+  const firstAfterGoogleClear = await agent.get(
+    `/api/admin/records/${clearGoogleFirst.body.item.id}`,
+  );
+  const firstAfterOpClear = await agent.get(
+    `/api/admin/records/${clearOpFirst.body.item.id}`,
+  );
+
+  assert.equal(batchClearGoogleResponse.status, 200);
+  assert.equal(batchClearGoogleResponse.body.clearedCount, 2);
+  assert.equal(batchClearOpResponse.status, 200);
+  assert.equal(batchClearOpResponse.body.clearedCount, 2);
+
+  assert.equal(firstAfterGoogleClear.body.item.googleAccount, '');
+  assert.equal(firstAfterGoogleClear.body.item.googlePassword, '');
+  assert.equal(firstAfterGoogleClear.body.item.googleAssist, '');
+  assert.equal(firstAfterGoogleClear.body.item.googleExpireAt, null);
+  assert.equal(firstAfterGoogleClear.body.item.opValue, 'google-op-1');
+  assert.equal(
+    firstAfterGoogleClear.body.item.opLink,
+    'https://example.com/google-op-1',
+  );
+
+  assert.equal(firstAfterOpClear.body.item.googleAccount, 'batch-clear-op-1@gmail.com');
+  assert.equal(firstAfterOpClear.body.item.googlePassword, 'batch-clear-op-pass-1');
+  assert.equal(firstAfterOpClear.body.item.googleAssist, 'batch-clear-op-assist-1');
+  assert.equal(firstAfterOpClear.body.item.opValue, '');
+  assert.equal(firstAfterOpClear.body.item.opLink, '');
+  assert.equal(firstAfterOpClear.body.item.opExpireAt, null);
 });
 
 test('record list stays available when historical passwords cannot be decrypted', async () => {
