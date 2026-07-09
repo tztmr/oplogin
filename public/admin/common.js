@@ -176,7 +176,7 @@ function initializeOwnUserPageButton(user) {
   }
 
   openButton.addEventListener('click', () => {
-    window.location.href = `/${encodeURIComponent(user.login)}`;
+    window.open(`/${encodeURIComponent(user.login)}`, '_blank', 'noopener');
   });
 }
 

@@ -301,8 +301,8 @@ td .row-actions {
 
 .cell-truncate {
   display: inline-block;
-  width: 240px;
-  max-width: 240px;
+  width: 100%;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -310,13 +310,113 @@ td .row-actions {
 }
 
 .cell-truncate-op {
-  width: 220px;
-  max-width: 220px;
+  display: block;
 }
 
 .cell-truncate-link {
-  width: 260px;
-  max-width: 260px;
+  display: block;
+}
+
+#recordTable {
+  table-layout: fixed;
+  min-width: 0;
+}
+
+#recordTable col.record-col-select {
+  width: 3%;
+}
+
+#recordTable col.record-col-order {
+  width: 4.5%;
+}
+
+#recordTable col.record-col-google-account {
+  width: 10%;
+}
+
+#recordTable col.record-col-google-password {
+  width: 8.5%;
+}
+
+#recordTable col.record-col-google-assist {
+  width: 8.5%;
+}
+
+#recordTable col.record-col-google-expire {
+  width: 7.5%;
+}
+
+#recordTable col.record-col-uid {
+  width: 6%;
+}
+
+#recordTable col.record-col-uid-created {
+  width: 7.5%;
+}
+
+#recordTable col.record-col-op {
+  width: 10.5%;
+}
+
+#recordTable col.record-col-op-link {
+  width: 10.5%;
+}
+
+#recordTable col.record-col-op-expire {
+  width: 7.5%;
+}
+
+#recordTable col.record-col-remark {
+  width: 6%;
+}
+
+#recordTable col.record-col-actions {
+  width: 10%;
+}
+
+#recordTable th,
+#recordTable td {
+  padding: 14px 10px;
+  font-size: 13px;
+}
+
+#recordTable td {
+  overflow-wrap: anywhere;
+}
+
+#recordTable .row-actions {
+  justify-content: flex-start;
+}
+
+#recordTable .row-actions button {
+  padding: 6px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+@media (max-width: 1920px) {
+  #recordTable th,
+  #recordTable td {
+    padding: 12px 8px;
+  }
+
+  #recordTable col.record-col-google-account {
+    width: 9.5%;
+  }
+
+  #recordTable col.record-col-google-password,
+  #recordTable col.record-col-google-assist {
+    width: 8%;
+  }
+
+  #recordTable col.record-col-op,
+  #recordTable col.record-col-op-link {
+    width: 10%;
+  }
+
+  #recordTable col.record-col-actions {
+    width: 9.5%;
+  }
 }
 
 .pagination-bar {

@@ -77,15 +77,21 @@ test('GET /admin serves the record management shell', async () => {
 
 test('admin records UI truncates long OP fields in the table', async () => {
   const app = createTestApp();
+  const shellResponse = await request(app).get('/admin');
   const pageResponse = await request(app).get('/admin/records.js');
   const styleResponse = await request(app).get('/admin/admin.css');
 
+  assert.equal(shellResponse.status, 200);
   assert.equal(pageResponse.status, 200);
   assert.equal(styleResponse.status, 200);
+  assert.match(shellResponse.text, /record-col-op/);
+  assert.match(shellResponse.text, /record-col-op-link/);
   assert.match(pageResponse.text, /renderTruncatedText\(item\.opValue, 'cell-truncate-op'\)/);
   assert.match(pageResponse.text, /cell-truncate cell-truncate-link/);
   assert.match(styleResponse.text, /\.cell-truncate\s*\{/);
   assert.match(styleResponse.text, /text-overflow:\s*ellipsis/);
+  assert.match(styleResponse.text, /#recordTable\s*\{\s*table-layout:\s*fixed;/);
+  assert.match(styleResponse.text, /#recordTable col\.record-col-op-link\s*\{/);
 });
 
 test('admin record row actions expose separate Google and OP delete buttons', async () => {
@@ -168,7 +174,7 @@ test('admin common UI exposes navigation to the current admin user page', async 
   assert.equal(response.status, 200);
   assert.match(response.text, /function initializeOwnUserPageButton\(/);
   assert.match(response.text, /document\.getElementById\('openOwnUserPageButton'\)/);
-  assert.match(response.text, /window\.location\.href = `\/\$\{encodeURIComponent\(user\.login\)\}`;/);
+  assert.match(response.text, /window\.open\(`\/\$\{encodeURIComponent\(user\.login\)\}`,\s*'_blank',\s*'noopener'\);/);
 });
 
 test('admin common UI hides own user page button for admin login', async () => {
