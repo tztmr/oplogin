@@ -500,6 +500,31 @@ test('public user page renders fixed batch slot actions', async () => {
   assert.match(response.text, /quick-slot-button slot-empty/);
 });
 
+test('public user page disables browser caching and batch fetch uses no-store', async () => {
+  const { app, pool } = await createAdminTestContext();
+  await createAdminUser(pool, {
+    login: 'lz',
+    email: 'lz@example.com',
+    password: 'change-me-now',
+    role: 'operator',
+  });
+
+  const response = await request(app).get('/lz');
+
+  assert.equal(response.status, 200);
+  assert.equal(
+    response.headers['cache-control'],
+    'no-store, no-cache, must-revalidate, proxy-revalidate',
+  );
+  assert.equal(response.headers.pragma, 'no-cache');
+  assert.equal(response.headers.expires, '0');
+  assert.equal(response.headers['surrogate-control'], 'no-store');
+  assert.match(
+    response.text,
+    /fetch\(`\/api\/public\/user\/\$\{encodeURIComponent\(username\)\}\/batch`,\s*\{\s*cache: 'no-store',/s,
+  );
+});
+
 test('public user page caches remark input locally', async () => {
   const { app, pool } = await createAdminTestContext();
   await createAdminUser(pool, {
@@ -577,9 +602,41 @@ test('public user uid availability API rejects existing numeric uid values', asy
     .query({ uid: '987654' });
 
   assert.equal(existingResponse.status, 200);
+  assert.equal(
+    existingResponse.headers['cache-control'],
+    'no-store, no-cache, must-revalidate, proxy-revalidate',
+  );
   assert.deepEqual(existingResponse.body, { uid: '123456', available: false });
   assert.equal(availableResponse.status, 200);
   assert.deepEqual(availableResponse.body, { uid: '987654', available: true });
+});
+
+test('public user batch submit rejects duplicated uid values', async () => {
+  const { app, pool, config } = await createAdminTestContext();
+  const operator = await createAdminUser(pool, {
+    login: 'lz',
+    email: 'lz@example.com',
+    password: 'change-me-now',
+    role: 'operator',
+  });
+  await insertManagedRecord(pool, config, operator.id, {
+    googleAccount: 'used-uid@gmail.com',
+    uidValue: 'dup-uid-001',
+    opValue: 'used-op',
+  });
+  await insertManagedRecord(pool, config, operator.id, {
+    googleAccount: 'available-submit@gmail.com',
+    opValue: 'submit-op',
+  });
+
+  const batchResponse = await request(app).get('/api/public/user/lz/batch');
+  const submitResponse = await request(app)
+    .post('/api/public/user/lz/batch/slots/1/uid')
+    .send({ uid: 'dup-uid-001' });
+
+  assert.equal(batchResponse.status, 200);
+  assert.equal(submitResponse.status, 400);
+  assert.deepEqual(submitResponse.body, { error: 'UID 已存在，请勿重复提交' });
 });
 
 test('public user batch API returns wifi qr config for the user center', async () => {
@@ -609,6 +666,10 @@ test('public user batch API returns wifi qr config for the user center', async (
   const response = await request(app).get('/api/public/user/mxw/batch');
 
   assert.equal(response.status, 200);
+  assert.equal(
+    response.headers['cache-control'],
+    'no-store, no-cache, must-revalidate, proxy-revalidate',
+  );
   assert.deepEqual(response.body.qrConfig, {
     login: 'mxw',
     wifiQrConfig: {
@@ -681,4 +742,30 @@ test('public user record API supports submitting uid and remark', async () => {
   const updatedResult = await pool.query('select uid_value, remark from managed_records where id = $1', [record.id]);
   assert.equal(updatedResult.rows[0].uid_value, 'user-uid-123');
   assert.equal(updatedResult.rows[0].remark, 'test remark');
+});
+
+test('public user record API rejects duplicated uid values on submit', async () => {
+  const { app, pool, config } = await createAdminTestContext();
+  const operator = await createAdminUser(pool, {
+    login: 'lz',
+    email: 'lz@example.com',
+    password: 'change-me-now',
+    role: 'operator',
+  });
+  await insertManagedRecord(pool, config, operator.id, {
+    googleAccount: 'used-submit@gmail.com',
+    uidValue: 'dup-record-uid',
+    opValue: 'used-submit-op',
+  });
+  const record = await insertManagedRecord(pool, config, operator.id, {
+    googleAccount: 'new-submit@gmail.com',
+    opValue: 'new-submit-op',
+  });
+
+  const submitResponse = await request(app)
+    .post(`/api/public/user/lz/record/${record.id}/uid`)
+    .send({ uid: 'dup-record-uid', remark: 'test remark' });
+
+  assert.equal(submitResponse.status, 400);
+  assert.deepEqual(submitResponse.body, { error: 'UID 已存在，请勿重复提交' });
 });

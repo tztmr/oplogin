@@ -723,6 +723,7 @@
         async function checkUidAvailability(uidValue) {
             const response = await fetch(
                 `/api/public/user/${encodeURIComponent(username)}/uid-availability?uid=${encodeURIComponent(uidValue)}`,
+                { cache: 'no-store' },
             );
             const data = await response.json();
             if (!response.ok) {
@@ -901,7 +902,9 @@
             document.getElementById('pageTitle').textContent = `${username} 的数据中心`;
             document.getElementById('pageSubtitle').textContent = '正在加载批次...';
 
-            const response = await fetch(`/api/public/user/${encodeURIComponent(username)}/batch`);
+            const response = await fetch(`/api/public/user/${encodeURIComponent(username)}/batch`, {
+                cache: 'no-store',
+            });
             if (!response.ok) {
                 throw new Error('加载失败，可能用户不存在或被禁用');
             }

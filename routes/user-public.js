@@ -1,6 +1,7 @@
 const express = require('express');
 const { findAdminByIdentifier } = require('../lib/admin-users');
 const { decryptGooglePassword } = require('../lib/google-password-crypto');
+const { isManagedRecordUidUniqueViolation } = require('../lib/uid-value');
 const {
   getCurrentBatch,
   submitBatchSlotUid,
@@ -9,6 +10,14 @@ const {
 
 function createUserPublicRouter({ pool, config }) {
   const router = express.Router();
+
+  router.use((req, res, next) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    res.set('Surrogate-Control', 'no-store');
+    next();
+  });
 
   function buildQrConfig(user) {
     return {
@@ -200,20 +209,37 @@ function createUserPublicRouter({ pool, config }) {
     try {
       const { username, id } = req.params;
       const { uid, remark } = req.body;
+      const normalizedUid = String(uid || '').trim();
+      const normalizedRemark = String(remark || '').trim();
 
-      if (!uid || !uid.trim()) {
+      if (!normalizedUid) {
         return res.status(400).json({ error: 'UID 不能为空' });
       }
 
       const user = await findActiveUser(username);
 
+      const duplicateUidResult = await pool.query(
+        `
+          select 1
+          from managed_records
+          where uid_value = $1
+            and id != $2
+          limit 1
+        `,
+        [normalizedUid, id],
+      );
+
+      if (duplicateUidResult.rows.length > 0) {
+        return res.status(400).json({ error: 'UID 已存在，请勿重复提交' });
+      }
+
       let query = `update managed_records 
          set uid_value = $1, uid_created_at = now(), updated_at = now()`;
-      const queryParams = [uid.trim(), id, user.id];
+      const queryParams = [normalizedUid, id, user.id];
 
-      if (remark && remark.trim()) {
+      if (normalizedRemark) {
         query += `, remark = $4`;
-        queryParams.push(remark.trim());
+        queryParams.push(normalizedRemark);
       }
 
       query += ` where id = $2 and owner_id = $3 and (uid_value = '' or uid_value is null) returning id`;
@@ -226,6 +252,9 @@ function createUserPublicRouter({ pool, config }) {
 
       return res.status(200).json({ status: 'success' });
     } catch (error) {
+      if (isManagedRecordUidUniqueViolation(error)) {
+        return res.status(400).json({ error: 'UID 已存在，请勿重复提交' });
+      }
       return next(error);
     }
   });

@@ -55,6 +55,10 @@ function createApp({ config, pool, sessionMiddleware, buildWakeUrlImpl } = {}) {
     try {
       const user = await findAdminByIdentifier(pool, username);
       if (user && user.status === 'active') {
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
+        res.set('Surrogate-Control', 'no-store');
         return res.sendFile(path.join(publicDir, 'user-page.html'));
       }
     } catch (e) {
