@@ -151,6 +151,50 @@ textarea {
   align-items: center;
 }
 
+.admin-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 24px;
+  margin: 0 32px 32px;
+}
+
+.admin-sidebar {
+  align-self: start;
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  background: var(--card-bg);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.admin-nav-item {
+  width: 100%;
+  text-align: left;
+}
+
+.admin-nav-item.is-active {
+  color: #ffffff;
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.admin-nav-item.is-active:hover {
+  background: var(--primary-hover);
+}
+
+.admin-content {
+  min-width: 0;
+}
+
+.admin-content > .admin-section {
+  margin: 0;
+}
+
+.admin-content > .admin-section[hidden] {
+  display: none;
+}
+
 .admin-section,
 .action-bar,
 .public-batch-eligibility,
@@ -158,6 +202,41 @@ textarea {
 .table-wrap,
 .pagination-bar {
   margin: 0 32px 24px;
+}
+
+.admin-content .action-bar,
+.admin-content .public-batch-eligibility,
+.admin-content .filter-section,
+.admin-content .table-wrap,
+.admin-content .pagination-bar,
+.admin-content #batchDeleteProgressSection {
+  margin-right: 0;
+  margin-left: 0;
+}
+
+.admin-content #batchDeleteProgressSection {
+  margin-bottom: 24px;
+}
+
+.section-heading,
+.admin-section-placeholder {
+  padding: 20px 24px;
+  margin-bottom: 24px;
+  background: var(--card-bg);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.section-heading h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.section-heading p,
+.admin-section-placeholder {
+  margin-top: 6px;
+  margin-bottom: 0;
+  color: var(--text-muted);
 }
 
 .action-bar {
@@ -710,4 +789,26 @@ menu {
 
 .feedback-dialog-form {
   gap: 20px;
+}
+
+@media (max-width: 900px) {
+  .admin-layout {
+    display: block;
+    margin: 0 16px 24px;
+  }
+
+  .admin-sidebar {
+    display: flex;
+    overflow-x: auto;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding: 10px;
+    border-radius: 10px;
+  }
+
+  .admin-nav-item {
+    width: auto;
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
 }

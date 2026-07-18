@@ -30,6 +30,89 @@ function loadAdminRecordsScript() {
   return sandbox;
 }
 
+function loadAdminShellScript() {
+  const script = fs.readFileSync(
+    path.join(__dirname, '..', 'public', 'admin', 'admin-shell.js'),
+    'utf8',
+  );
+  const listeners = new Map();
+  const sessionStorage = new Map();
+  const shownSections = [];
+  const createElement = (id, dataset = {}) => {
+    const elementListeners = new Map();
+    return {
+      id,
+      dataset,
+      hidden: false,
+      classList: {
+        values: new Set(),
+        add(value) { this.values.add(value); },
+        remove(value) { this.values.delete(value); },
+        toggle(value, force) {
+          if (force) this.values.add(value);
+          else this.values.delete(value);
+        },
+        contains(value) { return this.values.has(value); },
+      },
+      addEventListener(type, listener) {
+        elementListeners.set(type, listener);
+      },
+      click() {
+        elementListeners.get('click')?.({ currentTarget: this });
+      },
+    };
+  };
+  const buttons = [
+    createElement('recordsNav', { sectionTarget: 'recordsSection' }),
+    createElement('shortOpsNav', { sectionTarget: 'shortOpsSection' }),
+    createElement('opApplicationsNav', { sectionTarget: 'opApplicationsSection', superAdminOnly: '' }),
+  ];
+  const sections = [
+    createElement('recordsSection', { adminSection: '' }),
+    createElement('shortOpsSection', { adminSection: '' }),
+    createElement('opApplicationsSection', { adminSection: '' }),
+  ];
+  const elements = new Map([...buttons, ...sections].map((element) => [element.id, element]));
+  const sandbox = {
+    CustomEvent: class CustomEvent {
+      constructor(type, init) {
+        this.type = type;
+        this.detail = init.detail;
+      }
+    },
+    document: {
+      addEventListener(type, listener) {
+        listeners.set(type, listener);
+      },
+      getElementById(id) {
+        return elements.get(id) || null;
+      },
+      querySelectorAll(selector) {
+        if (selector === '[data-section-target]') return buttons;
+        if (selector === '[data-admin-section]') return sections;
+        if (selector === '[data-super-admin-only]') return [buttons[2]];
+        return [];
+      },
+    },
+    requireAdminSession: async () => ({ login: 'operator', role: 'operator' }),
+    window: {
+      addEventListener(type, listener) {
+        listeners.set(type, listener);
+      },
+      sessionStorage: {
+        getItem(key) { return sessionStorage.get(key) || null; },
+        setItem(key, value) { sessionStorage.set(key, value); },
+      },
+      dispatchEvent(event) {
+        if (event.type === 'admin-section-shown') shownSections.push(event.detail.sectionId);
+      },
+    },
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(script, sandbox);
+  return { sandbox, buttons, sections, sessionStorage, shownSections, listeners };
+}
+
 test('GET /admin/login serves the admin login shell', async () => {
   const response = await request(createTestApp()).get('/admin/login');
 
@@ -77,6 +160,48 @@ test('GET /admin serves the record management shell', async () => {
   assert.match(response.text, /\/user-center-qr\.js/);
   assert.match(response.text, /id="openOwnUserPageButton"/);
   assert.match(response.text, /进入我的页面/);
+});
+
+test('GET /admin serves sidebar navigation and independent management sections', async () => {
+  const response = await request(createTestApp()).get('/admin');
+
+  assert.equal(response.status, 200);
+  assert.match(response.text, /id="adminSidebar"/);
+  assert.match(response.text, /data-section-target="recordsSection"/);
+  assert.match(response.text, /data-section-target="shortOpsSection"/);
+  assert.match(response.text, /data-section-target="opApplicationsSection"/);
+  assert.match(response.text, /id="recordsSection"/);
+  assert.match(response.text, /id="shortOpsSection"/);
+  assert.match(response.text, /id="opApplicationsSection"/);
+  assert.match(response.text, /id="shortOpsPageStatus"/);
+  assert.match(response.text, /id="opApplicationsPageStatus"/);
+  assert.match(response.text, /id="recordTable"/);
+  assert.match(response.text, /id="pageStatus"/);
+  assert.match(response.text, /\/admin\/admin-shell\.js/);
+  assert.match(response.text, /\/admin\/short-ops\.js/);
+  assert.match(response.text, /\/admin\/op-applications\.js/);
+  assert.match(response.text, /\/admin\/records\.js/);
+});
+
+test('admin shell limits operator navigation and restores an authorized saved section', () => {
+  const { sandbox, buttons, sections, sessionStorage, shownSections } = loadAdminShellScript();
+
+  sessionStorage.set('admin.activeSection', 'opApplicationsSection');
+  sandbox.initializeAdminShell({ login: 'operator', role: 'operator' });
+
+  assert.equal(buttons[2].hidden, true);
+  assert.equal(sections[0].hidden, false);
+  assert.equal(sections[1].hidden, true);
+  assert.equal(sections[2].hidden, true);
+  assert.equal(buttons[0].classList.contains('is-active'), true);
+  assert.equal(sessionStorage.get('admin.activeSection'), 'recordsSection');
+  assert.deepEqual(shownSections, ['recordsSection']);
+
+  buttons[1].click();
+  assert.equal(sections[1].hidden, false);
+  assert.equal(buttons[1].classList.contains('is-active'), true);
+  assert.equal(sessionStorage.get('admin.activeSection'), 'shortOpsSection');
+  assert.deepEqual(shownSections, ['recordsSection', 'shortOpsSection']);
 });
 
 test('admin records UI truncates long OP fields in the table', async () => {

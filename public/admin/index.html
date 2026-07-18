@@ -21,6 +21,15 @@
     </div>
   </header>
 
+  <div class="admin-layout">
+    <nav id="adminSidebar" class="admin-sidebar" aria-label="后台功能导航">
+      <button type="button" class="admin-nav-item is-active" data-section-target="recordsSection">数据管理</button>
+      <button type="button" class="admin-nav-item" data-section-target="shortOpsSection">短 OP 管理</button>
+      <button type="button" class="admin-nav-item" data-section-target="opApplicationsSection" data-super-admin-only>应用管理</button>
+    </nav>
+
+    <div class="admin-content">
+      <main id="recordsSection" class="admin-section" data-admin-section>
   <section class="action-bar">
     <div class="action-bar-left">
       <button id="toggleFiltersButton" type="button" class="btn-cancel">
@@ -202,6 +211,40 @@
     </form>
   </dialog>
 
+      </main>
+
+      <main id="shortOpsSection" class="admin-section admin-placeholder-section" data-admin-section hidden>
+        <div class="section-heading">
+          <div>
+            <h2>短 OP 管理</h2>
+            <p>管理短 OP 记录与状态。</p>
+          </div>
+        </div>
+        <div class="admin-section-placeholder" aria-live="polite">短 OP 数据将在此处加载。</div>
+        <div class="pagination-bar">
+          <button id="shortOpsPreviousPageButton" type="button">上一页</button>
+          <span id="shortOpsPageStatus"></span>
+          <button id="shortOpsNextPageButton" type="button">下一页</button>
+        </div>
+      </main>
+
+      <main id="opApplicationsSection" class="admin-section admin-placeholder-section" data-admin-section hidden>
+        <div class="section-heading">
+          <div>
+            <h2>应用管理</h2>
+            <p>管理 OP 应用与授权信息。</p>
+          </div>
+        </div>
+        <div class="admin-section-placeholder" aria-live="polite">应用数据将在此处加载。</div>
+        <div class="pagination-bar">
+          <button id="opApplicationsPreviousPageButton" type="button">上一页</button>
+          <span id="opApplicationsPageStatus"></span>
+          <button id="opApplicationsNextPageButton" type="button">下一页</button>
+        </div>
+      </main>
+    </div>
+  </div>
+
   <dialog id="selfPasswordDialog">
     <form id="selfPasswordForm" method="dialog" class="stack-form">
       <div class="dialog-heading">
@@ -255,6 +298,9 @@
 
   <script src="/user-center-qr.js"></script>
   <script src="/admin/common.js"></script>
+  <script src="/admin/admin-shell.js"></script>
   <script src="/admin/records.js"></script>
+  <script src="/admin/short-ops.js"></script>
+  <script src="/admin/op-applications.js"></script>
 </body>
 </html>
