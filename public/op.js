@@ -8,7 +8,41 @@
     return match ? match[1] : '';
   }
 
-  const api = { extractShortCode, isValidShortCode };
+  function createAppHandoff({
+    appName,
+    url,
+    message,
+    submitButton,
+    locationLike,
+    setTimeoutImpl = setTimeout,
+    clearTimeoutImpl = clearTimeout,
+  }) {
+    let navigationTimer;
+    let fallbackTimer;
+
+    function restore() {
+      clearTimeoutImpl(navigationTimer);
+      clearTimeoutImpl(fallbackTimer);
+      submitButton.disabled = false;
+      message.textContent = `未能打开${appName}，请重试`;
+      message.className = 'message error';
+    }
+
+    message.textContent = `正在打开${appName}…`;
+    message.className = 'message success';
+    navigationTimer = setTimeoutImpl(() => {
+      try {
+        locationLike.href = url;
+      } catch (error) {
+        restore();
+      }
+    }, 50);
+    fallbackTimer = setTimeoutImpl(restore, 1_500);
+
+    return { restore };
+  }
+
+  const api = { createAppHandoff, extractShortCode, isValidShortCode };
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api;
   }
@@ -22,6 +56,16 @@
     const submitButton = document.querySelector('#submit-short-code');
     const message = document.querySelector('#short-op-message');
     if (!form || !input || !submitButton || !message) return;
+    let activeHandoff = null;
+
+    globalObject.addEventListener('pageshow', () => {
+      if (activeHandoff) {
+        activeHandoff.restore();
+        activeHandoff = null;
+      } else {
+        submitButton.disabled = false;
+      }
+    });
 
     const pathCode = extractShortCode(globalObject.location);
     if (pathCode) input.value = pathCode;
@@ -56,9 +100,13 @@
           throw new Error(result.error || '短码解析失败');
         }
 
-        message.textContent = `正在打开${result.appName}…`;
-        message.className = 'message success';
-        globalObject.location.href = result.url;
+        activeHandoff = createAppHandoff({
+          appName: result.appName,
+          url: result.url,
+          message,
+          submitButton,
+          locationLike: globalObject.location,
+        });
       } catch (error) {
         message.textContent = error.message || '短码解析失败';
         message.className = 'message error';

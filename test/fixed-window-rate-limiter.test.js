@@ -7,6 +7,33 @@ const {
   createFixedWindowRateLimiter,
 } = require('../lib/fixed-window-rate-limiter');
 
+function invokeLimiter(limiter, {
+  ip = '127.0.0.1',
+  remoteAddress = ip,
+  forwardedFor,
+} = {}) {
+  let statusCode = 200;
+  let body;
+  let calledNext = false;
+  const headers = {};
+  if (forwardedFor !== undefined) headers['x-forwarded-for'] = forwardedFor;
+  const req = { ip, socket: { remoteAddress }, headers };
+  const res = {
+    status(value) {
+      statusCode = value;
+      return this;
+    },
+    json(value) {
+      body = value;
+      return this;
+    },
+  };
+  limiter(req, res, () => {
+    calledNext = true;
+  });
+  return { statusCode, body, calledNext };
+}
+
 test('limits the twenty-first request from one IP and resets after sixty seconds', async () => {
   let currentTime = 1_000;
   const app = express();
@@ -55,40 +82,74 @@ test('tracks request windows independently by IP', async () => {
   assert.equal(firstIpAgain.status, 429);
 });
 
-test('large-map cleanup preserves active request windows', () => {
-  const limiter = createFixedWindowRateLimiter({
-    limit: 2,
-    windowMs: 60_000,
-    now: () => 10_000,
+test('direct public clients cannot rotate X-Forwarded-For to bypass the limit', () => {
+  const limiter = createFixedWindowRateLimiter({ limit: 1, now: () => 5_000 });
+
+  const first = invokeLimiter(limiter, {
+    ip: '203.0.113.11',
+    remoteAddress: '198.51.100.20',
+    forwardedFor: '203.0.113.11',
+  });
+  const spoofed = invokeLimiter(limiter, {
+    ip: '203.0.113.12',
+    remoteAddress: '198.51.100.20',
+    forwardedFor: '203.0.113.12',
   });
 
-  function invoke(ip) {
-    let statusCode = 200;
-    let body;
-    let calledNext = false;
-    const res = {
-      status(value) {
-        statusCode = value;
-        return this;
-      },
-      json(value) {
-        body = value;
-        return this;
-      },
-    };
-    limiter({ ip }, res, () => {
-      calledNext = true;
-    });
-    return { statusCode, body, calledNext };
+  assert.equal(first.calledNext, true);
+  assert.equal(spoofed.statusCode, 429);
+});
+
+test('trusted local proxies keep independent forwarded client windows', () => {
+  const limiter = createFixedWindowRateLimiter({ limit: 1, now: () => 5_000 });
+
+  const firstClient = invokeLimiter(limiter, {
+    ip: '203.0.113.21',
+    remoteAddress: '127.0.0.1',
+    forwardedFor: '203.0.113.21',
+  });
+  const secondClient = invokeLimiter(limiter, {
+    ip: '203.0.113.22',
+    remoteAddress: '127.0.0.1',
+    forwardedFor: '203.0.113.22',
+  });
+  const firstClientAgain = invokeLimiter(limiter, {
+    ip: '203.0.113.21',
+    remoteAddress: '127.0.0.1',
+    forwardedFor: '203.0.113.21',
+  });
+
+  assert.equal(firstClient.calledNext, true);
+  assert.equal(secondClient.calledNext, true);
+  assert.equal(firstClientAgain.statusCode, 429);
+});
+
+test('large-map cleanup resets expired windows and preserves active counters', () => {
+  let currentTime = 0;
+  const limiter = createFixedWindowRateLimiter({
+    limit: 2,
+    windowMs: 100,
+    now: () => currentTime,
+  });
+
+  for (let index = 0; index <= 5_000; index += 1) {
+    invokeLimiter(limiter, { ip: `stale-ip-${index}` });
   }
 
-  assert.equal(invoke('active-ip').calledNext, true);
-  for (let index = 0; index <= 10_000; index += 1) {
-    invoke(`bulk-ip-${index}`);
+  currentTime = 50;
+  assert.equal(invokeLimiter(limiter, { ip: 'active-ip' }).calledNext, true);
+  for (let index = 0; index <= 5_000; index += 1) {
+    invokeLimiter(limiter, { ip: `fresh-ip-${index}` });
   }
 
-  assert.equal(invoke('active-ip').calledNext, true);
-  assert.deepEqual(invoke('active-ip'), {
+  currentTime = 100;
+  invokeLimiter(limiter, { ip: 'cleanup-trigger' });
+
+  assert.equal(invokeLimiter(limiter, { ip: 'stale-ip-0' }).calledNext, true);
+  assert.equal(invokeLimiter(limiter, { ip: 'stale-ip-0' }).calledNext, true);
+  assert.equal(invokeLimiter(limiter, { ip: 'stale-ip-0' }).statusCode, 429);
+  assert.equal(invokeLimiter(limiter, { ip: 'active-ip' }).calledNext, true);
+  assert.deepEqual(invokeLimiter(limiter, { ip: 'active-ip' }), {
     statusCode: 429,
     body: { error: '请求过于频繁，请稍后重试' },
     calledNext: false,

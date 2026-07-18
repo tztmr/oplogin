@@ -4,7 +4,11 @@ const request = require('supertest');
 
 const { createApp } = require('../app');
 const { createAdminTestContext } = require('./helpers/create-admin-test-context');
-const { extractShortCode, isValidShortCode } = require('../public/op');
+const {
+  createAppHandoff,
+  extractShortCode,
+  isValidShortCode,
+} = require('../public/op');
 
 const futureTimestamp = 2_000_000_000;
 const op = (label, timestamp = futureTimestamp) =>
@@ -68,7 +72,14 @@ test('POST /api/op/submit rejects malformed short codes', async () => {
   const { pool } = await createAdminTestContext();
   const app = createApp({ pool });
 
-  for (const code of ['', '1234567', '123456789', 'abcd1234']) {
+  for (const code of [
+    '',
+    '1234567',
+    '123456789',
+    'abcd1234',
+    ' 12345678',
+    '12345678 ',
+  ]) {
     const response = await request(app).post('/api/op/submit').send({ code });
     assert.equal(response.status, 400);
     assert.deepEqual(response.body, { error: '请输入正确的 8 位短码' });
@@ -198,4 +209,63 @@ test('public page helpers extract and validate only eight-digit path codes', () 
   assert.equal(isValidShortCode('12345678'), true);
   assert.equal(isValidShortCode('1234567'), false);
   assert.equal(isValidShortCode('1234abcd'), false);
+});
+
+test('app handoff paints the app name before delayed custom-scheme navigation', () => {
+  const scheduled = [];
+  const message = { textContent: '', className: '' };
+  const submitButton = { disabled: true };
+  const locationLike = {};
+
+  createAppHandoff({
+    appName: '抖音',
+    url: 'tencent1105602870://open',
+    message,
+    submitButton,
+    locationLike,
+    setTimeoutImpl(callback, delay) {
+      scheduled.push({ callback, delay });
+      return scheduled.length;
+    },
+    clearTimeoutImpl() {},
+  });
+
+  assert.equal(message.textContent, '正在打开抖音…');
+  assert.equal(message.className, 'message success');
+  assert.equal(locationLike.href, undefined);
+  const navigation = scheduled.find((entry) => entry.delay <= 100);
+  assert.ok(navigation);
+  navigation.callback();
+  assert.equal(locationLike.href, 'tencent1105602870://open');
+});
+
+test('app handoff restores disabled controls through fallback and pageshow hooks', () => {
+  const scheduled = [];
+  const message = { textContent: '', className: '' };
+  const submitButton = { disabled: true };
+  const handoff = createAppHandoff({
+    appName: '抖音',
+    url: 'tencent1105602870://open',
+    message,
+    submitButton,
+    locationLike: {},
+    setTimeoutImpl(callback, delay) {
+      scheduled.push({ callback, delay });
+      return scheduled.length;
+    },
+    clearTimeoutImpl() {},
+  });
+
+  const fallback = scheduled.reduce((latest, entry) =>
+    (!latest || entry.delay > latest.delay ? entry : latest), null);
+  fallback.callback();
+  assert.equal(submitButton.disabled, false);
+  assert.match(message.textContent, /未能打开抖音.*请重试/);
+  assert.equal(message.className, 'message error');
+
+  submitButton.disabled = true;
+  message.textContent = '正在打开抖音…';
+  handoff.restore();
+  assert.equal(submitButton.disabled, false);
+  assert.match(message.textContent, /请重试/);
 });

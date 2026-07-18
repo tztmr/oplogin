@@ -14,7 +14,7 @@ function createOpSubmitRouter({
   const router = express.Router();
 
   router.post('/submit', rateLimitMiddleware, async (req, res, next) => {
-    const code = String(req.body && req.body.code || '').trim();
+    const code = req.body && req.body.code;
     if (!/^\d{8}$/.test(code)) {
       return res.status(400).json({ error: '请输入正确的 8 位短码' });
     }
