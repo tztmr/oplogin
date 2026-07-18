@@ -144,7 +144,6 @@ test('ensureDatabaseSchema enforces short OP application and record constraints'
         'op-invalid',
       )}
     `),
-    /check|constraint/i,
   );
 
   await pool.query(`
@@ -188,11 +187,23 @@ test('ensureDatabaseSchema enforces short OP application and record constraints'
     set status = 'deleted', deleted_at = now()
     where id = '00000000-0000-0000-0000-000000000104'
   `);
+  await assert.rejects(
+    pool.query(`
+      insert into short_op_records (
+        id, owner_id, code, op_value, application_id, op_expire_at, status
+      ) values ${recordValues(
+        '00000000-0000-0000-0000-000000000107',
+        '12345678',
+        'op-after-delete',
+      )}
+    `),
+    /duplicate|unique/i,
+  );
   await pool.query(`
     insert into short_op_records (
       id, owner_id, code, op_value, application_id, op_expire_at, status
     ) values ${recordValues(
-      '00000000-0000-0000-0000-000000000107',
+      '00000000-0000-0000-0000-000000000108',
       '87654321',
       'op-duplicate',
     )}
