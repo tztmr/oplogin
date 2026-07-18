@@ -24,6 +24,7 @@ function createOpApplicationButton(label, onClick, className = '') {
 }
 
 function buildOpApplicationsQuery() {
+  if (opApplicationsPageSize === 'all') opApplicationsPage = 1;
   const query = new URLSearchParams({
     page: String(opApplicationsPage),
     pageSize: opApplicationsPageSize,
@@ -37,8 +38,10 @@ function buildOpApplicationsQuery() {
 
 function updateOpApplicationsPagination(data) {
   const total = Number(data.total) || 0;
-  const pageSize = Number(data.pageSize) || Number(opApplicationsPageSize) || 20;
-  opApplicationsTotalPages = Math.max(1, Math.ceil(total / pageSize));
+  const allRows = data.pageSize === 'all' || opApplicationsPageSize === 'all';
+  const pageSize = allRows ? total || 1 : Number(data.pageSize) || Number(opApplicationsPageSize) || 20;
+  if (allRows) opApplicationsPage = 1;
+  opApplicationsTotalPages = allRows ? 1 : Math.max(1, Math.ceil(total / pageSize));
   document.getElementById('opApplicationsPageStatus').textContent = total
     ? `第 ${opApplicationsPage} / ${opApplicationsTotalPages} 页，共 ${total} 条`
     : '暂无数据';
@@ -89,7 +92,7 @@ function renderOpApplications(items) {
   if (!items.length) {
     const row = document.createElement('tr');
     const cell = createOpApplicationCell('没有符合条件的应用', 'empty-table-cell');
-    cell.colSpan = 6;
+    cell.colSpan = 7;
     row.appendChild(cell);
     body.replaceChildren(row);
     return;
@@ -113,6 +116,7 @@ function renderOpApplications(items) {
     statusLabel.textContent = item.status === 'active' ? '启用' : '停用';
     statusCell.appendChild(statusLabel);
     row.appendChild(statusCell);
+    row.appendChild(createOpApplicationCell(formatDateTime(item.createdAt)));
     row.appendChild(createOpApplicationCell(formatDateTime(item.updatedAt)));
 
     const actionsCell = document.createElement('td');
@@ -150,8 +154,9 @@ async function loadOpApplications(allowPageClamp = true) {
   );
   if (requestGeneration !== opApplicationsRequestGeneration) return;
   const total = Number(data.total) || 0;
-  const pageSize = Number(data.pageSize) || Number(opApplicationsPageSize) || 20;
-  const lastPage = Math.max(1, Math.ceil(total / pageSize));
+  const allRows = data.pageSize === 'all' || opApplicationsPageSize === 'all';
+  const pageSize = allRows ? total || 1 : Number(data.pageSize) || Number(opApplicationsPageSize) || 20;
+  const lastPage = allRows ? 1 : Math.max(1, Math.ceil(total / pageSize));
   if (allowPageClamp && opApplicationsPage > lastPage) {
     opApplicationsPage = lastPage;
     return loadOpApplications(false);

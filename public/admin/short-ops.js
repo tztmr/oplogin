@@ -8,6 +8,8 @@ let shortOpApplicationOptionsLoaded = false;
 let shortOpApplicationOptionsPromise = null;
 let shortOpsInitialLoadPromise = null;
 let shortOpsRequestGeneration = 0;
+let shortOpsShowOwner = false;
+let shortOpsRolePromise = null;
 
 function createShortOpsCell(value, className = '') {
   const cell = document.createElement('td');
@@ -45,23 +47,30 @@ function fallbackCopyShortOpLink(value) {
   }
 }
 
-async function copyShortOpLink(shortLink) {
-  const absoluteUrl = new URL(shortLink, window.location.origin).toString();
+async function copyShortOpText(value) {
   if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
     try {
-      await navigator.clipboard.writeText(absoluteUrl);
+      await navigator.clipboard.writeText(value);
       return true;
     } catch (error) {
       // Clipboard permission can be denied; continue with the safe DOM fallback.
     }
   }
-  return fallbackCopyShortOpLink(absoluteUrl);
+  return fallbackCopyShortOpLink(value);
+}
+
+function copyShortOpLink(shortLink) {
+  return copyShortOpText(new URL(shortLink, window.location.origin).toString());
+}
+
+function copyShortOpCode(code) {
+  return copyShortOpText(String(code || ''));
 }
 
 function appendEmptyShortOpsRow(message) {
   const row = document.createElement('tr');
   const cell = createShortOpsCell(message, 'empty-table-cell');
-  cell.colSpan = 9;
+  cell.colSpan = shortOpsShowOwner ? 10 : 9;
   row.appendChild(cell);
   document.getElementById('shortOpTableBody').replaceChildren(row);
 }
@@ -120,7 +129,19 @@ function ensureShortOpApplicationOptions() {
   return shortOpApplicationOptionsPromise;
 }
 
+function ensureShortOpsRole() {
+  if (!shortOpsRolePromise) {
+    shortOpsRolePromise = requireAdminSession().then((user) => {
+      shortOpsShowOwner = Boolean(user && user.role === 'super_admin');
+      document.getElementById('shortOpsOwnerColumn').hidden = !shortOpsShowOwner;
+      document.getElementById('shortOpsOwnerHeader').hidden = !shortOpsShowOwner;
+    });
+  }
+  return shortOpsRolePromise;
+}
+
 function buildShortOpsQuery() {
+  if (shortOpsPageSize === 'all') shortOpsPage = 1;
   const query = new URLSearchParams({
     page: String(shortOpsPage),
     pageSize: shortOpsPageSize,
@@ -128,16 +149,22 @@ function buildShortOpsQuery() {
   const search = document.getElementById('shortOpsSearch').value.trim();
   const status = document.getElementById('shortOpsStatusFilter').value;
   const applicationId = document.getElementById('shortOpsApplicationFilter').value;
+  const opExpireFrom = document.getElementById('shortOpsExpireFrom').value;
+  const opExpireTo = document.getElementById('shortOpsExpireTo').value;
   if (search) query.set('search', search);
   if (status) query.set('status', status);
   if (applicationId) query.set('applicationId', applicationId);
+  if (opExpireFrom) query.set('opExpireFrom', opExpireFrom);
+  if (opExpireTo) query.set('opExpireTo', opExpireTo);
   return query;
 }
 
 function updateShortOpsPagination(data) {
   const total = Number(data.total) || 0;
-  const pageSize = Number(data.pageSize) || Number(shortOpsPageSize) || 20;
-  shortOpsTotalPages = Math.max(1, Math.ceil(total / pageSize));
+  const allRows = data.pageSize === 'all' || shortOpsPageSize === 'all';
+  const pageSize = allRows ? total || 1 : Number(data.pageSize) || Number(shortOpsPageSize) || 20;
+  if (allRows) shortOpsPage = 1;
+  shortOpsTotalPages = allRows ? 1 : Math.max(1, Math.ceil(total / pageSize));
   document.getElementById('shortOpsPageStatus').textContent = total
     ? `第 ${shortOpsPage} / ${shortOpsTotalPages} 页，共 ${total} 条`
     : '暂无数据';
@@ -197,9 +224,9 @@ function renderShortOps(items) {
     const row = document.createElement('tr');
     row.appendChild(createShortOpsCell(item.code));
     row.appendChild(createShortOpsCell(item.shortLink, 'cell-truncate'));
+    row.appendChild(createShortOpsCell(item.appName || '', 'cell-truncate'));
+    row.appendChild(createShortOpsCell(item.appId || '', 'cell-truncate'));
     row.appendChild(createShortOpsCell(item.maskedOpValue, 'cell-truncate'));
-    row.appendChild(createShortOpsCell(`${item.appName || ''} (${item.appId || ''})`, 'cell-truncate'));
-    row.appendChild(createShortOpsCell(item.owner || ''));
     row.appendChild(createShortOpsCell(formatDateTime(item.opExpireAt)));
 
     const statusCell = document.createElement('td');
@@ -208,6 +235,9 @@ function renderShortOps(items) {
     status.textContent = item.status === 'active' ? '启用' : '停用';
     statusCell.appendChild(status);
     row.appendChild(statusCell);
+    if (shortOpsShowOwner) {
+      row.appendChild(createShortOpsCell(item.owner || ''));
+    }
     row.appendChild(createShortOpsCell(item.remark || '', 'cell-truncate'));
 
     const actionsCell = document.createElement('td');
@@ -216,6 +246,10 @@ function renderShortOps(items) {
     actions.appendChild(createShortOpsButton('复制链接', () => {
       copyShortOpLink(item.shortLink)
         .then((copied) => showToast(copied ? '短链接已复制' : '复制失败，请手动复制'));
+    }));
+    actions.appendChild(createShortOpsButton('复制短码', () => {
+      copyShortOpCode(item.code)
+        .then((copied) => showToast(copied ? '短码已复制' : '复制失败，请手动复制'));
     }));
     actions.appendChild(createShortOpsButton('编辑', () => {
       openShortOpEditDialog(item).catch((error) => showToast(error.message));
@@ -241,8 +275,9 @@ async function loadShortOps(allowPageClamp = true) {
   });
   if (requestGeneration !== shortOpsRequestGeneration) return;
   const total = Number(data.total) || 0;
-  const pageSize = Number(data.pageSize) || Number(shortOpsPageSize) || 20;
-  const lastPage = Math.max(1, Math.ceil(total / pageSize));
+  const allRows = data.pageSize === 'all' || shortOpsPageSize === 'all';
+  const pageSize = allRows ? total || 1 : Number(data.pageSize) || Number(shortOpsPageSize) || 20;
+  const lastPage = allRows ? 1 : Math.max(1, Math.ceil(total / pageSize));
   if (allowPageClamp && shortOpsPage > lastPage) {
     shortOpsPage = lastPage;
     return loadShortOps(false);
@@ -361,6 +396,8 @@ async function initializeShortOps() {
       document.getElementById('shortOpsSearch').value = '';
       document.getElementById('shortOpsStatusFilter').value = '';
       document.getElementById('shortOpsApplicationFilter').value = '';
+      document.getElementById('shortOpsExpireFrom').value = '';
+      document.getElementById('shortOpsExpireTo').value = '';
       shortOpsPage = 1;
       loadShortOps().catch((error) => showToast(error.message));
     });
@@ -378,7 +415,10 @@ async function initializeShortOps() {
       loadShortOps().catch((error) => showToast(error.message));
     });
   }
-  await ensureShortOpApplicationOptions();
+  await Promise.all([
+    ensureShortOpApplicationOptions(),
+    ensureShortOpsRole(),
+  ]);
 }
 
 window.addEventListener('admin-section-shown', (event) => {

@@ -153,6 +153,7 @@ function createManagementElement(tagName = 'div') {
     title: '',
     style: {},
     disabled: false,
+    hidden: false,
     open: false,
     resetCount: 0,
     selected: false,
@@ -348,6 +349,8 @@ test('GET /admin exposes complete short OP and application management controls',
     'shortOpsSearch',
     'shortOpsStatusFilter',
     'shortOpsApplicationFilter',
+    'shortOpsExpireFrom',
+    'shortOpsExpireTo',
     'createShortOpButton',
     'shortOpTable',
     'shortOpTableBody',
@@ -377,6 +380,12 @@ test('GET /admin exposes complete short OP and application management controls',
     'opApplicationName',
     'opApplicationAppId',
   ].forEach((id) => assert.match(response.text, new RegExp(`id="${id}"`)));
+  assert.match(response.text, /short-op-col-app-name/);
+  assert.match(response.text, /short-op-col-app-id/);
+  assert.match(response.text, /<th[^>]*data-short-op-owner-column[^>]*data-super-admin-only[^>]*hidden[^>]*>创建人<\/th>/);
+  assert.match(response.text, /<th>创建时间<\/th>\s*<th>更新时间<\/th>/);
+  assert.match(response.text, /id="shortOpsPageSizeSelect"[\s\S]*?<option value="all">全部<\/option>/);
+  assert.match(response.text, /id="opApplicationsPageSizeSelect"[\s\S]*?<option value="all">全部<\/option>/);
 });
 
 test('short OP and application scripts use independent pagination and required APIs', async () => {
@@ -477,6 +486,8 @@ test('short OP section lazily loads once, builds filters, populates defaults, an
   harness.document.getElementById('shortOpsSearch').value = 'needle value';
   harness.document.getElementById('shortOpsStatusFilter').value = 'disabled';
   harness.document.getElementById('shortOpsApplicationFilter').value = 'app-other';
+  harness.document.getElementById('shortOpsExpireFrom').value = '2030-03-17T10:00';
+  harness.document.getElementById('shortOpsExpireTo').value = '2030-03-18T10:00';
   vm.runInContext("shortOpsPage = 2; shortOpsPageSize = '50'", harness.sandbox);
   await harness.sandbox.loadShortOps();
   const query = new URL(requests.at(-1), 'https://admin.example.test').searchParams;
@@ -485,6 +496,8 @@ test('short OP section lazily loads once, builds filters, populates defaults, an
   assert.equal(query.get('search'), 'needle value');
   assert.equal(query.get('status'), 'disabled');
   assert.equal(query.get('applicationId'), 'app-other');
+  assert.equal(query.get('opExpireFrom'), '2030-03-17T10:00');
+  assert.equal(query.get('opExpireTo'), '2030-03-18T10:00');
 });
 
 test('short OP copy uses an absolute URL and a safe fallback', async () => {
@@ -504,6 +517,11 @@ test('short OP copy uses an absolute URL and a safe fallback', async () => {
     .children[0].children.at(-1).children[0].children[0].click();
   await flushManagementPromises();
   assert.equal(preferred.toastMessages.at(-1), '短链接已复制');
+  preferred.document.getElementById('shortOpTableBody')
+    .children[0].children.at(-1).children[0].children[1].click();
+  await flushManagementPromises();
+  assert.equal(clipboardWrites.at(-1), '12345678');
+  assert.equal(preferred.toastMessages.at(-1), '短码已复制');
 
   let fallbackCalls = 0;
   const fallback = loadManagementBehaviorScript('short-ops.js', {
@@ -599,6 +617,76 @@ test('short OP and application lists clamp stale pages and refetch once', async 
   );
 });
 
+test('all page size forces one page and disables pagination independently', async () => {
+  const shortRequests = [];
+  const shortHarness = loadManagementBehaviorScript('short-ops.js', {
+    adminFetch: async (url) => {
+      shortRequests.push(url);
+      return { items: [], total: 55, pageSize: 'all' };
+    },
+  });
+  vm.runInContext("shortOpsPage = 3; shortOpsPageSize = 'all'", shortHarness.sandbox);
+  await shortHarness.sandbox.loadShortOps();
+  const shortQuery = new URL(shortRequests[0], 'https://admin.example.test').searchParams;
+  assert.equal(shortQuery.get('page'), '1');
+  assert.equal(shortQuery.get('pageSize'), 'all');
+  assert.equal(shortHarness.document.getElementById('shortOpsPageStatus').textContent, '第 1 / 1 页，共 55 条');
+  assert.equal(shortHarness.document.getElementById('shortOpsPreviousPageButton').disabled, true);
+  assert.equal(shortHarness.document.getElementById('shortOpsNextPageButton').disabled, true);
+
+  const appRequests = [];
+  const appHarness = loadManagementBehaviorScript('op-applications.js', {
+    adminFetch: async (url) => {
+      appRequests.push(url);
+      return { items: [], total: 62, pageSize: 'all' };
+    },
+  });
+  vm.runInContext(
+    "opApplicationsAuthorized = true; opApplicationsPage = 4; opApplicationsPageSize = 'all'",
+    appHarness.sandbox,
+  );
+  await appHarness.sandbox.loadOpApplications();
+  const appQuery = new URL(appRequests[0], 'https://admin.example.test').searchParams;
+  assert.equal(appQuery.get('page'), '1');
+  assert.equal(appQuery.get('pageSize'), 'all');
+  assert.equal(appHarness.document.getElementById('opApplicationsPageStatus').textContent, '第 1 / 1 页，共 62 条');
+  assert.equal(appHarness.document.getElementById('opApplicationsPreviousPageButton').disabled, true);
+  assert.equal(appHarness.document.getElementById('opApplicationsNextPageButton').disabled, true);
+});
+
+test('short OP owner cells are super-admin-only and application columns stay separate', async () => {
+  const item = {
+    id: 'row-id', code: '12345678', shortLink: '/op/12345678',
+    maskedOpValue: 'abc****', appName: '应用名称', appId: 'app-id', owner: '<operator>',
+    opExpireAt: 'future', status: 'active', remark: 'remark',
+  };
+  const operatorHarness = loadManagementBehaviorScript('short-ops.js', {
+    requireAdminSession: async () => ({ role: 'operator' }),
+  });
+  await operatorHarness.sandbox.initializeShortOps();
+  assert.equal(operatorHarness.document.getElementById('shortOpsOwnerColumn').hidden, true);
+  assert.equal(operatorHarness.document.getElementById('shortOpsOwnerHeader').hidden, true);
+  operatorHarness.sandbox.renderShortOps([item]);
+  const operatorCells = operatorHarness.document.getElementById('shortOpTableBody').children[0].children;
+  assert.equal(operatorCells.length, 9);
+  assert.equal(operatorCells[2].textContent, '应用名称');
+  assert.equal(operatorCells[3].textContent, 'app-id');
+  assert.equal(operatorCells.some((cell) => cell.textContent === '<operator>'), false);
+
+  const superHarness = loadManagementBehaviorScript('short-ops.js', {
+    requireAdminSession: async () => ({ role: 'super_admin' }),
+  });
+  await superHarness.sandbox.initializeShortOps();
+  assert.equal(superHarness.document.getElementById('shortOpsOwnerColumn').hidden, false);
+  assert.equal(superHarness.document.getElementById('shortOpsOwnerHeader').hidden, false);
+  superHarness.sandbox.renderShortOps([item]);
+  const superCells = superHarness.document.getElementById('shortOpTableBody').children[0].children;
+  assert.equal(superCells.length, 10);
+  assert.equal(superCells[2].textContent, '应用名称');
+  assert.equal(superCells[3].textContent, 'app-id');
+  assert.equal(superCells.some((cell) => cell.textContent === '<operator>'), true);
+});
+
 test('application section gates operators, loads super admins once, and protects default stop action', async () => {
   let operatorRequests = 0;
   const operatorHarness = loadManagementBehaviorScript('op-applications.js', {
@@ -655,9 +743,11 @@ test('application section gates operators, loads super admins once, and protects
 
   adminHarness.sandbox.renderOpApplications([{
     id: 'default-id', name: '<default>', appId: 'app-id', isDefault: true,
-    status: 'active', updatedAt: 'now',
+    status: 'active', createdAt: 'created-time', updatedAt: 'updated-time',
   }]);
   const row = adminHarness.elements.get('opApplicationTableBody').children[0];
+  assert.equal(row.children[4].textContent, 'created-time');
+  assert.equal(row.children[5].textContent, 'updated-time');
   const buttons = row.children.at(-1).children[0].children;
   const stopButton = buttons.find((button) => button.textContent.includes('停用'));
   assert.equal(stopButton.disabled, true);

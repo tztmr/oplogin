@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const request = require('supertest');
 
 const { loadConfig } = require('../lib/config');
@@ -66,4 +68,11 @@ test('createApp exposes a lightweight health endpoint', async () => {
 
   assert.equal(response.status, 200);
   assert.deepEqual(response.body, { status: 'ok' });
+});
+
+test('README documents short OP soft deletion and permanent code uniqueness', () => {
+  const readme = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
+
+  assert.match(readme, /DELETE[^\n]*软删除/);
+  assert.match(readme, /8 位短码[^\n]*(永不重新分配|永久不复用)/);
 });

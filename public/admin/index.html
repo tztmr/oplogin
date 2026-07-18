@@ -234,6 +234,8 @@
           <select id="shortOpsApplicationFilter" aria-label="短 OP 应用">
             <option value="">全部应用</option>
           </select>
+          <input id="shortOpsExpireFrom" type="datetime-local" aria-label="短 OP 到期时间起" />
+          <input id="shortOpsExpireTo" type="datetime-local" aria-label="短 OP 到期时间止" />
           <button id="applyShortOpsFiltersButton" type="button" class="btn-primary">查询</button>
           <button id="resetShortOpsFiltersButton" type="button" class="btn-cancel">重置</button>
         </section>
@@ -242,11 +244,12 @@
             <colgroup>
               <col class="short-op-col-code" />
               <col class="short-op-col-link" />
+              <col class="short-op-col-app-name" />
+              <col class="short-op-col-app-id" />
               <col class="short-op-col-value" />
-              <col class="short-op-col-app" />
-              <col class="short-op-col-owner" />
               <col class="short-op-col-expire" />
               <col class="short-op-col-status" />
+              <col id="shortOpsOwnerColumn" class="short-op-col-owner" data-short-op-owner-column data-super-admin-only hidden />
               <col class="short-op-col-remark" />
               <col class="short-op-col-actions" />
             </colgroup>
@@ -254,11 +257,12 @@
               <tr>
                 <th>短码</th>
                 <th>短链接</th>
+                <th>应用名称</th>
+                <th>AppID</th>
                 <th>OP（脱敏）</th>
-                <th>应用</th>
-                <th>创建人</th>
                 <th>到期时间</th>
                 <th>状态</th>
+                <th id="shortOpsOwnerHeader" data-short-op-owner-column data-super-admin-only hidden>创建人</th>
                 <th>备注</th>
                 <th>操作</th>
               </tr>
@@ -273,6 +277,7 @@
               <option value="20" selected>20</option>
               <option value="50">50</option>
               <option value="100">100</option>
+              <option value="all">全部</option>
             </select>
           </label>
           <button id="shortOpsPreviousPageButton" type="button">上一页</button>
@@ -307,6 +312,7 @@
                 <th>AppID</th>
                 <th>默认应用</th>
                 <th>状态</th>
+                <th>创建时间</th>
                 <th>更新时间</th>
                 <th>操作</th>
               </tr>
@@ -321,6 +327,7 @@
               <option value="20" selected>20</option>
               <option value="50">50</option>
               <option value="100">100</option>
+              <option value="all">全部</option>
             </select>
           </label>
           <button id="opApplicationsPreviousPageButton" type="button">上一页</button>

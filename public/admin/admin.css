@@ -278,7 +278,7 @@ textarea {
 
 .management-filter-bar {
   display: grid;
-  grid-template-columns: minmax(240px, 1fr) minmax(140px, 180px) minmax(160px, 220px) auto auto;
+  grid-template-columns: minmax(220px, 1fr) repeat(4, minmax(150px, 180px)) auto auto;
   gap: 12px;
   align-items: center;
   padding: 16px 24px;
@@ -511,7 +511,7 @@ td .row-actions {
 
 #shortOpTable {
   table-layout: fixed;
-  min-width: 1080px;
+  min-width: 1200px;
 }
 
 #shortOpTable .cell-truncate {
@@ -521,15 +521,16 @@ td .row-actions {
   white-space: nowrap;
 }
 
-#shortOpTable col.short-op-col-code { width: 8%; }
-#shortOpTable col.short-op-col-link { width: 12%; }
-#shortOpTable col.short-op-col-value { width: 18%; }
-#shortOpTable col.short-op-col-app { width: 12%; }
-#shortOpTable col.short-op-col-owner,
-#shortOpTable col.short-op-col-status { width: 8%; }
+#shortOpTable col.short-op-col-code { width: 7%; }
+#shortOpTable col.short-op-col-link { width: 10%; }
+#shortOpTable col.short-op-col-app-name { width: 9%; }
+#shortOpTable col.short-op-col-app-id { width: 9%; }
+#shortOpTable col.short-op-col-value { width: 16%; }
+#shortOpTable col.short-op-col-owner { width: 8%; }
+#shortOpTable col.short-op-col-status { width: 7%; }
 #shortOpTable col.short-op-col-expire { width: 12%; }
-#shortOpTable col.short-op-col-remark { width: 9%; }
-#shortOpTable col.short-op-col-actions { width: 13%; }
+#shortOpTable col.short-op-col-remark { width: 8%; }
+#shortOpTable col.short-op-col-actions { width: 14%; }
 
 #shortOpTable th,
 #shortOpTable td,

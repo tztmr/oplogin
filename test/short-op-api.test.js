@@ -315,6 +315,7 @@ test('operators only access their records while super admins access every record
     .send({ remark: 'stolen' });
   const forbiddenDelete = await rootAgent.delete(`/api/admin/short-ops/${operatorARecord.id}`);
 
+  assert.equal(operatorBList.status, 200);
   assert.deepEqual(operatorBList.body.items.map((item) => item.id), [operatorBRecord.id]);
   assert.equal(forbiddenDetail.status, 404);
   assert.equal(forbiddenUpdate.status, 404);
@@ -323,6 +324,7 @@ test('operators only access their records while super admins access every record
   const superAgent = require('supertest').agent(app);
   await loginAsRoot(superAgent, config);
   const superList = await superAgent.get('/api/admin/short-ops?page=1&pageSize=20');
+  assert.equal(superList.status, 200);
   assert.deepEqual(
     new Set(superList.body.items.map((item) => item.id)),
     new Set([operatorARecord.id, operatorBRecord.id]),
@@ -434,6 +436,40 @@ test('list supports filtering and 20/50/100/all page sizes', async () => {
     assert.equal(response.body.total, 22);
     if (pageSize === 'all') assert.equal(response.body.items.length, 22);
   }
+});
+
+test('list filters an inclusive OP expiry range and rejects invalid ranges', async () => {
+  const { agent, config } = await createAdminTestContext();
+  await loginAsRoot(agent, config);
+  const application = await defaultApplication(agent);
+  const before = await createShortOp(agent, {
+    opValue: op('expire-before', timestamp - 3600), applicationId: application.id,
+  });
+  const within = await createShortOp(agent, {
+    opValue: op('expire-within', timestamp), applicationId: application.id,
+  });
+  const after = await createShortOp(agent, {
+    opValue: op('expire-after', timestamp + 3600), applicationId: application.id,
+  });
+  const expiryOffsetSeconds = 30 * 24 * 60 * 60;
+  const boundary = new Date((timestamp + expiryOffsetSeconds) * 1000).toISOString();
+
+  const filtered = await agent.get(
+    `/api/admin/short-ops?opExpireFrom=${encodeURIComponent(boundary)}&opExpireTo=${encodeURIComponent(boundary)}`,
+  );
+  const invalid = await agent.get('/api/admin/short-ops?opExpireFrom=not-a-date');
+  const reversed = await agent.get(
+    `/api/admin/short-ops?opExpireFrom=${encodeURIComponent(new Date((timestamp + expiryOffsetSeconds + 3600) * 1000).toISOString())}&opExpireTo=${encodeURIComponent(boundary)}`,
+  );
+
+  assert.equal(filtered.status, 200);
+  assert.deepEqual(filtered.body.items.map((item) => item.id), [within.id]);
+  assert.equal(filtered.body.items.some((item) => item.id === before.id), false);
+  assert.equal(filtered.body.items.some((item) => item.id === after.id), false);
+  assert.equal(invalid.status, 400);
+  assert.equal(invalid.body.error, '短 OP 到期时间格式不正确');
+  assert.equal(reversed.status, 400);
+  assert.equal(reversed.body.error, '短 OP 到期时间范围不正确');
 });
 
 test('text import counts successes, batch duplicates, database duplicates, and row errors', async () => {
