@@ -6,6 +6,8 @@ let shortOpsInitialized = false;
 let shortOpApplicationOptions = [];
 let shortOpApplicationOptionsLoaded = false;
 let shortOpApplicationOptionsPromise = null;
+let shortOpsInitialLoadPromise = null;
+let shortOpsRequestGeneration = 0;
 
 function createShortOpsCell(value, className = '') {
   const cell = document.createElement('td');
@@ -233,9 +235,11 @@ function renderShortOps(items) {
 }
 
 async function loadShortOps(allowPageClamp = true) {
+  const requestGeneration = ++shortOpsRequestGeneration;
   const data = await adminFetch(`/api/admin/short-ops?${buildShortOpsQuery().toString()}`, {
     method: 'GET',
   });
+  if (requestGeneration !== shortOpsRequestGeneration) return;
   const total = Number(data.total) || 0;
   const pageSize = Number(data.pageSize) || Number(shortOpsPageSize) || 20;
   const lastPage = Math.max(1, Math.ceil(total / pageSize));
@@ -246,6 +250,17 @@ async function loadShortOps(allowPageClamp = true) {
   shortOpsLoaded = true;
   renderShortOps(data.items || []);
   updateShortOpsPagination(data);
+}
+
+function loadInitialShortOps() {
+  if (shortOpsLoaded) return Promise.resolve();
+  if (!shortOpsInitialLoadPromise) {
+    shortOpsInitialLoadPromise = loadShortOps()
+      .finally(() => {
+        shortOpsInitialLoadPromise = null;
+      });
+  }
+  return shortOpsInitialLoadPromise;
 }
 
 async function openCreateShortOpDialog() {
@@ -370,7 +385,7 @@ window.addEventListener('admin-section-shown', (event) => {
   if (event.detail.sectionId !== 'shortOpsSection') return;
   initializeShortOps()
     .then(() => {
-      if (!shortOpsLoaded) return loadShortOps();
+      if (!shortOpsLoaded) return loadInitialShortOps();
       return null;
     })
     .catch((error) => showToast(error.message));

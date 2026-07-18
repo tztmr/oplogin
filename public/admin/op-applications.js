@@ -4,6 +4,8 @@ let opApplicationsLoaded = false;
 let opApplicationsTotalPages = 1;
 let opApplicationsInitialized = false;
 let opApplicationsAuthorized = false;
+let opApplicationsInitialLoadPromise = null;
+let opApplicationsRequestGeneration = 0;
 
 function createOpApplicationCell(value, className = '') {
   const cell = document.createElement('td');
@@ -141,10 +143,12 @@ function renderOpApplications(items) {
 
 async function loadOpApplications(allowPageClamp = true) {
   if (!opApplicationsAuthorized) return;
+  const requestGeneration = ++opApplicationsRequestGeneration;
   const data = await adminFetch(
     `/api/admin/op-applications?${buildOpApplicationsQuery().toString()}`,
     { method: 'GET' },
   );
+  if (requestGeneration !== opApplicationsRequestGeneration) return;
   const total = Number(data.total) || 0;
   const pageSize = Number(data.pageSize) || Number(opApplicationsPageSize) || 20;
   const lastPage = Math.max(1, Math.ceil(total / pageSize));
@@ -155,6 +159,17 @@ async function loadOpApplications(allowPageClamp = true) {
   opApplicationsLoaded = true;
   renderOpApplications(data.items || []);
   updateOpApplicationsPagination(data);
+}
+
+function loadInitialOpApplications() {
+  if (opApplicationsLoaded) return Promise.resolve();
+  if (!opApplicationsInitialLoadPromise) {
+    opApplicationsInitialLoadPromise = loadOpApplications()
+      .finally(() => {
+        opApplicationsInitialLoadPromise = null;
+      });
+  }
+  return opApplicationsInitialLoadPromise;
 }
 
 async function submitOpApplicationForm(event) {
@@ -227,7 +242,7 @@ async function showOpApplicationsForAuthorizedUser() {
   opApplicationsAuthorized = true;
   initializeOpApplicationsControls();
   if (!opApplicationsLoaded) {
-    await loadOpApplications();
+    await loadInitialOpApplications();
   }
 }
 

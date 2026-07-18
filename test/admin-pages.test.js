@@ -260,6 +260,16 @@ async function flushManagementPromises() {
   await new Promise((resolve) => setImmediate(resolve));
 }
 
+function createDeferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 test('GET /admin/login serves the admin login shell', async () => {
   const response = await request(createTestApp()).get('/admin/login');
 
@@ -652,6 +662,113 @@ test('application section gates operators, loads super admins once, and protects
   const stopButton = buttons.find((button) => button.textContent.includes('停用'));
   assert.equal(stopButton.disabled, true);
   assert.match(stopButton.title, /默认应用/);
+});
+
+test('short OP initial load is shared and a stale response cannot overwrite a newer filter', async () => {
+  const initialResponse = createDeferred();
+  const requests = [];
+  const harness = loadManagementBehaviorScript('short-ops.js', {
+    adminFetch: async (url) => {
+      requests.push(url);
+      if (url.startsWith('/api/admin/op-applications')) return { items: [] };
+      const query = new URL(url, 'https://admin.example.test').searchParams;
+      if (query.get('search') === 'new-filter') {
+        return {
+          items: [{
+            id: 'new-id', code: '22222222', shortLink: '/op/22222222',
+            maskedOpValue: 'new****', appName: '新应用', appId: 'new-app', owner: 'root',
+            opExpireAt: 'future', status: 'active', remark: 'new',
+          }],
+          total: 1,
+          pageSize: 20,
+        };
+      }
+      return initialResponse.promise;
+    },
+  });
+
+  const sectionEvent = {
+    type: 'admin-section-shown', detail: { sectionId: 'shortOpsSection' },
+  };
+  harness.sandbox.window.dispatchEvent(sectionEvent);
+  await flushManagementPromises();
+  harness.sandbox.window.dispatchEvent(sectionEvent);
+  await flushManagementPromises();
+  assert.equal(requests.filter((url) => url.startsWith('/api/admin/short-ops?')).length, 1);
+
+  harness.document.getElementById('shortOpsSearch').value = 'new-filter';
+  await harness.sandbox.loadShortOps();
+  assert.equal(
+    harness.document.getElementById('shortOpTableBody').children[0].children[0].textContent,
+    '22222222',
+  );
+
+  initialResponse.resolve({
+    items: [{
+      id: 'old-id', code: '11111111', shortLink: '/op/11111111',
+      maskedOpValue: 'old****', appName: '旧应用', appId: 'old-app', owner: 'root',
+      opExpireAt: 'future', status: 'active', remark: 'old',
+    }],
+    total: 1,
+    pageSize: 20,
+  });
+  await flushManagementPromises();
+  assert.equal(
+    harness.document.getElementById('shortOpTableBody').children[0].children[0].textContent,
+    '22222222',
+  );
+});
+
+test('application initial load is shared and a stale response cannot overwrite a newer filter', async () => {
+  const initialResponse = createDeferred();
+  const requests = [];
+  const harness = loadManagementBehaviorScript('op-applications.js', {
+    adminFetch: async (url) => {
+      requests.push(url);
+      const query = new URL(url, 'https://admin.example.test').searchParams;
+      if (query.get('search') === 'new-filter') {
+        return {
+          items: [{
+            id: 'new-id', name: '新应用', appId: 'new-app', isDefault: false,
+            status: 'active', updatedAt: 'now',
+          }],
+          total: 1,
+          pageSize: 20,
+        };
+      }
+      return initialResponse.promise;
+    },
+  });
+
+  const sectionEvent = {
+    type: 'admin-section-shown', detail: { sectionId: 'opApplicationsSection' },
+  };
+  harness.sandbox.window.dispatchEvent(sectionEvent);
+  await flushManagementPromises();
+  harness.sandbox.window.dispatchEvent(sectionEvent);
+  await flushManagementPromises();
+  assert.equal(requests.length, 1);
+
+  harness.document.getElementById('opApplicationsSearch').value = 'new-filter';
+  await harness.sandbox.loadOpApplications();
+  assert.equal(
+    harness.document.getElementById('opApplicationTableBody').children[0].children[0].textContent,
+    '新应用',
+  );
+
+  initialResponse.resolve({
+    items: [{
+      id: 'old-id', name: '旧应用', appId: 'old-app', isDefault: false,
+      status: 'active', updatedAt: 'old',
+    }],
+    total: 1,
+    pageSize: 20,
+  });
+  await flushManagementPromises();
+  assert.equal(
+    harness.document.getElementById('opApplicationTableBody').children[0].children[0].textContent,
+    '新应用',
+  );
 });
 
 test('admin shell limits operator navigation and restores an authorized saved section', () => {
