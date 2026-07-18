@@ -140,6 +140,11 @@ function ensureShortOpsRole() {
   return shortOpsRolePromise;
 }
 
+function serializeShortOpsLocalDateTime(value) {
+  const normalized = String(value || '').trim();
+  return normalized ? new Date(normalized).toISOString() : '';
+}
+
 function buildShortOpsQuery() {
   if (shortOpsPageSize === 'all') shortOpsPage = 1;
   const query = new URLSearchParams({
@@ -149,8 +154,12 @@ function buildShortOpsQuery() {
   const search = document.getElementById('shortOpsSearch').value.trim();
   const status = document.getElementById('shortOpsStatusFilter').value;
   const applicationId = document.getElementById('shortOpsApplicationFilter').value;
-  const opExpireFrom = document.getElementById('shortOpsExpireFrom').value;
-  const opExpireTo = document.getElementById('shortOpsExpireTo').value;
+  const opExpireFrom = serializeShortOpsLocalDateTime(
+    document.getElementById('shortOpsExpireFrom').value,
+  );
+  const opExpireTo = serializeShortOpsLocalDateTime(
+    document.getElementById('shortOpsExpireTo').value,
+  );
   if (search) query.set('search', search);
   if (status) query.set('status', status);
   if (applicationId) query.set('applicationId', applicationId);

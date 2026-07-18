@@ -496,8 +496,10 @@ test('short OP section lazily loads once, builds filters, populates defaults, an
   assert.equal(query.get('search'), 'needle value');
   assert.equal(query.get('status'), 'disabled');
   assert.equal(query.get('applicationId'), 'app-other');
-  assert.equal(query.get('opExpireFrom'), '2030-03-17T10:00');
-  assert.equal(query.get('opExpireTo'), '2030-03-18T10:00');
+  assert.equal(query.get('opExpireFrom'), new Date('2030-03-17T10:00').toISOString());
+  assert.equal(query.get('opExpireTo'), new Date('2030-03-18T10:00').toISOString());
+  assert.match(query.get('opExpireFrom'), /Z$/);
+  assert.match(query.get('opExpireTo'), /Z$/);
 });
 
 test('short OP copy uses an absolute URL and a safe fallback', async () => {
