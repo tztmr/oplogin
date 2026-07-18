@@ -11,9 +11,17 @@ const { createAdminOpApplicationsRouter } = require('./routes/admin-op-applicati
 const { createAdminShortOpsRouter } = require('./routes/admin-short-ops');
 const { createAdminPagesRouter } = require('./routes/admin-pages');
 const { createUserPublicRouter } = require('./routes/user-public');
+const { createOpSubmitRouter } = require('./routes/op-submit');
+const { createOpPagesRouter } = require('./routes/op-pages');
 const { findAdminByIdentifier } = require('./lib/admin-users');
 
-function createApp({ config, pool, sessionMiddleware, buildWakeUrlImpl } = {}) {
+function createApp({
+  config,
+  pool,
+  sessionMiddleware,
+  buildWakeUrlImpl,
+  rateLimitMiddleware,
+} = {}) {
   const app = express();
   const publicDir = path.join(__dirname, 'public');
 
@@ -54,12 +62,20 @@ function createApp({ config, pool, sessionMiddleware, buildWakeUrlImpl } = {}) {
   app.use(createAdminPagesRouter(publicDir));
   app.use('/api', createSubmitRouter({ buildWakeUrlImpl }));
   app.use('/api/public/user', createUserPublicRouter({ pool, config }));
+  if (pool) {
+    app.use('/api/op', createOpSubmitRouter({
+      pool,
+      buildWakeUrlImpl,
+      rateLimitMiddleware,
+    }));
+  }
+  app.use(createOpPagesRouter());
 
   // 用户专属页面拦截路由
   app.use('/:username', async (req, res, next) => {
     const username = req.params.username;
     // 排除特定路径
-    if (['admin', 'api', 'favicon.ico', 'oplogin'].includes(username)) {
+    if (['admin', 'api', 'favicon.ico', 'oplogin', 'op'].includes(username)) {
       return next();
     }
     try {

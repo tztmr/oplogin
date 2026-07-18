@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>短码登录</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #182033;
+      background: #f3f6fb;
+    }
+    * { box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: radial-gradient(circle at top, #dce8ff, #f7f9fc 55%);
+    }
+    main {
+      width: min(100%, 420px);
+      padding: 32px;
+      border: 1px solid rgba(255, 255, 255, 0.9);
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.88);
+      box-shadow: 0 24px 70px rgba(54, 79, 125, 0.16);
+    }
+    h1 { margin: 0 0 10px; font-size: 28px; text-align: center; }
+    .intro { margin: 0 0 26px; color: #667085; line-height: 1.6; text-align: center; }
+    label { display: block; margin-bottom: 8px; font-weight: 650; }
+    input {
+      width: 100%;
+      padding: 15px 16px;
+      border: 1px solid #cad3e2;
+      border-radius: 12px;
+      font: inherit;
+      font-size: 20px;
+      letter-spacing: 0.18em;
+      text-align: center;
+      outline: none;
+    }
+    input:focus { border-color: #4f67e8; box-shadow: 0 0 0 4px rgba(79, 103, 232, 0.12); }
+    button {
+      width: 100%;
+      margin-top: 16px;
+      padding: 15px 18px;
+      border: 0;
+      border-radius: 12px;
+      color: white;
+      background: #4058d6;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button:disabled { cursor: wait; opacity: 0.65; }
+    .message { min-height: 24px; margin: 14px 0 0; color: #667085; text-align: center; }
+    .message.error { color: #c1292e; }
+    .message.success { color: #16815f; }
+  </style>
+  <script src="/op.js" defer></script>
+</head>
+<body>
+  <main>
+    <h1>短码登录</h1>
+    <p class="intro">请输入收到的 8 位短码，我们会自动打开对应应用。</p>
+    <form id="short-op-form">
+      <label for="short-code">8 位短码</label>
+      <input
+        id="short-code"
+        name="code"
+        type="text"
+        inputmode="numeric"
+        autocomplete="one-time-code"
+        maxlength="8"
+        pattern="[0-9]{8}"
+        placeholder="00000000"
+        required
+      >
+      <button id="submit-short-code" type="submit">立即打开</button>
+      <p id="short-op-message" class="message" role="status" aria-live="polite"></p>
+    </form>
+  </main>
+</body>
+</html>
