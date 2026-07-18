@@ -158,7 +158,7 @@ npm start
 ## 短 OP 使用与管理
 
 - `/op` 用于手动输入 8 位短码；`/op/:code` 是可复制分享的短 OP 链接，会显示绑定的应用名称并尝试唤起对应应用。
-- `/admin` 左侧提供“记录管理”“短 OP 管理”“应用管理”三个入口。“应用管理”仅超级管理员可见；普通员工可以管理自己权限范围内的记录和短 OP。
+- `/admin` 左侧提供“数据管理”“短 OP 管理”“应用管理”三个入口。“应用管理”仅超级管理员可见；普通员工可以管理自己权限范围内的记录和短 OP。
 - 短 OP 批量导入每行支持 `OP` 或 `OP----AppID` 两种格式。只填写 `OP` 时使用默认抖音 AppID `1105602870`；指定 `AppID` 时使用对应的已启用应用。
 - 短码解析依赖服务器的在线 PostgreSQL 数据库。离线 APK 不保存或解析短码，请在联网环境打开 `/op` 或 `/op/:code`；离线 APK 仍使用原 `/oplogin` 全参数上号流程和应用选择。
 
@@ -205,7 +205,7 @@ curl -X POST http://localhost:4399/api/submit \
 | `/op` | 输入 8 位短 OP 短码 |
 | `/op/:code` | 打开指定短码、显示应用名称并尝试唤起对应应用 |
 | `/admin/login` | 管理员登录页 |
-| `/admin` | 管理后台首页，左侧包含记录管理、短 OP 管理、应用管理入口 |
+| `/admin` | 管理后台首页，左侧包含数据管理、短 OP 管理、应用管理入口 |
 | `/admin/users` | 后台账号管理页，仅 `super_admin` 可用 |
 | `/:username` | 用户专属页面，用户存在且为启用状态时可访问 |
 
@@ -215,6 +215,7 @@ curl -X POST http://localhost:4399/api/submit \
 | --- | --- |
 | `GET /health` | 健康检查 |
 | `POST /api/submit` | 提交上号请求 |
+| `POST /api/op/submit` | 解析 8 位短码并生成对应应用的唤起链接 |
 
 ### 后台鉴权接口
 
@@ -240,6 +241,30 @@ curl -X POST http://localhost:4399/api/submit \
 | `POST /api/admin/records/import-text` | 文本批量导入 |
 | `GET /api/admin/records/export.csv` | CSV 导出 |
 | `POST /api/admin/records/export.csv` | 按条件导出 CSV |
+
+### 后台短 OP 接口
+
+| 路径 | 说明 |
+| --- | --- |
+| `GET /api/admin/short-ops` | 获取当前权限范围内的短 OP 列表 |
+| `POST /api/admin/short-ops` | 新增短 OP |
+| `POST /api/admin/short-ops/import-text` | 按 `OP` 或 `OP----AppID` 批量导入 |
+| `GET /api/admin/short-ops/:id` | 查看短 OP 详情 |
+| `PUT /api/admin/short-ops/:id` | 更新短 OP |
+| `POST /api/admin/short-ops/:id/enable` | 启用短 OP |
+| `POST /api/admin/short-ops/:id/disable` | 停用短 OP |
+| `DELETE /api/admin/short-ops/:id` | 删除短 OP |
+
+### 后台应用 AppID 接口
+
+| 路径 | 说明 |
+| --- | --- |
+| `GET /api/admin/op-applications` | 获取可用应用；超级管理员可查询完整应用列表 |
+| `POST /api/admin/op-applications` | 新增应用，仅超级管理员可用 |
+| `PUT /api/admin/op-applications/:id` | 更新应用名称和 AppID，仅超级管理员可用 |
+| `POST /api/admin/op-applications/:id/default` | 设为默认应用，仅超级管理员可用 |
+| `POST /api/admin/op-applications/:id/enable` | 启用应用，仅超级管理员可用 |
+| `POST /api/admin/op-applications/:id/disable` | 停用应用，仅超级管理员可用 |
 
 ### 后台账号接口
 
