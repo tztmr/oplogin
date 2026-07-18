@@ -122,10 +122,16 @@ function renderOpApplications(items) {
         setOpApplicationDefault(item).catch((error) => showToast(error.message));
       }));
     }
-    actions.appendChild(createOpApplicationButton(
+    const statusButton = createOpApplicationButton(
       item.status === 'active' ? '停用' : '启用',
       () => changeOpApplicationStatus(item).catch((error) => showToast(error.message)),
-    ));
+    );
+    if (item.isDefault && item.status === 'active') {
+      statusButton.disabled = true;
+      statusButton.textContent = '默认应用不可停用';
+      statusButton.title = '默认应用不能停用，请先设置其他默认应用';
+    }
+    actions.appendChild(statusButton);
     actionsCell.appendChild(actions);
     row.appendChild(actionsCell);
     return row;
@@ -133,12 +139,19 @@ function renderOpApplications(items) {
   body.replaceChildren(...rows);
 }
 
-async function loadOpApplications() {
+async function loadOpApplications(allowPageClamp = true) {
   if (!opApplicationsAuthorized) return;
   const data = await adminFetch(
     `/api/admin/op-applications?${buildOpApplicationsQuery().toString()}`,
     { method: 'GET' },
   );
+  const total = Number(data.total) || 0;
+  const pageSize = Number(data.pageSize) || Number(opApplicationsPageSize) || 20;
+  const lastPage = Math.max(1, Math.ceil(total / pageSize));
+  if (allowPageClamp && opApplicationsPage > lastPage) {
+    opApplicationsPage = lastPage;
+    return loadOpApplications(false);
+  }
   opApplicationsLoaded = true;
   renderOpApplications(data.items || []);
   updateOpApplicationsPagination(data);
@@ -160,6 +173,7 @@ async function submitOpApplicationForm(event) {
       body: JSON.stringify(payload),
     },
   );
+  document.getElementById('opApplicationForm').reset();
   document.getElementById('opApplicationDialog').close();
   showToast(id ? '应用已更新' : '应用已创建');
   opApplicationsPage = 1;

@@ -66,6 +66,28 @@ test('super admin can create applications and search all statuses with paginatio
   assert.deepEqual(disabledResponse.body.items.map((item) => item.appId), ['1104790112']);
 });
 
+test('super admin pageSize all returns every active application beyond the normal limit', async () => {
+  const { agent, config } = await createAdminTestContext();
+  await loginAsRoot(agent, config);
+  for (let index = 0; index < 25; index += 1) {
+    await createApplication(agent, {
+      name: `应用 ${String(index).padStart(2, '0')}`,
+      appId: `all-app-${String(index).padStart(2, '0')}`,
+    });
+  }
+
+  const response = await agent.get(
+    '/api/admin/op-applications?status=active&pageSize=all',
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.total, 26);
+  assert.equal(response.body.page, 1);
+  assert.equal(response.body.pageSize, 'all');
+  assert.equal(response.body.items.length, 26);
+  assert.equal(response.body.items[0].isDefault, true);
+});
+
 test('super admin cannot create duplicate AppIDs', async () => {
   const { agent, config } = await createAdminTestContext();
   await loginAsRoot(agent, config);

@@ -142,6 +142,124 @@ function loadAdminManagementScript(fileName) {
   return { sandbox, createdElements };
 }
 
+function createManagementElement(tagName = 'div') {
+  const listeners = new Map();
+  const element = {
+    tagName: tagName.toUpperCase(),
+    children: [],
+    className: '',
+    textContent: '',
+    value: '',
+    title: '',
+    style: {},
+    disabled: false,
+    open: false,
+    resetCount: 0,
+    selected: false,
+    addEventListener(type, listener) {
+      const values = listeners.get(type) || [];
+      values.push(listener);
+      listeners.set(type, values);
+    },
+    listenerCount(type) {
+      return (listeners.get(type) || []).length;
+    },
+    click() {
+      (listeners.get('click') || []).forEach((listener) => listener({ currentTarget: this }));
+    },
+    appendChild(child) {
+      child.parentNode = this;
+      this.children.push(child);
+      return child;
+    },
+    replaceChildren(...children) {
+      this.children = children;
+      children.forEach((child) => { child.parentNode = this; });
+      if (children.length && children[0].value !== undefined) {
+        this.value = children[0].value;
+      }
+    },
+    reset() {
+      this.resetCount += 1;
+    },
+    showModal() {
+      this.open = true;
+    },
+    close() {
+      this.open = false;
+    },
+    select() {
+      this.selected = true;
+    },
+    remove() {
+      if (!this.parentNode) return;
+      this.parentNode.children = this.parentNode.children.filter((child) => child !== this);
+      this.parentNode = null;
+    },
+  };
+  return element;
+}
+
+function loadManagementBehaviorScript(fileName, options = {}) {
+  const script = fs.readFileSync(
+    path.join(__dirname, '..', 'public', 'admin', fileName),
+    'utf8',
+  );
+  const elements = new Map();
+  const windowListeners = new Map();
+  const toastMessages = [];
+  const body = createManagementElement('body');
+  const document = {
+    body,
+    createElement: (tagName) => createManagementElement(tagName),
+    getElementById(id) {
+      if (!elements.has(id)) elements.set(id, createManagementElement());
+      return elements.get(id);
+    },
+    execCommand: options.execCommand || (() => true),
+  };
+  const window = {
+    location: { origin: 'https://admin.example.test' },
+    addEventListener(type, listener) {
+      const values = windowListeners.get(type) || [];
+      values.push(listener);
+      windowListeners.set(type, values);
+    },
+    dispatchEvent(event) {
+      (windowListeners.get(event.type) || []).forEach((listener) => listener(event));
+    },
+  };
+  const sandbox = {
+    console,
+    URL,
+    URLSearchParams,
+    CustomEvent: class CustomEvent {
+      constructor(type, init = {}) {
+        this.type = type;
+        this.detail = init.detail;
+      }
+    },
+    document,
+    navigator: options.navigator || {},
+    window,
+    adminFetch: options.adminFetch || (async () => ({ items: [], total: 0, pageSize: 20 })),
+    requireAdminSession: options.requireAdminSession || (async () => ({ role: 'super_admin' })),
+    showConfirm: options.showConfirm || (async () => true),
+    showToast(message) {
+      toastMessages.push(message);
+    },
+    formatDateTime: (value) => value || '',
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(script, sandbox);
+  return { sandbox, elements, windowListeners, toastMessages, document };
+}
+
+async function flushManagementPromises() {
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+}
+
 test('GET /admin/login serves the admin login shell', async () => {
   const response = await request(createTestApp()).get('/admin/login');
 
@@ -307,6 +425,233 @@ test('management table CSS fixes short OP widths and truncates long values', asy
   assert.match(response.text, /#shortOpTable\s*\{[^}]*table-layout:\s*fixed/s);
   assert.match(response.text, /#shortOpTable[^}]*\.cell-truncate[^}]*text-overflow:\s*ellipsis/s);
   assert.match(response.text, /#opApplicationTable\s*\{[^}]*min-width:\s*0/s);
+});
+
+test('short OP section lazily loads once, builds filters, populates defaults, and retries options', async () => {
+  const requests = [];
+  let optionAttempts = 0;
+  const harness = loadManagementBehaviorScript('short-ops.js', {
+    adminFetch: async (url) => {
+      requests.push(url);
+      if (url.startsWith('/api/admin/op-applications')) {
+        optionAttempts += 1;
+        if (optionAttempts === 1) throw new Error('temporary options failure');
+        return {
+          items: [
+            { id: 'app-other', name: '其他', isDefault: false },
+            { id: 'app-default', name: '默认应用', isDefault: true },
+          ],
+        };
+      }
+      return { items: [], total: 100, page: 1, pageSize: 20 };
+    },
+  });
+
+  harness.sandbox.window.dispatchEvent({
+    type: 'admin-section-shown', detail: { sectionId: 'shortOpsSection' },
+  });
+  await flushManagementPromises();
+  assert.deepEqual(requests, ['/api/admin/op-applications?status=active&pageSize=all']);
+
+  harness.sandbox.window.dispatchEvent({
+    type: 'admin-section-shown', detail: { sectionId: 'shortOpsSection' },
+  });
+  await flushManagementPromises();
+  assert.equal(requests.filter((url) => url.startsWith('/api/admin/short-ops?')).length, 1);
+  const applicationFilter = harness.document.getElementById('shortOpsApplicationFilter');
+  assert.equal(applicationFilter.children.length, 3);
+  assert.equal(applicationFilter.children[1].value, 'app-default');
+  assert.equal(harness.document.getElementById('shortOpApplicationId').value, 'app-default');
+  assert.equal(harness.document.getElementById('createShortOpButton').listenerCount('click'), 1);
+
+  harness.document.getElementById('shortOpsSearch').value = 'needle value';
+  harness.document.getElementById('shortOpsStatusFilter').value = 'disabled';
+  harness.document.getElementById('shortOpsApplicationFilter').value = 'app-other';
+  vm.runInContext("shortOpsPage = 2; shortOpsPageSize = '50'", harness.sandbox);
+  await harness.sandbox.loadShortOps();
+  const query = new URL(requests.at(-1), 'https://admin.example.test').searchParams;
+  assert.equal(query.get('page'), '2');
+  assert.equal(query.get('pageSize'), '50');
+  assert.equal(query.get('search'), 'needle value');
+  assert.equal(query.get('status'), 'disabled');
+  assert.equal(query.get('applicationId'), 'app-other');
+});
+
+test('short OP copy uses an absolute URL and a safe fallback', async () => {
+  const clipboardWrites = [];
+  const preferred = loadManagementBehaviorScript('short-ops.js', {
+    navigator: { clipboard: { writeText: async (value) => clipboardWrites.push(value) } },
+  });
+
+  assert.equal(await preferred.sandbox.copyShortOpLink('/op/12345678'), true);
+  assert.deepEqual(clipboardWrites, ['https://admin.example.test/op/12345678']);
+  preferred.sandbox.renderShortOps([{
+    id: 'copy-id', code: '12345678', shortLink: '/op/12345678',
+    maskedOpValue: 'abc****', appName: '应用', appId: 'app-id', owner: 'root',
+    opExpireAt: 'future', status: 'active', remark: '',
+  }]);
+  preferred.document.getElementById('shortOpTableBody')
+    .children[0].children.at(-1).children[0].children[0].click();
+  await flushManagementPromises();
+  assert.equal(preferred.toastMessages.at(-1), '短链接已复制');
+
+  let fallbackCalls = 0;
+  const fallback = loadManagementBehaviorScript('short-ops.js', {
+    navigator: { clipboard: { writeText: async () => { throw new Error('denied'); } } },
+    execCommand(command) {
+      fallbackCalls += 1;
+      assert.equal(command, 'copy');
+      return true;
+    },
+  });
+  assert.equal(await fallback.sandbox.copyShortOpLink('/op/87654321'), true);
+  assert.equal(fallbackCalls, 1);
+  assert.equal(fallback.document.body.children.length, 0);
+
+  const failure = loadManagementBehaviorScript('short-ops.js', {
+    navigator: {},
+    execCommand: () => false,
+  });
+  failure.sandbox.renderShortOps([{
+    id: 'copy-fail-id', code: '87654321', shortLink: '/op/87654321',
+    maskedOpValue: 'def****', appName: '应用', appId: 'app-id', owner: 'root',
+    opExpireAt: 'future', status: 'active', remark: '',
+  }]);
+  failure.document.getElementById('shortOpTableBody')
+    .children[0].children.at(-1).children[0].children[0].click();
+  await flushManagementPromises();
+  assert.equal(failure.toastMessages.at(-1), '复制失败，请手动复制');
+});
+
+test('short OP mutation refreshes, resets the dialog, and import errors stay text', async () => {
+  const requests = [];
+  const harness = loadManagementBehaviorScript('short-ops.js', {
+    adminFetch: async (url, options) => {
+      requests.push({ url, options });
+      if (url === '/api/admin/short-ops') return { item: { id: 'created' } };
+      return { items: [], total: 0, page: 1, pageSize: 20 };
+    },
+  });
+  harness.document.getElementById('shortOpDialog').open = true;
+  harness.document.getElementById('shortOpValue').value = 'full-op';
+  harness.document.getElementById('shortOpApplicationId').value = 'app-id';
+  harness.document.getElementById('shortOpRemark').value = 'remark';
+  await harness.sandbox.submitShortOpForm({ preventDefault() {} });
+
+  assert.equal(requests[0].url, '/api/admin/short-ops');
+  assert.deepEqual(JSON.parse(requests[0].options.body), {
+    opValue: 'full-op', applicationId: 'app-id', remark: 'remark',
+  });
+  assert.equal(requests.filter(({ url }) => url.startsWith('/api/admin/short-ops?')).length, 1);
+  assert.equal(harness.document.getElementById('shortOpDialog').open, false);
+  assert.equal(harness.document.getElementById('shortOpForm').resetCount, 1);
+
+  harness.sandbox.renderShortOpImportResult({
+    importedCount: 1,
+    duplicateCount: 2,
+    failedCount: 1,
+    errors: [{ lineNumber: 4, message: '<img src=x onerror=alert(1)>' }],
+  });
+  assert.equal(harness.document.getElementById('shortOpImportSummary').textContent, '成功 1，重复 2，失败 1');
+  assert.equal(
+    harness.document.getElementById('shortOpImportErrors').children[0].textContent,
+    '第 4 行：<img src=x onerror=alert(1)>',
+  );
+});
+
+test('short OP and application lists clamp stale pages and refetch once', async () => {
+  const shortRequests = [];
+  const shortHarness = loadManagementBehaviorScript('short-ops.js', {
+    adminFetch: async (url) => {
+      shortRequests.push(url);
+      return { items: [], total: 20, pageSize: 20 };
+    },
+  });
+  vm.runInContext('shortOpsPage = 3', shortHarness.sandbox);
+  await shortHarness.sandbox.loadShortOps();
+  assert.deepEqual(
+    shortRequests.map((url) => new URL(url, 'https://admin.example.test').searchParams.get('page')),
+    ['3', '1'],
+  );
+
+  const applicationRequests = [];
+  const applicationHarness = loadManagementBehaviorScript('op-applications.js', {
+    adminFetch: async (url) => {
+      applicationRequests.push(url);
+      return { items: [], total: 20, pageSize: 20 };
+    },
+  });
+  vm.runInContext('opApplicationsAuthorized = true; opApplicationsPage = 4', applicationHarness.sandbox);
+  await applicationHarness.sandbox.loadOpApplications();
+  assert.deepEqual(
+    applicationRequests.map((url) => new URL(url, 'https://admin.example.test').searchParams.get('page')),
+    ['4', '1'],
+  );
+});
+
+test('application section gates operators, loads super admins once, and protects default stop action', async () => {
+  let operatorRequests = 0;
+  const operatorHarness = loadManagementBehaviorScript('op-applications.js', {
+    requireAdminSession: async () => ({ role: 'operator' }),
+    adminFetch: async () => { operatorRequests += 1; return {}; },
+  });
+  operatorHarness.sandbox.window.dispatchEvent({
+    type: 'admin-section-shown', detail: { sectionId: 'opApplicationsSection' },
+  });
+  await flushManagementPromises();
+  assert.equal(operatorRequests, 0);
+
+  const requests = [];
+  const adminHarness = loadManagementBehaviorScript('op-applications.js', {
+    adminFetch: async (url, options = {}) => {
+      requests.push({ url, options });
+      return { items: [], total: 100, pageSize: 20 };
+    },
+  });
+  adminHarness.sandbox.window.dispatchEvent({
+    type: 'admin-section-shown', detail: { sectionId: 'opApplicationsSection' },
+  });
+  await flushManagementPromises();
+  adminHarness.sandbox.window.dispatchEvent({
+    type: 'admin-section-shown', detail: { sectionId: 'opApplicationsSection' },
+  });
+  await flushManagementPromises();
+  assert.equal(requests.length, 1);
+
+  adminHarness.document.getElementById('opApplicationsSearch').value = 'target app';
+  adminHarness.document.getElementById('opApplicationsStatusFilter').value = 'disabled';
+  vm.runInContext("opApplicationsPage = 2; opApplicationsPageSize = '50'", adminHarness.sandbox);
+  await adminHarness.sandbox.loadOpApplications();
+  const listQuery = new URL(requests.at(-1).url, 'https://admin.example.test').searchParams;
+  assert.equal(listQuery.get('page'), '2');
+  assert.equal(listQuery.get('pageSize'), '50');
+  assert.equal(listQuery.get('search'), 'target app');
+  assert.equal(listQuery.get('status'), 'disabled');
+
+  adminHarness.document.getElementById('opApplicationDialog').open = true;
+  adminHarness.document.getElementById('opApplicationName').value = '新应用';
+  adminHarness.document.getElementById('opApplicationAppId').value = 'new-app-id';
+  await adminHarness.sandbox.submitOpApplicationForm({ preventDefault() {} });
+  const mutation = requests.find(({ url }) => url === '/api/admin/op-applications');
+  assert.deepEqual(JSON.parse(mutation.options.body), {
+    name: '新应用', appId: 'new-app-id',
+  });
+  assert.equal(
+    requests.filter(({ url }) => url.startsWith('/api/admin/op-applications?')).length,
+    3,
+  );
+  assert.equal(adminHarness.document.getElementById('opApplicationDialog').open, false);
+  assert.equal(adminHarness.document.getElementById('opApplicationForm').resetCount, 1);
+
+  adminHarness.sandbox.renderOpApplications([{
+    id: 'default-id', name: '<default>', appId: 'app-id', isDefault: true,
+    status: 'active', updatedAt: 'now',
+  }]);
+  const row = adminHarness.elements.get('opApplicationTableBody').children[0];
+  const buttons = row.children.at(-1).children[0].children;
+  const stopButton = buttons.find((button) => button.textContent.includes('停用'));
+  assert.equal(stopButton.disabled, true);
+  assert.match(stopButton.title, /默认应用/);
 });
 
 test('admin shell limits operator navigation and restores an authorized saved section', () => {

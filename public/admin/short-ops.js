@@ -4,6 +4,8 @@ let shortOpsLoaded = false;
 let shortOpsTotalPages = 1;
 let shortOpsInitialized = false;
 let shortOpApplicationOptions = [];
+let shortOpApplicationOptionsLoaded = false;
+let shortOpApplicationOptionsPromise = null;
 
 function createShortOpsCell(value, className = '') {
   const cell = document.createElement('td');
@@ -22,6 +24,36 @@ function createShortOpsButton(label, onClick, className = '') {
   button.textContent = label;
   button.addEventListener('click', onClick);
   return button;
+}
+
+function fallbackCopyShortOpLink(value) {
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.setAttribute?.('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  try {
+    textarea.select();
+    return document.execCommand('copy');
+  } catch (error) {
+    return false;
+  } finally {
+    textarea.remove();
+  }
+}
+
+async function copyShortOpLink(shortLink) {
+  const absoluteUrl = new URL(shortLink, window.location.origin).toString();
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    try {
+      await navigator.clipboard.writeText(absoluteUrl);
+      return true;
+    } catch (error) {
+      // Clipboard permission can be denied; continue with the safe DOM fallback.
+    }
+  }
+  return fallbackCopyShortOpLink(absoluteUrl);
 }
 
 function appendEmptyShortOpsRow(message) {
@@ -72,6 +104,18 @@ async function loadShortOpApplicationOptions() {
     document.getElementById('shortOpApplicationId'),
     false,
   );
+  shortOpApplicationOptionsLoaded = true;
+}
+
+function ensureShortOpApplicationOptions() {
+  if (shortOpApplicationOptionsLoaded) return Promise.resolve();
+  if (!shortOpApplicationOptionsPromise) {
+    shortOpApplicationOptionsPromise = loadShortOpApplicationOptions()
+      .finally(() => {
+        shortOpApplicationOptionsPromise = null;
+      });
+  }
+  return shortOpApplicationOptionsPromise;
 }
 
 function buildShortOpsQuery() {
@@ -167,6 +211,10 @@ function renderShortOps(items) {
     const actionsCell = document.createElement('td');
     const actions = document.createElement('div');
     actions.className = 'row-actions';
+    actions.appendChild(createShortOpsButton('复制链接', () => {
+      copyShortOpLink(item.shortLink)
+        .then((copied) => showToast(copied ? '短链接已复制' : '复制失败，请手动复制'));
+    }));
     actions.appendChild(createShortOpsButton('编辑', () => {
       openShortOpEditDialog(item).catch((error) => showToast(error.message));
     }));
@@ -184,17 +232,24 @@ function renderShortOps(items) {
   body.replaceChildren(...rows);
 }
 
-async function loadShortOps() {
+async function loadShortOps(allowPageClamp = true) {
   const data = await adminFetch(`/api/admin/short-ops?${buildShortOpsQuery().toString()}`, {
     method: 'GET',
   });
+  const total = Number(data.total) || 0;
+  const pageSize = Number(data.pageSize) || Number(shortOpsPageSize) || 20;
+  const lastPage = Math.max(1, Math.ceil(total / pageSize));
+  if (allowPageClamp && shortOpsPage > lastPage) {
+    shortOpsPage = lastPage;
+    return loadShortOps(false);
+  }
   shortOpsLoaded = true;
   renderShortOps(data.items || []);
   updateShortOpsPagination(data);
 }
 
 async function openCreateShortOpDialog() {
-  await loadShortOpApplicationOptions();
+  await ensureShortOpApplicationOptions();
   if (!shortOpApplicationOptions.length) {
     showToast('没有可用应用，请联系超级管理员先启用应用');
     return;
@@ -221,6 +276,7 @@ async function submitShortOpForm(event) {
     method: id ? 'PUT' : 'POST',
     body: JSON.stringify(payload),
   });
+  document.getElementById('shortOpForm').reset();
   document.getElementById('shortOpDialog').close();
   showToast(id ? '短 OP 已更新' : '短 OP 已创建');
   shortOpsPage = 1;
@@ -259,54 +315,55 @@ async function submitShortOpImport(event) {
 }
 
 async function initializeShortOps() {
-  if (shortOpsInitialized) return;
-  shortOpsInitialized = true;
-  document.getElementById('createShortOpButton').addEventListener('click', () => {
-    openCreateShortOpDialog().catch((error) => showToast(error.message));
-  });
-  document.getElementById('shortOpImportButton').addEventListener('click', () => {
-    document.getElementById('shortOpImportForm').reset();
-    document.getElementById('shortOpImportSummary').textContent = '';
-    document.getElementById('shortOpImportErrors').replaceChildren();
-    document.getElementById('shortOpImportDialog').showModal();
-  });
-  document.getElementById('shortOpForm').addEventListener('submit', (event) => {
-    submitShortOpForm(event).catch((error) => showToast(error.message));
-  });
-  document.getElementById('shortOpImportForm').addEventListener('submit', (event) => {
-    submitShortOpImport(event).catch((error) => showToast(error.message));
-  });
-  document.getElementById('shortOpCancelButton').addEventListener('click', () => {
-    document.getElementById('shortOpDialog').close();
-  });
-  document.getElementById('shortOpImportCancelButton').addEventListener('click', () => {
-    document.getElementById('shortOpImportDialog').close();
-  });
-  document.getElementById('applyShortOpsFiltersButton').addEventListener('click', () => {
-    shortOpsPage = 1;
-    loadShortOps().catch((error) => showToast(error.message));
-  });
-  document.getElementById('resetShortOpsFiltersButton').addEventListener('click', () => {
-    document.getElementById('shortOpsSearch').value = '';
-    document.getElementById('shortOpsStatusFilter').value = '';
-    document.getElementById('shortOpsApplicationFilter').value = '';
-    shortOpsPage = 1;
-    loadShortOps().catch((error) => showToast(error.message));
-  });
-  document.getElementById('shortOpsPreviousPageButton').addEventListener('click', () => {
-    shortOpsPage = Math.max(1, shortOpsPage - 1);
-    loadShortOps().catch((error) => showToast(error.message));
-  });
-  document.getElementById('shortOpsNextPageButton').addEventListener('click', () => {
-    if (shortOpsPage < shortOpsTotalPages) shortOpsPage += 1;
-    loadShortOps().catch((error) => showToast(error.message));
-  });
-  document.getElementById('shortOpsPageSizeSelect').addEventListener('change', (event) => {
-    shortOpsPageSize = event.target.value;
-    shortOpsPage = 1;
-    loadShortOps().catch((error) => showToast(error.message));
-  });
-  await loadShortOpApplicationOptions();
+  if (!shortOpsInitialized) {
+    shortOpsInitialized = true;
+    document.getElementById('createShortOpButton').addEventListener('click', () => {
+      openCreateShortOpDialog().catch((error) => showToast(error.message));
+    });
+    document.getElementById('shortOpImportButton').addEventListener('click', () => {
+      document.getElementById('shortOpImportForm').reset();
+      document.getElementById('shortOpImportSummary').textContent = '';
+      document.getElementById('shortOpImportErrors').replaceChildren();
+      document.getElementById('shortOpImportDialog').showModal();
+    });
+    document.getElementById('shortOpForm').addEventListener('submit', (event) => {
+      submitShortOpForm(event).catch((error) => showToast(error.message));
+    });
+    document.getElementById('shortOpImportForm').addEventListener('submit', (event) => {
+      submitShortOpImport(event).catch((error) => showToast(error.message));
+    });
+    document.getElementById('shortOpCancelButton').addEventListener('click', () => {
+      document.getElementById('shortOpDialog').close();
+    });
+    document.getElementById('shortOpImportCancelButton').addEventListener('click', () => {
+      document.getElementById('shortOpImportDialog').close();
+    });
+    document.getElementById('applyShortOpsFiltersButton').addEventListener('click', () => {
+      shortOpsPage = 1;
+      loadShortOps().catch((error) => showToast(error.message));
+    });
+    document.getElementById('resetShortOpsFiltersButton').addEventListener('click', () => {
+      document.getElementById('shortOpsSearch').value = '';
+      document.getElementById('shortOpsStatusFilter').value = '';
+      document.getElementById('shortOpsApplicationFilter').value = '';
+      shortOpsPage = 1;
+      loadShortOps().catch((error) => showToast(error.message));
+    });
+    document.getElementById('shortOpsPreviousPageButton').addEventListener('click', () => {
+      shortOpsPage = Math.max(1, shortOpsPage - 1);
+      loadShortOps().catch((error) => showToast(error.message));
+    });
+    document.getElementById('shortOpsNextPageButton').addEventListener('click', () => {
+      if (shortOpsPage < shortOpsTotalPages) shortOpsPage += 1;
+      loadShortOps().catch((error) => showToast(error.message));
+    });
+    document.getElementById('shortOpsPageSizeSelect').addEventListener('change', (event) => {
+      shortOpsPageSize = event.target.value;
+      shortOpsPage = 1;
+      loadShortOps().catch((error) => showToast(error.message));
+    });
+  }
+  await ensureShortOpApplicationOptions();
 }
 
 window.addEventListener('admin-section-shown', (event) => {
@@ -321,5 +378,6 @@ window.addEventListener('admin-section-shown', (event) => {
 
 window.addEventListener('op-applications-changed', () => {
   if (!shortOpsInitialized) return;
-  loadShortOpApplicationOptions().catch((error) => showToast(error.message));
+  shortOpApplicationOptionsLoaded = false;
+  ensureShortOpApplicationOptions().catch((error) => showToast(error.message));
 });
