@@ -8,6 +8,7 @@ const { createRequireAdminAuth } = require('./lib/auth-middleware');
 const { createAdminRecordsRouter } = require('./routes/admin-records');
 const { createAdminUsersRouter } = require('./routes/admin-users');
 const { createAdminOpApplicationsRouter } = require('./routes/admin-op-applications');
+const { createAdminShortOpsRouter } = require('./routes/admin-short-ops');
 const { createAdminPagesRouter } = require('./routes/admin-pages');
 const { createUserPublicRouter } = require('./routes/user-public');
 const { findAdminByIdentifier } = require('./lib/admin-users');
@@ -42,6 +43,10 @@ function createApp({ config, pool, sessionMiddleware, buildWakeUrlImpl } = {}) {
     app.use(
       '/api/admin/op-applications',
       createAdminOpApplicationsRouter({ pool, requireAdminAuth }),
+    );
+    app.use(
+      '/api/admin/short-ops',
+      createAdminShortOpsRouter({ pool, requireAdminAuth }),
     );
   }
 
