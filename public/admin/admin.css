@@ -232,6 +232,19 @@ textarea {
   font-size: 20px;
 }
 
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.section-heading-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .section-heading p,
 .admin-section-placeholder {
   margin-top: 6px;
@@ -261,6 +274,22 @@ textarea {
 
 .action-bar-right {
   justify-content: flex-end;
+}
+
+.management-filter-bar {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(140px, 180px) minmax(160px, 220px) auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 16px 24px;
+  margin-bottom: 24px;
+  background: var(--card-bg);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-sm);
+}
+
+#opApplicationsSection .management-filter-bar {
+  grid-template-columns: minmax(240px, 1fr) minmax(140px, 180px) auto auto;
 }
 
 .public-batch-eligibility {
@@ -478,6 +507,95 @@ td .row-actions {
   padding: 6px 10px;
   font-size: 12px;
   white-space: nowrap;
+}
+
+#shortOpTable {
+  table-layout: fixed;
+  min-width: 1080px;
+}
+
+#shortOpTable .cell-truncate {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#shortOpTable col.short-op-col-code { width: 8%; }
+#shortOpTable col.short-op-col-link { width: 12%; }
+#shortOpTable col.short-op-col-value { width: 18%; }
+#shortOpTable col.short-op-col-app { width: 12%; }
+#shortOpTable col.short-op-col-owner,
+#shortOpTable col.short-op-col-status { width: 8%; }
+#shortOpTable col.short-op-col-expire { width: 12%; }
+#shortOpTable col.short-op-col-remark { width: 9%; }
+#shortOpTable col.short-op-col-actions { width: 13%; }
+
+#shortOpTable th,
+#shortOpTable td,
+#opApplicationTable th,
+#opApplicationTable td {
+  padding: 12px 10px;
+  font-size: 13px;
+}
+
+#shortOpTable .row-actions,
+#opApplicationTable .row-actions {
+  gap: 6px;
+}
+
+#shortOpTable .row-actions button,
+#opApplicationTable .row-actions button {
+  padding: 6px 9px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+#opApplicationTable {
+  table-layout: fixed;
+  min-width: 0;
+}
+
+.status-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: #166534;
+  background: #dcfce7;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.status-label.is-disabled {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.default-label {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.empty-table-cell {
+  padding: 36px 16px;
+  color: var(--text-muted);
+  text-align: center !important;
+}
+
+.import-result-summary {
+  min-height: 22px;
+  margin: 0;
+  font-weight: 600;
+}
+
+.import-error-list {
+  max-height: 180px;
+  margin: 0;
+  padding-left: 24px;
+  overflow: auto;
+  color: #b91c1c;
+  font-size: 13px;
 }
 
 @media (max-width: 1920px) {
@@ -810,5 +928,19 @@ menu {
     width: auto;
     flex: 0 0 auto;
     white-space: nowrap;
+  }
+
+  .section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .management-filter-bar,
+  #opApplicationsSection .management-filter-bar {
+    grid-template-columns: 1fr;
+  }
+
+  #opApplicationTable {
+    min-width: 760px;
   }
 }

@@ -113,6 +113,35 @@ function loadAdminShellScript() {
   return { sandbox, buttons, sections, sessionStorage, shownSections, listeners };
 }
 
+function loadAdminManagementScript(fileName) {
+  const script = fs.readFileSync(
+    path.join(__dirname, '..', 'public', 'admin', fileName),
+    'utf8',
+  );
+  const createdElements = [];
+  const sandbox = {
+    console,
+    URLSearchParams,
+    document: {
+      createElement(tagName) {
+        const element = {
+          tagName: tagName.toUpperCase(),
+          className: '',
+          textContent: '',
+        };
+        createdElements.push(element);
+        return element;
+      },
+    },
+    window: {
+      addEventListener() {},
+    },
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(script, sandbox);
+  return { sandbox, createdElements };
+}
+
 test('GET /admin/login serves the admin login shell', async () => {
   const response = await request(createTestApp()).get('/admin/login');
 
@@ -181,6 +210,103 @@ test('GET /admin serves sidebar navigation and independent management sections',
   assert.match(response.text, /\/admin\/short-ops\.js/);
   assert.match(response.text, /\/admin\/op-applications\.js/);
   assert.match(response.text, /\/admin\/records\.js/);
+});
+
+test('GET /admin exposes complete short OP and application management controls', async () => {
+  const response = await request(createTestApp()).get('/admin');
+
+  assert.equal(response.status, 200);
+  [
+    'shortOpsSearch',
+    'shortOpsStatusFilter',
+    'shortOpsApplicationFilter',
+    'createShortOpButton',
+    'shortOpTable',
+    'shortOpTableBody',
+    'shortOpsPageSizeSelect',
+    'shortOpsPreviousPageButton',
+    'shortOpsNextPageButton',
+    'shortOpDialog',
+    'shortOpForm',
+    'shortOpValue',
+    'shortOpApplicationId',
+    'shortOpRemark',
+    'shortOpImportDialog',
+    'shortOpImportForm',
+    'shortOpImportText',
+    'shortOpImportSummary',
+    'shortOpImportErrors',
+    'opApplicationsSearch',
+    'opApplicationsStatusFilter',
+    'createOpApplicationButton',
+    'opApplicationTable',
+    'opApplicationTableBody',
+    'opApplicationsPageSizeSelect',
+    'opApplicationsPreviousPageButton',
+    'opApplicationsNextPageButton',
+    'opApplicationDialog',
+    'opApplicationForm',
+    'opApplicationName',
+    'opApplicationAppId',
+  ].forEach((id) => assert.match(response.text, new RegExp(`id="${id}"`)));
+});
+
+test('short OP and application scripts use independent pagination and required APIs', async () => {
+  const app = createTestApp();
+  const [shortOpsScript, applicationsScript] = await Promise.all([
+    request(app).get('/admin/short-ops.js'),
+    request(app).get('/admin/op-applications.js'),
+  ]);
+
+  assert.equal(shortOpsScript.status, 200);
+  assert.equal(applicationsScript.status, 200);
+  assert.match(shortOpsScript.text, /let shortOpsPage = 1/);
+  assert.match(shortOpsScript.text, /let shortOpsPageSize = '20'/);
+  assert.match(shortOpsScript.text, /let shortOpsLoaded = false/);
+  assert.match(shortOpsScript.text, /\/api\/admin\/short-ops/);
+  assert.match(shortOpsScript.text, /\/import-text/);
+  assert.match(shortOpsScript.text, /maskedOpValue/);
+  assert.match(shortOpsScript.text, /admin-section-shown/);
+  assert.doesNotMatch(shortOpsScript.text, /loadRecords\s*\(/);
+
+  assert.match(applicationsScript.text, /let opApplicationsPage = 1/);
+  assert.match(applicationsScript.text, /let opApplicationsPageSize = '20'/);
+  assert.match(applicationsScript.text, /let opApplicationsLoaded = false/);
+  assert.match(applicationsScript.text, /\/api\/admin\/op-applications/);
+  assert.match(applicationsScript.text, /\/default/);
+  assert.match(applicationsScript.text, /user\.role !== 'super_admin'/);
+  assert.match(applicationsScript.text, /admin-section-shown/);
+  assert.doesNotMatch(applicationsScript.text, /loadRecords\s*\(/);
+});
+
+test('management scripts create user-controlled cells with textContent', () => {
+  const shortOps = loadAdminManagementScript('short-ops.js');
+  const applications = loadAdminManagementScript('op-applications.js');
+  const attack = '<img src=x onerror=alert(1)>';
+
+  const shortOpCell = shortOps.sandbox.createShortOpsCell(attack, 'cell-truncate');
+  const applicationCell = applications.sandbox.createOpApplicationCell(attack);
+
+  assert.equal(shortOpCell.textContent, attack);
+  assert.equal(shortOpCell.className, 'cell-truncate');
+  assert.equal(applicationCell.textContent, attack);
+  assert.doesNotMatch(
+    fs.readFileSync(path.join(__dirname, '..', 'public', 'admin', 'short-ops.js'), 'utf8'),
+    /\.innerHTML\s*=/,
+  );
+  assert.doesNotMatch(
+    fs.readFileSync(path.join(__dirname, '..', 'public', 'admin', 'op-applications.js'), 'utf8'),
+    /\.innerHTML\s*=/,
+  );
+});
+
+test('management table CSS fixes short OP widths and truncates long values', async () => {
+  const response = await request(createTestApp()).get('/admin/admin.css');
+
+  assert.equal(response.status, 200);
+  assert.match(response.text, /#shortOpTable\s*\{[^}]*table-layout:\s*fixed/s);
+  assert.match(response.text, /#shortOpTable[^}]*\.cell-truncate[^}]*text-overflow:\s*ellipsis/s);
+  assert.match(response.text, /#opApplicationTable\s*\{[^}]*min-width:\s*0/s);
 });
 
 test('admin shell limits operator navigation and restores an authorized saved section', () => {

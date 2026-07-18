@@ -213,30 +213,116 @@
 
       </main>
 
-      <main id="shortOpsSection" class="admin-section admin-placeholder-section" data-admin-section hidden>
+      <main id="shortOpsSection" class="admin-section" data-admin-section hidden>
         <div class="section-heading">
           <div>
             <h2>短 OP 管理</h2>
-            <p>管理短 OP 记录与状态。</p>
+            <p>创建短链接、维护 OP 状态，并按默认应用批量导入。</p>
+          </div>
+          <div class="section-heading-actions">
+            <button id="shortOpImportButton" type="button" class="btn-cancel">批量导入</button>
+            <button id="createShortOpButton" type="button" class="btn-primary">新增短 OP</button>
           </div>
         </div>
-        <div class="admin-section-placeholder" aria-live="polite">短 OP 数据将在此处加载。</div>
+        <section class="management-filter-bar">
+          <input id="shortOpsSearch" type="search" placeholder="搜索短码、OP、应用、备注或创建人" />
+          <select id="shortOpsStatusFilter" aria-label="短 OP 状态">
+            <option value="">全部状态</option>
+            <option value="active">启用</option>
+            <option value="disabled">停用</option>
+          </select>
+          <select id="shortOpsApplicationFilter" aria-label="短 OP 应用">
+            <option value="">全部应用</option>
+          </select>
+          <button id="applyShortOpsFiltersButton" type="button" class="btn-primary">查询</button>
+          <button id="resetShortOpsFiltersButton" type="button" class="btn-cancel">重置</button>
+        </section>
+        <div class="table-wrap">
+          <table id="shortOpTable">
+            <colgroup>
+              <col class="short-op-col-code" />
+              <col class="short-op-col-link" />
+              <col class="short-op-col-value" />
+              <col class="short-op-col-app" />
+              <col class="short-op-col-owner" />
+              <col class="short-op-col-expire" />
+              <col class="short-op-col-status" />
+              <col class="short-op-col-remark" />
+              <col class="short-op-col-actions" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>短码</th>
+                <th>短链接</th>
+                <th>OP（脱敏）</th>
+                <th>应用</th>
+                <th>创建人</th>
+                <th>到期时间</th>
+                <th>状态</th>
+                <th>备注</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="shortOpTableBody"></tbody>
+          </table>
+        </div>
         <div class="pagination-bar">
+          <label class="page-size-control" for="shortOpsPageSizeSelect">
+            每页显示
+            <select id="shortOpsPageSizeSelect">
+              <option value="20" selected>20</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </label>
           <button id="shortOpsPreviousPageButton" type="button">上一页</button>
           <span id="shortOpsPageStatus"></span>
           <button id="shortOpsNextPageButton" type="button">下一页</button>
         </div>
       </main>
 
-      <main id="opApplicationsSection" class="admin-section admin-placeholder-section" data-admin-section hidden>
+      <main id="opApplicationsSection" class="admin-section" data-admin-section hidden>
         <div class="section-heading">
           <div>
             <h2>应用管理</h2>
-            <p>管理 OP 应用与授权信息。</p>
+            <p>维护 OP 应用、AppID、默认应用与可用状态。</p>
           </div>
+          <button id="createOpApplicationButton" type="button" class="btn-primary">新增应用</button>
         </div>
-        <div class="admin-section-placeholder" aria-live="polite">应用数据将在此处加载。</div>
+        <section class="management-filter-bar">
+          <input id="opApplicationsSearch" type="search" placeholder="搜索应用名称或 AppID" />
+          <select id="opApplicationsStatusFilter" aria-label="应用状态">
+            <option value="">全部状态</option>
+            <option value="active">启用</option>
+            <option value="disabled">停用</option>
+          </select>
+          <button id="applyOpApplicationsFiltersButton" type="button" class="btn-primary">查询</button>
+          <button id="resetOpApplicationsFiltersButton" type="button" class="btn-cancel">重置</button>
+        </section>
+        <div class="table-wrap">
+          <table id="opApplicationTable">
+            <thead>
+              <tr>
+                <th>应用名称</th>
+                <th>AppID</th>
+                <th>默认应用</th>
+                <th>状态</th>
+                <th>更新时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="opApplicationTableBody"></tbody>
+          </table>
+        </div>
         <div class="pagination-bar">
+          <label class="page-size-control" for="opApplicationsPageSizeSelect">
+            每页显示
+            <select id="opApplicationsPageSizeSelect">
+              <option value="20" selected>20</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </label>
           <button id="opApplicationsPreviousPageButton" type="button">上一页</button>
           <span id="opApplicationsPageStatus"></span>
           <button id="opApplicationsNextPageButton" type="button">下一页</button>
@@ -244,6 +330,60 @@
       </main>
     </div>
   </div>
+
+  <dialog id="shortOpDialog">
+    <form id="shortOpForm" method="dialog" class="stack-form">
+      <div class="dialog-heading">
+        <h3 id="shortOpDialogTitle">新增短 OP</h3>
+        <p class="dialog-subtitle">保存后自动生成 8 位短码与短链接。</p>
+      </div>
+      <input id="shortOpId" type="hidden" />
+      <label for="shortOpValue">OP 数据</label>
+      <textarea id="shortOpValue" placeholder="请输入完整 OP 数据" required></textarea>
+      <label for="shortOpApplicationId">应用</label>
+      <select id="shortOpApplicationId" required></select>
+      <label for="shortOpRemark">备注</label>
+      <textarea id="shortOpRemark" placeholder="可选备注"></textarea>
+      <menu class="dialog-menu">
+        <button id="shortOpCancelButton" type="button" class="btn-cancel">取消</button>
+        <button type="submit" class="btn-primary">保存</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="shortOpImportDialog">
+    <form id="shortOpImportForm" method="dialog" class="stack-form">
+      <div class="dialog-heading">
+        <h3>批量导入短 OP</h3>
+        <p class="dialog-subtitle">每行填写 OP，系统使用当前默认启用应用；也可填写 OP----AppID 指定应用。</p>
+      </div>
+      <textarea id="shortOpImportText" placeholder="每行一条 OP，或 OP----AppID" required></textarea>
+      <p id="shortOpImportSummary" class="import-result-summary" aria-live="polite"></p>
+      <ol id="shortOpImportErrors" class="import-error-list"></ol>
+      <menu class="dialog-menu">
+        <button id="shortOpImportCancelButton" type="button" class="btn-cancel">关闭</button>
+        <button id="shortOpImportSubmitButton" type="submit" class="btn-primary">开始导入</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="opApplicationDialog">
+    <form id="opApplicationForm" method="dialog" class="stack-form">
+      <div class="dialog-heading">
+        <h3 id="opApplicationDialogTitle">新增应用</h3>
+        <p class="dialog-subtitle">AppID 用于 OP 唤醒链接，已被短 OP 使用后不能修改。</p>
+      </div>
+      <input id="opApplicationId" type="hidden" />
+      <label for="opApplicationName">应用名称</label>
+      <input id="opApplicationName" placeholder="应用名称" required />
+      <label for="opApplicationAppId">AppID</label>
+      <input id="opApplicationAppId" placeholder="AppID" required />
+      <menu class="dialog-menu">
+        <button id="opApplicationCancelButton" type="button" class="btn-cancel">取消</button>
+        <button type="submit" class="btn-primary">保存</button>
+      </menu>
+    </form>
+  </dialog>
 
   <dialog id="selfPasswordDialog">
     <form id="selfPasswordForm" method="dialog" class="stack-form">
