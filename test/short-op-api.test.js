@@ -5,6 +5,7 @@ const { createAdminTestContext } = require('./helpers/create-admin-test-context'
 const {
   createShortOpRecord,
   generateShortOpCode,
+  importShortOpText,
   resolveActiveShortOpByCode,
 } = require('../lib/short-op-records');
 
@@ -110,6 +111,63 @@ test('short-code generation is fixed-width and creation retries code collisions'
   assert.equal(released, true);
 });
 
+test('creation stops after twenty code collisions and rolls back with a stable conflict code', async () => {
+  const applicationId = '00000000-0000-0000-0000-000000000110';
+  let insertAttempts = 0;
+  let rollbackCount = 0;
+  let commitCount = 0;
+  let released = false;
+  const client = {
+    async query(sql) {
+      const normalized = sql.replace(/\s+/g, ' ').trim();
+      if (/^begin$/i.test(normalized)) return { rows: [] };
+      if (/^rollback$/i.test(normalized)) {
+        rollbackCount += 1;
+        return { rows: [] };
+      }
+      if (/^commit$/i.test(normalized)) {
+        commitCount += 1;
+        return { rows: [] };
+      }
+      if (/from op_applications.*for key share/i.test(normalized)) {
+        return { rows: [{
+          id: applicationId, name: '抖音', app_id: '1105602870', status: 'active',
+        }] };
+      }
+      if (/insert into short_op_records/i.test(normalized)) {
+        insertAttempts += 1;
+        return { rows: [] };
+      }
+      assert.fail(`unexpected query: ${normalized}`);
+    },
+    release() {
+      released = true;
+    },
+  };
+
+  await assert.rejects(
+    createShortOpRecord({ connect: async () => client }, {
+      opValue: op('exhausted'), applicationId,
+    }, {
+      id: '00000000-0000-0000-0000-000000000001',
+      login: 'root',
+      role: 'super_admin',
+    }, {
+      randomIntImpl: () => 7,
+    }),
+    (error) => {
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, 'SHORT_OP_CODE_EXHAUSTED');
+      assert.equal(error.message, '短码生成冲突，请重试');
+      return true;
+    },
+  );
+  assert.equal(insertAttempts, 20);
+  assert.equal(rollbackCount, 1);
+  assert.equal(commitCount, 0);
+  assert.equal(released, true);
+});
+
 test('creating a short OP generates an eight-digit code and binds the app', async () => {
   const { agent, config } = await createAdminTestContext();
   await loginAsRoot(agent, config);
@@ -145,6 +203,21 @@ test('list masks OP values while authorized detail returns the full value', asyn
   assert.match(listResponse.body.items[0].maskedOpValue, /\*/);
   assert.equal(detailResponse.status, 200);
   assert.equal(detailResponse.body.item.opValue, opValue);
+});
+
+test('list masking fully conceals credential segments up to three characters', async () => {
+  const { agent, config } = await createAdminTestContext();
+  await loginAsRoot(agent, config);
+  const application = await defaultApplication(agent);
+  await createShortOp(agent, {
+    opValue: `a|bb|ccc|dddd|${timestamp}`,
+    applicationId: application.id,
+  });
+
+  const response = await agent.get('/api/admin/short-ops?page=1&pageSize=20');
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.items[0].maskedOpValue, '****|****|****|ddd****|190****');
 });
 
 test('duplicate OP and application conflicts but the same OP can bind another app', async () => {
@@ -192,6 +265,30 @@ test('creation rejects malformed OPs, invalid timestamps, and inactive applicati
   assert.match(badTimestamp.body.error, /时间戳格式不正确/);
   assert.equal(inactive.status, 400);
   assert.equal(inactive.body.error, '所选应用不存在或已停用');
+});
+
+test('malformed application and record UUIDs return client errors', async () => {
+  const { agent, config } = await createAdminTestContext();
+  await loginAsRoot(agent, config);
+
+  const invalidApplication = await agent.post('/api/admin/short-ops').send({
+    opValue: op('bad-application-id'),
+    applicationId: 'not-a-uuid',
+  });
+  const invalidRecordResponses = await Promise.all([
+    agent.get('/api/admin/short-ops/not-a-uuid'),
+    agent.put('/api/admin/short-ops/not-a-uuid').send({ remark: 'invalid' }),
+    agent.post('/api/admin/short-ops/not-a-uuid/enable'),
+    agent.post('/api/admin/short-ops/not-a-uuid/disable'),
+    agent.delete('/api/admin/short-ops/not-a-uuid'),
+  ]);
+
+  assert.equal(invalidApplication.status, 400);
+  assert.equal(invalidApplication.body.error, '应用 ID 格式不正确');
+  for (const response of invalidRecordResponses) {
+    assert.equal(response.status, 400);
+    assert.equal(response.body.error, '短 OP ID 格式不正确');
+  }
 });
 
 test('operators only access their records while super admins access every record', async () => {
@@ -274,10 +371,15 @@ test('public resolution only returns active, unexpired short OP records', async 
 
   await agent.post(`/api/admin/short-ops/${created.id}/disable`);
   assert.equal(await resolveActiveShortOpByCode(pool, created.code), null);
+
+  const expired = await createShortOp(agent, {
+    opValue: op('expired', 1_600_000_000), applicationId: application.id,
+  });
+  assert.equal(await resolveActiveShortOpByCode(pool, expired.code), null);
 });
 
 test('list supports filtering and 20/50/100/all page sizes', async () => {
-  const { agent, config } = await createAdminTestContext();
+  const { agent, config, pool } = await createAdminTestContext();
   await loginAsRoot(agent, config);
   const application = await defaultApplication(agent);
   const first = await createShortOp(agent, {
@@ -293,12 +395,44 @@ test('list supports filtering and 20/50/100/all page sizes', async () => {
   );
   assert.deepEqual(filtered.body.items.map((item) => item.id), [first.id]);
 
+  const ownerResult = await pool.query(`select id from admin_users where login = 'root'`);
+  for (let index = 0; index < 20; index += 1) {
+    await pool.query(
+      `
+        insert into short_op_records (
+          id, owner_id, code, op_value, application_id, op_expire_at, status
+        )
+        values ($1, $2, $3, $4, $5, $6, 'active')
+      `,
+      [
+        `10000000-0000-0000-0000-${String(index).padStart(12, '0')}`,
+        ownerResult.rows[0].id,
+        String(30_000_000 + index),
+        op(`page-${index}`),
+        application.id,
+        '2030-03-17T17:46:40.000Z',
+      ],
+    );
+  }
+
+  const firstPage = await agent.get('/api/admin/short-ops?page=1&pageSize=20');
+  const secondPage = await agent.get('/api/admin/short-ops?page=2&pageSize=20');
+  assert.equal(firstPage.body.items.length, 20);
+  assert.equal(secondPage.body.items.length, 2);
+  assert.equal(firstPage.body.total, 22);
+  assert.equal(secondPage.body.total, 22);
+  assert.equal(
+    firstPage.body.items.some((item) => secondPage.body.items.some((other) => other.id === item.id)),
+    false,
+  );
+
   for (const pageSize of ['20', '50', '100', 'all']) {
     const response = await agent.get(`/api/admin/short-ops?page=1&pageSize=${pageSize}`);
     assert.equal(response.status, 200);
     assert.equal(response.body.page, 1);
     assert.equal(response.body.pageSize, pageSize === 'all' ? 'all' : Number(pageSize));
-    assert.equal(response.body.total, 2);
+    assert.equal(response.body.total, 22);
+    if (pageSize === 'all') assert.equal(response.body.items.length, 22);
   }
 });
 
@@ -333,6 +467,43 @@ test('text import counts successes, batch duplicates, database duplicates, and r
     '1105602870', '1104790111',
   ]));
   assert.deepEqual(response.body.errors.map((error) => error.lineNumber), [5]);
+});
+
+test('text import classifies duplicates by stable error code instead of localized message', async () => {
+  const { agent, config, pool } = await createAdminTestContext();
+  await loginAsRoot(agent, config);
+  const ownerResult = await pool.query(`select * from admin_users where login = 'root'`);
+  const duplicateError = new Error('a deliberately different message');
+  duplicateError.statusCode = 409;
+  duplicateError.code = 'SHORT_OP_DUPLICATE';
+
+  const result = await importShortOpText(pool, op('stable-duplicate'), ownerResult.rows[0], {
+    createShortOpRecordImpl: async () => {
+      throw duplicateError;
+    },
+  });
+
+  assert.equal(result.importedCount, 0);
+  assert.equal(result.duplicateCount, 1);
+  assert.equal(result.failedCount, 0);
+});
+
+test('duplicate creation exposes a stable service error code', async () => {
+  const { agent, config, pool } = await createAdminTestContext();
+  await loginAsRoot(agent, config);
+  const application = await defaultApplication(agent);
+  const ownerResult = await pool.query(`select * from admin_users where login = 'root'`);
+  const payload = { opValue: op('stable-error'), applicationId: application.id };
+  await createShortOpRecord(pool, payload, ownerResult.rows[0]);
+
+  await assert.rejects(
+    createShortOpRecord(pool, payload, ownerResult.rows[0]),
+    (error) => {
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, 'SHORT_OP_DUPLICATE');
+      return true;
+    },
+  );
 });
 
 test('all short OP routes require admin authentication', async () => {
