@@ -61,6 +61,144 @@ test('ensureDatabaseSchema creates the admin and record tables', async () => {
   assert.ok(recordColumns.rows.some((row) => row.column_name === 'op_link'));
 });
 
+test('ensureDatabaseSchema creates short OP tables and seeds default Douyin app', async () => {
+  const db = newDb();
+  const { Pool } = db.adapters.createPg();
+  const pool = new Pool();
+
+  await ensureDatabaseSchema(pool);
+
+  const applications = await pool.query(
+    `select name, app_id, is_default, status from op_applications`,
+  );
+  const shortOpColumns = await pool.query(`
+    select column_name from information_schema.columns
+    where table_name = 'short_op_records'
+  `);
+
+  assert.deepEqual(applications.rows, [{
+    name: '抖音', app_id: '1105602870', is_default: true, status: 'active',
+  }]);
+  assert.ok(shortOpColumns.rows.some((row) => row.column_name === 'code'));
+  assert.ok(
+    shortOpColumns.rows.some((row) => row.column_name === 'application_id'),
+  );
+  assert.ok(
+    shortOpColumns.rows.some((row) => row.column_name === 'deleted_at'),
+  );
+});
+
+test('ensureDatabaseSchema enforces short OP application and record constraints', async () => {
+  const db = newDb();
+  const { Pool } = db.adapters.createPg();
+  const pool = new Pool();
+
+  await ensureDatabaseSchema(pool);
+  await pool.query(`
+    insert into admin_users (id, login, email, password_hash, role, status)
+    values (
+      '00000000-0000-0000-0000-000000000101',
+      'short-op-owner',
+      'short-op-owner@example.com',
+      'hash',
+      'operator',
+      'active'
+    )
+  `);
+
+  await assert.rejects(
+    pool.query(`
+      insert into op_applications (id, name, app_id, is_default, status)
+      values (
+        '00000000-0000-0000-0000-000000000102',
+        '重复抖音',
+        '1105602870',
+        false,
+        'active'
+      )
+    `),
+    /duplicate|unique/i,
+  );
+
+  const application = await pool.query(
+    `select id from op_applications where app_id = '1105602870'`,
+  );
+  const applicationId = application.rows[0].id;
+  const recordValues = (id, code, opValue) => `(
+    '${id}',
+    '00000000-0000-0000-0000-000000000101',
+    '${code}',
+    '${opValue}',
+    '${applicationId}',
+    now(),
+    'active'
+  )`;
+
+  await assert.rejects(
+    pool.query(`
+      insert into short_op_records (
+        id, owner_id, code, op_value, application_id, op_expire_at, status
+      ) values ${recordValues(
+        '00000000-0000-0000-0000-000000000103',
+        'invalid',
+        'op-invalid',
+      )}
+    `),
+    /check|constraint/i,
+  );
+
+  await pool.query(`
+    insert into short_op_records (
+      id, owner_id, code, op_value, application_id, op_expire_at, status
+    ) values ${recordValues(
+      '00000000-0000-0000-0000-000000000104',
+      '12345678',
+      'op-duplicate',
+    )}
+  `);
+
+  await assert.rejects(
+    pool.query(`
+      insert into short_op_records (
+        id, owner_id, code, op_value, application_id, op_expire_at, status
+      ) values ${recordValues(
+        '00000000-0000-0000-0000-000000000105',
+        '87654321',
+        'op-duplicate',
+      )}
+    `),
+    /duplicate|unique/i,
+  );
+
+  await assert.rejects(
+    pool.query(`
+      insert into short_op_records (
+        id, owner_id, code, op_value, application_id, op_expire_at, status
+      ) values ${recordValues(
+        '00000000-0000-0000-0000-000000000106',
+        '12345678',
+        'op-other',
+      )}
+    `),
+    /duplicate|unique/i,
+  );
+
+  await pool.query(`
+    update short_op_records
+    set status = 'deleted', deleted_at = now()
+    where id = '00000000-0000-0000-0000-000000000104'
+  `);
+  await pool.query(`
+    insert into short_op_records (
+      id, owner_id, code, op_value, application_id, op_expire_at, status
+    ) values ${recordValues(
+      '00000000-0000-0000-0000-000000000107',
+      '87654321',
+      'op-duplicate',
+    )}
+  `);
+});
+
 test('ensureDatabaseSchema keeps empty UID reusable but rejects duplicate non-empty UID', async () => {
   const db = newDb();
   const { Pool } = db.adapters.createPg();
