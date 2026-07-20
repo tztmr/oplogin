@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="280dp"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="24dp"
+    android:background="@drawable/bg_dialog">
+
+    <TextView
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:text="✓"
+        android:textSize="32sp"
+        android:textColor="#FFFFFF"
+        android:background="@drawable/bg_success_icon"
+        android:gravity="center"
+        android:layout_marginBottom="16dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="成功"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:textColor="#333333"
+        android:layout_marginBottom="8dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="已生成可登录链接，正在唤起应用"
+        android:textSize="14sp"
+        android:textColor="#666666"
+        android:layout_marginBottom="24dp"/>
+
+    <TextView
+        android:id="@+id/tv_token"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Token: 07D1F6..."
+        android:textSize="12sp"
+        android:textColor="#666666"
+        android:background="@drawable/bg_token"
+        android:padding="12dp"
+        android:gravity="center"
+        android:maxLines="1"
+        android:ellipsize="middle"
+        android:layout_marginBottom="24dp"/>
+
+    <Button
+        android:id="@+id/btn_dialog_ok"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:text="确定"
+        android:textColor="#FFFFFF"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:background="@drawable/bg_button_blue"
+        android:stateListAnimator="@null"/>
+
+</LinearLayout>

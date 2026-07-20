@@ -1,0 +1,83 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.tencent.mobileqq"
+4    android:versionCode="2599"
+5    android:versionName="9.0.0" >
+6
+7    <uses-sdk
+7-->INJECTED
+8        android:minSdkVersion="24"
+8-->INJECTED
+9        android:targetSdkVersion="34" />
+9-->INJECTED
+10
+11    <application
+11-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:3:5-37:19
+12        android:allowBackup="true"
+12-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:4:9-35
+13        android:debuggable="true"
+14        android:extractNativeLibs="false"
+14-->INJECTED
+15        android:icon="@mipmap/ic_op_launcher"
+15-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:6:9-46
+16        android:label="@string/app_name"
+16-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:5:9-41
+17        android:roundIcon="@mipmap/ic_op_launcher_round"
+17-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:7:9-57
+18        android:supportsRtl="true"
+18-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:8:9-35
+19        android:theme="@style/Theme.OpLogin" >
+19-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:9:9-45
+20        <activity
+20-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:11:9-27:20
+21            android:name="com.dongpeng.oplogin.MainActivity"
+21-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:12:13-61
+22            android:exported="true"
+22-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:13:13-36
+23            android:launchMode="singleTask"
+23-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:14:13-44
+24            android:windowSoftInputMode="adjustResize" >
+24-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:15:13-55
+25            <intent-filter>
+25-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:17:13-20:29
+26                <action android:name="android.intent.action.MAIN" />
+26-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:18:17-69
+26-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:18:25-66
+27
+28                <category android:name="android.intent.category.LAUNCHER" />
+28-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:19:17-77
+28-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:19:27-74
+29            </intent-filter>
+30            <intent-filter>
+30-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:22:13-26:29
+31                <action android:name="android.intent.action.SEND" />
+31-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:23:17-69
+31-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:23:25-66
+32
+33                <category android:name="android.intent.category.DEFAULT" />
+33-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:24:17-76
+33-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:24:27-73
+34
+35                <data android:mimeType="text/plain" />
+35-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:25:17-55
+35-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:25:23-52
+36            </intent-filter>
+37        </activity>
+38        <activity
+38-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:29:9-36:20
+39            android:name="com.tencent.open.agent.AgentActivity"
+39-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:30:13-64
+40            android:configChanges="orientation|keyboardHidden|screenSize"
+40-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:32:13-74
+41            android:exported="true"
+41-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:31:13-36
+42            android:process=":openSdk"
+42-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:33:13-39
+43            android:screenOrientation="portrait"
+43-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:34:13-49
+44            android:theme="@style/Theme.OpLogin" >
+44-->/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/AndroidManifest.xml:35:13-49
+45        </activity>
+46    </application>
+47
+48</manifest>

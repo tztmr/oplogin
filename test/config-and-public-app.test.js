@@ -46,6 +46,12 @@ test('createApp serves the public OP homepage from /oplogin', async () => {
 
   assert.equal(response.status, 200);
   assert.match(response.text, /OP极速登录器/);
+  assert.match(response.text, /请在游戏中点击QQ登录/);
+  assert.match(response.text, /点击授权登录/);
+  assert.match(response.text, /仅用于授权登录，不会存储您的数据，请放心使用/);
+  assert.doesNotMatch(response.text, /9:41/);
+  assert.doesNotMatch(response.text, /class="phone-top"/);
+  assert.doesNotMatch(response.text, /class="battery"/);
 });
 
 test('createApp keeps the submit API validation behavior', async () => {

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Shield Background with Gradient -->
+    <path
+        android:pathData="M 54 15 L 20 30 V 54 C 20 76.2 35.36 96.96 54 102 C 72.64 96.96 88 76.2 88 54 V 30 Z">
+        <aapt:attr name="android:fillColor" xmlns:aapt="http://schemas.android.com/aapt">
+            <gradient
+                android:startX="54" android:startY="15"
+                android:endX="54" android:endY="102"
+                android:type="linear">
+                <item android:color="#2185FF" android:offset="0" />
+                <item android:color="#0052D4" android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- O and P Letters -->
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:rotation="-8">
+        
+        <!-- Letter O -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M 40 40 C 31 40 28 44 28 54 C 28 64 31 68 40 68 C 49 68 52 64 52 54 C 52 44 49 40 40 40 Z M 40 62 C 36 62 34 59 34 54 C 34 49 36 46 40 46 C 44 46 46 49 46 54 C 46 59 44 62 40 62 Z" />
+            
+        <!-- Letter P with cut -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M 56 40 L 70 40 C 78 40 81 44 81 50 C 81 56 78 59 70 59 L 63 59 L 59 71 L 53 71 L 56 40 Z M 61.5 46 L 60.5 53 L 69 53 C 72 53 74 52 74 50 C 74 48 72 46 69 46 L 61.5 46 Z" />
+    </group>
+
+</vector>

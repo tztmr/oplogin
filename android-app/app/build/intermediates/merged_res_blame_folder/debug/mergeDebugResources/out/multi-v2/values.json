@@ -1,0 +1,72 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.tencent.mobileqq.app-mergeDebugResources-1:/values/values.xml",
+            "map": [
+                {
+                    "source": "/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/res/values/colors_icon.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "56",
+                        "endOffsets": "107"
+                    }
+                },
+                {
+                    "source": "/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/res/values/strings.xml",
+                    "from": {
+                        "startLines": "1",
+                        "startColumns": "4",
+                        "startOffsets": "16",
+                        "endColumns": "44",
+                        "endOffsets": "56"
+                    },
+                    "to": {
+                        "startLines": "4",
+                        "startColumns": "4",
+                        "startOffsets": "154",
+                        "endColumns": "44",
+                        "endOffsets": "194"
+                    }
+                },
+                {
+                    "source": "/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/res/values/colors.xml",
+                    "from": {
+                        "startLines": "1",
+                        "startColumns": "4",
+                        "startOffsets": "16",
+                        "endColumns": "41",
+                        "endOffsets": "53"
+                    },
+                    "to": {
+                        "startLines": "3",
+                        "startColumns": "4",
+                        "startOffsets": "112",
+                        "endColumns": "41",
+                        "endOffsets": "149"
+                    }
+                },
+                {
+                    "source": "/Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/res/values/themes.xml",
+                    "from": {
+                        "startLines": "1",
+                        "startColumns": "4",
+                        "startOffsets": "16",
+                        "endLines": "4",
+                        "endColumns": "12",
+                        "endOffsets": "260"
+                    },
+                    "to": {
+                        "startLines": "5",
+                        "startColumns": "4",
+                        "startOffsets": "199",
+                        "endLines": "8",
+                        "endColumns": "12",
+                        "endOffsets": "443"
+                    }
+                }
+            ]
+        }
+    ]
+}

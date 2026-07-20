@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#FFFFFF</color>
+    <color name="surface">#F5F7FF</color>
+    <string name="app_name">OP极速登录器</string>
+    <style name="Theme.OpLogin" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/surface</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+    </style>
+</resources>

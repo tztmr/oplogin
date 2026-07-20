@@ -1,0 +1,82 @@
+[
+    {
+        "merged": "com.tencent.mobileqq.app-debug-3:/mipmap-anydpi_ic_op_launcher.xml.flat",
+        "source": "com.tencent.mobileqq.app-main-5:/mipmap-anydpi/ic_op_launcher.xml"
+    },
+    {
+        "merged": "com.tencent.mobileqq.app-debug-3:/drawable_bg_success_icon.xml.flat",
+        "source": "com.tencent.mobileqq.app-main-5:/drawable/bg_success_icon.xml"
+    },
+    {
+        "merged": "com.tencent.mobileqq.app-debug-3:/xml_backup_rules.xml.flat",
+        "source": "com.tencent.mobileqq.app-main-5:/xml/backup_rules.xml"
+    },
+    {
+        "merged": "com.tencent.mobileqq.app-debug-3:/drawable_bg_token.xml.flat",
+        "source": "com.tencent.mobileqq.app-main-5:/drawable/bg_token.xml"
+    },
+    {
+        "merged": "com.tencent.mobileqq.app-debug-3:/drawable_ic_launcher_foreground.xml.flat",
+        "source": "com.tencent.mobileqq.app-main-5:/drawable/ic_launcher_foreground.xml"
+    },
+    {
+        "merged": "com.tencent.mobileqq.app-debug-3:/mipmap-anydpi_ic_op_launcher_round.xml.flat",
+        "source": "com.tencent.mobileqq.app-main-5:/mipmap-anydpi/ic_op_launcher_round.xml"
+    },
+    {
+        "merged": "com.tencent.mobileqq.app-debug-3:/mipmap-anydpi-v26_ic_launcher_round.xml.flat",
+        "source": "com.tencent.mobileqq.app-main-5:/mipmap-anydpi-v26/ic_launcher_round.xml"
+    },
+    {
+        "merged": "com.tencent.mobileqq.app-debug-3:/layout_activity_main.xml.flat",
+        "source": "com.tencent.mobileqq.app-main-5:/layout/activity_main.xml"
+    },
+    {
+        "merged": "com.tencent.mobileqq.app-debug-3:/drawable_bg_button_blue.xml.flat",
+        "source": "com.tencent.mobileqq.app-main-5:/drawable/bg_button_blue.xml"
+    },
+    {
+        "merged": "com.tencent.mobileqq.app-debug-3:/layout_dialog_loading.xml.flat",
+        "source": "com.tencent.mobileqq.app-main-5:/layout/dialog_loading.xml"
+    },
+    {
+        "merged": "com.tencent.mobileqq.app-debug-3:/drawable_bg_edittext.xml.flat",
+        "source": "com.tencent.mobileqq.app-main-5:/drawable/bg_edittext.xml"
+    },
+    {
+        "merged": "com.tencent.mobileqq.app-debug-3:/mipmap-anydpi-v26_ic_launcher.xml.flat",
+        "source": "com.tencent.mobileqq.app-main-5:/mipmap-anydpi-v26/ic_launcher.xml"
+    },
+    {
+        "merged": "com.tencent.mobileqq.app-debug-3:/xml_data_extraction_rules.xml.flat",
+        "source": "com.tencent.mobileqq.app-main-5:/xml/data_extraction_rules.xml"
+    },
+    {
+        "merged": "com.tencent.mobileqq.app-debug-3:/layout_dialog_success.xml.flat",
+        "source": "com.tencent.mobileqq.app-main-5:/layout/dialog_success.xml"
+    },
+    {
+        "merged": "com.tencent.mobileqq.app-debug-3:/drawable_bg_dialog.xml.flat",
+        "source": "com.tencent.mobileqq.app-main-5:/drawable/bg_dialog.xml"
+    },
+    {
+        "merged": "com.tencent.mobileqq.app-debug-3:/drawable_ic_op_logo.xml.flat",
+        "source": "com.tencent.mobileqq.app-main-5:/drawable/ic_op_logo.xml"
+    },
+    {
+        "merged": "com.tencent.mobileqq.app-debug-3:/drawable_bg_logo.xml.flat",
+        "source": "com.tencent.mobileqq.app-main-5:/drawable/bg_logo.xml"
+    },
+    {
+        "merged": "com.tencent.mobileqq.app-debug-3:/mipmap-anydpi-v26_ic_op_launcher.xml.flat",
+        "source": "com.tencent.mobileqq.app-main-5:/mipmap-anydpi-v26/ic_op_launcher.xml"
+    },
+    {
+        "merged": "com.tencent.mobileqq.app-debug-3:/drawable_bg_notification.xml.flat",
+        "source": "com.tencent.mobileqq.app-main-5:/drawable/bg_notification.xml"
+    },
+    {
+        "merged": "com.tencent.mobileqq.app-debug-3:/mipmap-anydpi-v26_ic_op_launcher_round.xml.flat",
+        "source": "com.tencent.mobileqq.app-main-5:/mipmap-anydpi-v26/ic_op_launcher_round.xml"
+    }
+]

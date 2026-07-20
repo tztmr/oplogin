@@ -1,0 +1,7 @@
+com.tencent.mobileqq.app-pngs-0 /Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/build/generated/res/pngs/debug
+com.tencent.mobileqq.app-updated_navigation_xml-1 /Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/build/generated/updated_navigation_xml/debug
+com.tencent.mobileqq.app-packageDebugResources-2 /Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/build/intermediates/incremental/debug/packageDebugResources/merged.dir
+com.tencent.mobileqq.app-packageDebugResources-3 /Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/build/intermediates/incremental/debug/packageDebugResources/stripped.dir
+com.tencent.mobileqq.app-debug-4 /Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/build/intermediates/merged_res/debug/mergeDebugResources
+com.tencent.mobileqq.app-debug-5 /Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/debug/res
+com.tencent.mobileqq.app-main-6 /Users/edking/Documents/网赚学习/op东鹏转发器/android-app/app/src/main/res

@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OP极速登录器</title>
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --primary-hover: #4338CA;
+            --bg-gradient-1: #c7d2fe;
+            --bg-gradient-2: #fbcfe8;
+            --text-main: #1F2937;
+            --text-muted: #6B7280;
+            --card-bg: rgba(255, 255, 255, 0.72);
+            --card-border: rgba(255, 255, 255, 0.5);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--bg-gradient-1) 0%, var(--bg-gradient-2) 100%);
+            color: var(--text-main);
+            overflow-x: hidden;
+        }
+
+        .bg-shape {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(60px);
+            z-index: -1;
+            opacity: 0.6;
+        }
+
+        .shape-1 {
+            width: 280px;
+            height: 280px;
+            background: #818CF8;
+            top: -50px;
+            left: -50px;
+        }
+
+        .shape-2 {
+            width: 360px;
+            height: 360px;
+            background: #F472B6;
+            bottom: -100px;
+            right: -100px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 420px;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .glass-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--card-border);
+            border-radius: 24px;
+            padding: 32px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.05);
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 24px;
+            font-weight: 700;
+            margin: 0 0 8px 0;
+            background: linear-gradient(to right, #4F46E5, #EC4899);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 14px;
+            margin: 0 0 28px 0;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #312E81;
+            background: rgba(99, 102, 241, 0.14);
+            margin: 0 auto 16px auto;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 8px;
+            color: var(--text-main);
+        }
+
+        input[type="text"], select {
+            width: 100%;
+            padding: 14px 16px;
+            font-size: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.56);
+            color: var(--text-main);
+            box-sizing: border-box;
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        input[type="text"]:focus, select:focus {
+            background: rgba(255, 255, 255, 0.92);
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+
+        select {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 16px center;
+            background-size: 16px;
+        }
+
+        .btn-submit {
+            width: 100%;
+            padding: 16px;
+            font-size: 16px;
+            font-weight: 600;
+            color: white;
+            background: var(--primary);
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
+            margin-top: 8px;
+        }
+
+        .btn-submit:disabled {
+            background: #9CA3AF;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .tutorial {
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .tutorial h3 {
+            font-size: 14px;
+            margin: 0 0 12px 0;
+            color: var(--text-main);
+        }
+
+        .tutorial ol {
+            margin: 0;
+            padding-left: 20px;
+            font-size: 13px;
+            color: var(--text-muted);
+            line-height: 1.6;
+        }
+
+        .tutorial li {
+            margin-bottom: 6px;
+        }
+
+        .toast {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-100%);
+            background: rgba(255, 255, 255, 0.92);
+            color: var(--text-main);
+            padding: 12px 24px;
+            border-radius: 30px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.12);
+            opacity: 0;
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+
+        .toast.success { border-left: 4px solid #10B981; }
+        .toast.error { border-left: 4px solid #EF4444; }
+    </style>
+</head>
+<body>
+    <div class="bg-shape shape-1"></div>
+    <div class="bg-shape shape-2"></div>
+
+    <div class="container">
+        <div class="glass-card">
+            <div class="badge">本地离线壳</div>
+            <h1>OP极速登录器</h1>
+            <p class="subtitle">页面内置，本地编码，一键唤醒应用</p>
+
+            <form id="loginForm" onsubmit="event.preventDefault(); submitData();">
+                <div class="form-group">
+                    <label for="url">数据号 URL</label>
+                    <input type="text" id="url" name="url" required placeholder="例如：openid|access_token|pay_token">
+                </div>
+
+                <div class="form-group">
+                    <label for="game">目标应用</label>
+                    <select id="game" name="game" required>
+                        <option value="100507190">小红书</option>
+                        <option value="1104466820">王者荣耀</option>
+                        <option value="100228415">快手普通版</option>
+                        <option value="1107805332">快手极速版</option>
+                        <option value="100392046">陌陌</option>
+                        <option value="1105602870" selected>抖音</option>
+                        <option value="1104790111">拼多多</option>
+                        <option value="1107803357">噗叽</option>
+                        <option value="1105245568">天龙八部</option>
+                        <option value="1109838467">妄想山海</option>
+                        <option value="1106467070">和平精英</option>
+                        <option value="1104922185">QQ飞车</option>
+                        <option value="1101070761">腾讯欢乐麻将</option>
+                        <option value="101028429">JJ斗地主</option>
+                        <option value="205141">酷狗</option>
+                        <option value="101992353">欢游</option>
+                        <option value="100733509">他趣</option>
+                        <option value="1105200115">王者营地</option>
+                        <option value="1101083114">微视</option>
+                        <option value="100273020">京东</option>
+                        <option value="1106039633">懂车帝</option>
+                        <option value="1104512706">CFm</option>
+                        <option value="1106087470">百度极速版</option>
+                        <option value="1105641716">一起来捉妖</option>
+                        <option value="1110543085">三角洲</option>
+                        <option value="1105764729">头条极速版</option>
+                        <option value="100290348">今日头条普通版</option>
+                        <option value="1109811436">金铲铲</option>
+                        <option value="101466002">好看视频</option>
+                        <option value="100379435">腾讯地图</option>
+                        <option value="1107594618">途游斗地主</option>
+                        <option value="1105380575">西瓜视频</option>
+                        <option value="1106838536">使命召唤</option>
+                        <option value="1105587736">QQ华夏</option>
+                        <option value="1105376759">雷速</option>
+                        <option value="1105483033">QQ炫舞</option>
+                        <option value="101509574">赫兹</option>
+                        <option value="1103698981">TT语音</option>
+                        <option value="101097681">全民K歌</option>
+                        <option value="100784518">百度正版</option>
+                        <option value="100736949">起点读书</option>
+                        <option value="102042116">咪鸭</option>
+                        <option value="1104301257">爱聊</option>
+                        <option value="100512694">玩吧</option>
+                        <option value="200004">优酷</option>
+                        <option value="101528360">回森</option>
+                    </select>
+                </div>
+
+                <button type="submit" id="submitBtn" class="btn-submit">立即上号</button>
+            </form>
+
+            <div class="tutorial">
+                <h3>使用说明</h3>
+                <ol>
+                    <li>输入完整数据号，或从别的应用里分享文本到本 App。</li>
+                    <li>确认目标应用后点击“立即上号”。</li>
+                    <li>页面会先走本地编码，再直接调用系统去唤醒目标应用。</li>
+                    <li>如目标应用未安装，系统会提示找不到对应应用。</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+        const wakeUrlCache = new Map();
+
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast ${type} show`;
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2500);
+        }
+
+        function extractInitialOpValue() {
+            if (window.location.search) {
+                return decodeURIComponent(window.location.search.substring(1).replace(/^\/+/, ''));
+            }
+
+            if (window.location.hash) {
+                return decodeURIComponent(window.location.hash.substring(1).replace(/^\/+/, ''));
+            }
+
+            return '';
+        }
+
+        function buildCacheKey(opValue, game) {
+            return `${String(opValue || '').trim()}\n${String(game || '').trim()}`;
+        }
+
+        function buildWakeUrl(opValue, game) {
+            const bridge = window.AndroidBridge;
+            if (!bridge || typeof bridge.buildWakeUrl !== 'function') {
+                throw new Error('安卓桥接未就绪，请重新打开应用');
+            }
+
+            const key = buildCacheKey(opValue, game);
+            if (wakeUrlCache.has(key)) {
+                return wakeUrlCache.get(key);
+            }
+
+            const wakeUrl = bridge.buildWakeUrl(String(opValue || '').trim(), String(game || '').trim());
+            wakeUrlCache.set(key, wakeUrl);
+            return wakeUrl;
+        }
+
+        function openWakeUrl(wakeUrl) {
+            const bridge = window.AndroidBridge;
+            if (bridge && typeof bridge.openWakeUrl === 'function') {
+                bridge.openWakeUrl(wakeUrl);
+                return;
+            }
+
+            window.location.href = wakeUrl;
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const initialValue = extractInitialOpValue();
+            if (initialValue) {
+                document.getElementById('url').value = initialValue;
+            }
+        });
+
+        function submitData() {
+            const urlInput = document.getElementById('url').value.trim();
+            const gameInput = document.getElementById('game').value;
+            const btn = document.getElementById('submitBtn');
+
+            if (!urlInput) {
+                showToast('请输入数据号 URL', 'error');
+                return;
+            }
+
+            const originalText = btn.innerText;
+            btn.innerText = '正在处理...';
+            btn.disabled = true;
+
+            const bridge = window.AndroidBridge;
+            if (bridge && typeof bridge.isAgentAuth === 'function' && bridge.isAgentAuth()) {
+                try {
+                    showToast('正在返回授权结果...', 'success');
+                    setTimeout(() => {
+                        bridge.submitAgentAuth(urlInput);
+                    }, 250);
+                } catch (error) {
+                    console.error(error);
+                    showToast('授权失败，请检查数据号', 'error');
+                    btn.innerText = originalText;
+                    btn.disabled = false;
+                }
+                return;
+            }
+
+            try {
+                const wakeUrl = buildWakeUrl(urlInput, gameInput);
+                showToast('上号成功，正在唤起应用...', 'success');
+                setTimeout(() => {
+                    openWakeUrl(wakeUrl);
+                }, 250);
+            } catch (error) {
+                console.error(error);
+                showToast(error.message || '上号失败，请检查数据号格式', 'error');
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
