@@ -894,13 +894,34 @@ test('admin records UI truncates long OP fields in the table', async () => {
   assert.equal(pageResponse.status, 200);
   assert.equal(styleResponse.status, 200);
   assert.match(shellResponse.text, /record-col-op/);
+  assert.match(shellResponse.text, /record-col-op-nickname/);
+  assert.match(shellResponse.text, /<th>OP昵称<\/th>/);
   assert.match(shellResponse.text, /record-col-op-link/);
   assert.match(pageResponse.text, /renderTruncatedText\(item\.opValue, 'cell-truncate-op'\)/);
+  assert.match(pageResponse.text, /renderTruncatedText\(item\.opNickname, 'cell-truncate-op-nickname'\)/);
   assert.match(pageResponse.text, /cell-truncate cell-truncate-link/);
   assert.match(styleResponse.text, /\.cell-truncate\s*\{/);
   assert.match(styleResponse.text, /text-overflow:\s*ellipsis/);
   assert.match(styleResponse.text, /#recordTable\s*\{\s*table-layout:\s*fixed;/);
   assert.match(styleResponse.text, /#recordTable col\.record-col-op-link\s*\{/);
+});
+
+test('admin record helpers escape nickname HTML and include nickname import statistics', () => {
+  const sandbox = loadAdminRecordsScript();
+
+  assert.equal(
+    sandbox.renderTruncatedText('<img src=x onerror=alert(1)>', 'cell-truncate-op-nickname'),
+    '<span class="cell-truncate cell-truncate-op-nickname" title="&lt;img src=x onerror=alert(1)&gt;">&lt;img src=x onerror=alert(1)&gt;</span>',
+  );
+  assert.equal(
+    sandbox.buildBatchImportSummary({
+      importedCount: 2,
+      skippedCount: 1,
+      nicknameDetectedCount: 1,
+      nicknameFailedCount: 1,
+    }),
+    '已导入 2 条记录，跳过重复 1 条，识别昵称 1 条，未识别 1 条',
+  );
 });
 
 test('admin record row actions expose separate Google and OP delete buttons', async () => {

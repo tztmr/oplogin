@@ -432,6 +432,10 @@ td .row-actions {
   display: block;
 }
 
+.cell-truncate-op-nickname {
+  display: block;
+}
+
 #recordTable {
   table-layout: fixed;
   min-width: 0;
@@ -442,7 +446,7 @@ td .row-actions {
 }
 
 #recordTable col.record-col-order {
-  width: 4.5%;
+  width: 5%;
 }
 
 #recordTable col.record-col-google-account {
@@ -450,35 +454,39 @@ td .row-actions {
 }
 
 #recordTable col.record-col-google-password {
-  width: 8.5%;
+  width: 8%;
 }
 
 #recordTable col.record-col-google-assist {
-  width: 8.5%;
+  width: 8%;
 }
 
 #recordTable col.record-col-google-expire {
-  width: 7.5%;
+  width: 7%;
 }
 
 #recordTable col.record-col-uid {
-  width: 6%;
+  width: 5%;
 }
 
 #recordTable col.record-col-uid-created {
-  width: 7.5%;
+  width: 7%;
 }
 
 #recordTable col.record-col-op {
-  width: 10.5%;
+  width: 9%;
+}
+
+#recordTable col.record-col-op-nickname {
+  width: 6%;
 }
 
 #recordTable col.record-col-op-link {
-  width: 10.5%;
+  width: 9%;
 }
 
 #recordTable col.record-col-op-expire {
-  width: 7.5%;
+  width: 7%;
 }
 
 #recordTable col.record-col-remark {

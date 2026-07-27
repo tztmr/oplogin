@@ -58,6 +58,7 @@ test('ensureDatabaseSchema creates the admin and record tables', async () => {
   assert.ok(
     recordColumns.rows.some((row) => row.column_name === 'google_assist'),
   );
+  assert.ok(recordColumns.rows.some((row) => row.column_name === 'op_nickname'));
   assert.ok(recordColumns.rows.some((row) => row.column_name === 'op_link'));
 });
 
