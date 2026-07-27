@@ -300,6 +300,8 @@ test('GET /admin serves the record management shell', async () => {
   assert.match(response.text, /id="batchImportProgressSection"/);
   assert.match(response.text, /id="batchImportProgressBar"/);
   assert.match(response.text, /id="batchImportProgressText"/);
+  assert.match(response.text, /id="backfillOpNicknamesButton"/);
+  assert.match(response.text, /批量补全OP昵称/);
   assert.match(response.text, /id="batchDeleteProgressSection"/);
   assert.match(response.text, /id="batchDeleteProgressBar"/);
   assert.match(response.text, /id="batchDeleteProgressText"/);
@@ -921,6 +923,77 @@ test('admin record helpers escape nickname HTML and include nickname import stat
       nicknameFailedCount: 1,
     }),
     '已导入 2 条记录，跳过重复 1 条，识别昵称 1 条，未识别 1 条',
+  );
+});
+
+test('OP nickname backfill helper formats empty and completed results', () => {
+  const sandbox = loadAdminRecordsScript();
+
+  assert.equal(
+    sandbox.buildOpNicknameBackfillSummary({
+      pendingCount: 3,
+      updatedCount: 2,
+      failedCount: 1,
+    }),
+    '待补全 3 条，成功 2 条，未识别 1 条',
+  );
+  assert.equal(
+    sandbox.buildOpNicknameBackfillSummary({
+      pendingCount: 0,
+      updatedCount: 0,
+      failedCount: 0,
+    }),
+    '没有需要补全的OP昵称',
+  );
+});
+
+test('OP nickname backfill confirms, shows loading state, refreshes, and restores its button', async () => {
+  const requests = [];
+  const confirmMessages = [];
+  const backfillResponse = createDeferred();
+  const harness = loadManagementBehaviorScript('records.js', {
+    showConfirm: async (message) => {
+      confirmMessages.push(message);
+      return true;
+    },
+    adminFetch: async (url, options) => {
+      requests.push({ url, options });
+      if (url === '/api/admin/records/backfill-op-nicknames') {
+        return backfillResponse.promise;
+      }
+      return {
+        items: [],
+        total: 0,
+        page: 1,
+        pageSize: 20,
+      };
+    },
+  });
+  const button = harness.document.getElementById('backfillOpNicknamesButton');
+
+  const action = harness.sandbox.backfillOpNicknames();
+  await flushManagementPromises();
+  assert.equal(button.disabled, true);
+  assert.equal(button.textContent, '正在补全…');
+
+  backfillResponse.resolve({
+    pendingCount: 3,
+    updatedCount: 2,
+    failedCount: 1,
+  });
+  await action;
+
+  assert.deepEqual(confirmMessages, [
+    '确认补全当前账号名下所有缺失的 OP 昵称吗？',
+  ]);
+  assert.equal(requests[0].url, '/api/admin/records/backfill-op-nicknames');
+  assert.equal(requests[0].options.method, 'POST');
+  assert.match(requests[1].url, /^\/api\/admin\/records\?/);
+  assert.equal(button.disabled, false);
+  assert.equal(button.textContent, '批量补全OP昵称');
+  assert.deepEqual(
+    harness.toastMessages,
+    ['待补全 3 条，成功 2 条，未识别 1 条'],
   );
 });
 

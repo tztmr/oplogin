@@ -473,6 +473,43 @@ function buildBatchImportSummary(data) {
   return parts.join('，');
 }
 
+function buildOpNicknameBackfillSummary(data) {
+  if (!data.pendingCount) {
+    return '没有需要补全的OP昵称';
+  }
+  return [
+    `待补全 ${data.pendingCount} 条`,
+    `成功 ${data.updatedCount} 条`,
+    `未识别 ${data.failedCount} 条`,
+  ].join('，');
+}
+
+async function backfillOpNicknames() {
+  const button = document.getElementById('backfillOpNicknamesButton');
+  if (
+    !(await showConfirm(
+      '确认补全当前账号名下所有缺失的 OP 昵称吗？',
+      { confirmText: '开始补全' },
+    ))
+  ) {
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = '正在补全…';
+  try {
+    const data = await adminFetch(
+      '/api/admin/records/backfill-op-nicknames',
+      { method: 'POST' },
+    );
+    await loadRecords();
+    showToast(buildOpNicknameBackfillSummary(data));
+  } finally {
+    button.disabled = false;
+    button.textContent = '批量补全OP昵称';
+  }
+}
+
 window.openEditRecord = async function openEditRecord(id) {
   const data = await adminFetch(`/api/admin/records/${id}`, { method: 'GET' });
   document.getElementById('recordId').value = data.item.id;
@@ -854,6 +891,9 @@ window.addEventListener('DOMContentLoaded', async () => {
       resetBatchImportProgressState();
       document.getElementById('batchImportDialog').showModal();
     });
+  document
+    .getElementById('backfillOpNicknamesButton')
+    .addEventListener('click', backfillOpNicknames);
   document
     .getElementById('batchDeleteButton')
     .addEventListener('click', deleteSelectedRecords);
