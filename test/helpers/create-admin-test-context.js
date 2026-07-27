@@ -8,7 +8,7 @@ const { ensureDatabaseSchema } = require('../../lib/schema');
 const { ensureInitialSuperAdmin } = require('../../lib/bootstrap-admin');
 const { createSessionMiddleware } = require('../../lib/session');
 
-async function createAdminTestContext(envOverrides = {}) {
+async function createAdminTestContext(envOverrides = {}, appOverrides = {}) {
   const db = newDb();
   const { Pool } = db.adapters.createPg();
   const pool = new Pool();
@@ -30,7 +30,21 @@ async function createAdminTestContext(envOverrides = {}) {
     config,
     store: new session.MemoryStore(),
   });
-  const app = createApp({ config, pool, sessionMiddleware });
+  const lookupOpNicknamesImpl = async (opValues) => {
+    const uniqueValues = Array.from(new Set(opValues.filter(Boolean)));
+    return {
+      nicknameByOpValue: new Map(uniqueValues.map((value) => [value, ''])),
+      detectedCount: 0,
+      failedCount: uniqueValues.length,
+    };
+  };
+  const app = createApp({
+    config,
+    pool,
+    sessionMiddleware,
+    lookupOpNicknamesImpl,
+    ...appOverrides,
+  });
 
   return {
     app,

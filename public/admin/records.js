@@ -71,7 +71,7 @@ function renderTruncatedText(value, className) {
   }
 
   const safeValue = escapeHtmlAttribute(normalizedValue);
-  return `<span class="cell-truncate ${className}" title="${safeValue}">${normalizedValue}</span>`;
+  return `<span class="cell-truncate ${className}" title="${safeValue}">${safeValue}</span>`;
 }
 
 function renderTruncatedLink(value) {
@@ -166,6 +166,7 @@ function renderRows(data) {
           <td>${item.uidValue}</td>
           <td>${formatDateTime(item.uidCreatedAt)}</td>
           <td>${renderTruncatedText(item.opValue, 'cell-truncate-op')}</td>
+          <td>${renderTruncatedText(item.opNickname, 'cell-truncate-op-nickname')}</td>
           <td>${renderTruncatedLink(item.opLink)}</td>
           <td>${formatDateTime(item.opExpireAt)}</td>
           <td>${item.remark || ''}</td>
@@ -447,11 +448,7 @@ async function submitBatchImportForm(event) {
       document.getElementById('batchImportDialog').close();
       document.getElementById('batchImportForm').reset();
       resetBatchImportProgressState();
-      showToast(
-        data.skippedCount
-          ? `已导入 ${data.importedCount} 条记录，跳过重复 ${data.skippedCount} 条`
-          : `已导入 ${data.importedCount} 条记录`,
-      );
+      showToast(buildBatchImportSummary(data));
     }, 320);
   } catch (error) {
     setBatchImportProgressState(100, '导入失败，请检查内容后重试');
@@ -460,6 +457,20 @@ async function submitBatchImportForm(event) {
     document.getElementById('batchImportSubmitButton').textContent = '重新导入';
     throw error;
   }
+}
+
+function buildBatchImportSummary(data) {
+  const parts = [`已导入 ${data.importedCount} 条记录`];
+  if (data.skippedCount) {
+    parts.push(`跳过重复 ${data.skippedCount} 条`);
+  }
+  if (data.nicknameDetectedCount) {
+    parts.push(`识别昵称 ${data.nicknameDetectedCount} 条`);
+  }
+  if (data.nicknameFailedCount) {
+    parts.push(`未识别 ${data.nicknameFailedCount} 条`);
+  }
+  return parts.join('，');
 }
 
 window.openEditRecord = async function openEditRecord(id) {

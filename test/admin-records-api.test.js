@@ -346,6 +346,7 @@ test('batch clear actions can clear selected Google fields or OP fields', async 
     googleExpireAt: '2026-12-31T00:00:00.000Z',
     uidValue: '',
     opValue: 'batch-clear-op-1',
+    opNickname: '批量清除昵称1',
     opLink: 'https://example.com/batch-clear-op-1',
     opExpireAt: '2026-12-31T00:00:00.000Z',
     remark: 'batch clear op 1',
@@ -357,6 +358,7 @@ test('batch clear actions can clear selected Google fields or OP fields', async 
     googleExpireAt: '2026-12-31T00:00:00.000Z',
     uidValue: '',
     opValue: 'batch-clear-op-2',
+    opNickname: '批量清除昵称2',
     opLink: 'https://example.com/batch-clear-op-2',
     opExpireAt: '2026-12-31T00:00:00.000Z',
     remark: 'batch clear op 2',
@@ -395,6 +397,7 @@ test('batch clear actions can clear selected Google fields or OP fields', async 
   assert.equal(firstAfterOpClear.body.item.googlePassword, 'batch-clear-op-pass-1');
   assert.equal(firstAfterOpClear.body.item.googleAssist, 'batch-clear-op-assist-1');
   assert.equal(firstAfterOpClear.body.item.opValue, '');
+  assert.equal(firstAfterOpClear.body.item.opNickname, '');
   assert.equal(firstAfterOpClear.body.item.opLink, '');
   assert.equal(firstAfterOpClear.body.item.opExpireAt, null);
 });
@@ -575,6 +578,70 @@ test('text import creates records and derives op link plus op expiry time', asyn
     `/oplogin/${encodeURIComponent(opValue)}`,
   );
   assert.equal(response.body.items[0].opExpireAt, '2026-07-11T21:09:19.000Z');
+  assert.equal(response.body.items[0].opNickname, '');
+});
+
+test('text import detects, persists, refreshes, and preserves OP nickname on lookup failure', async () => {
+  const opValue =
+    'AD9E11313002BC4FC8C01217A304D6A9|BA8E369FEE524F5D6A4DCD3496590019|242A2540CED09DD813D0D01CCE0A6593|f131d4565ab3470029209feab7437bc8|1781212159';
+  let nickname = '首次昵称';
+  const lookupCalls = [];
+  const { agent, config } = await createAdminTestContext({}, {
+    lookupOpNicknamesImpl: async (opValues) => {
+      lookupCalls.push([...opValues]);
+      return {
+        nicknameByOpValue: new Map([[opValue, nickname]]),
+        detectedCount: nickname ? 1 : 0,
+        failedCount: nickname ? 0 : 1,
+      };
+    },
+  });
+  await loginAsSuperAdmin(agent, config);
+
+  const first = await agent.post('/api/admin/records/import-text').send({
+    rowsText: `nickname@gmail.com----first-pass----assist@outlook.com----${opValue}`,
+  });
+  nickname = '更新昵称';
+  const second = await agent.post('/api/admin/records/import-text').send({
+    rowsText: `nickname@gmail.com----second-pass----assist@outlook.com----${opValue}`,
+  });
+  nickname = '';
+  const third = await agent.post('/api/admin/records/import-text').send({
+    rowsText: `nickname@gmail.com----third-pass----assist@outlook.com----${opValue}`,
+  });
+
+  assert.equal(first.status, 201);
+  assert.equal(first.body.items[0].opNickname, '首次昵称');
+  assert.equal(first.body.nicknameDetectedCount, 1);
+  assert.equal(first.body.nicknameFailedCount, 0);
+  assert.equal(second.body.items[0].opNickname, '更新昵称');
+  assert.equal(third.body.items[0].opNickname, '更新昵称');
+  assert.equal(third.body.nicknameDetectedCount, 0);
+  assert.equal(third.body.nicknameFailedCount, 1);
+  assert.equal(lookupCalls.length, 3);
+});
+
+test('clearing OP fields also clears its nickname', async () => {
+  const opValue =
+    'AD9E11313002BC4FC8C01217A304D6A9|BA8E369FEE524F5D6A4DCD3496590019|242A2540CED09DD813D0D01CCE0A6593|f131d4565ab3470029209feab7437bc8|1781212159';
+  const { agent, config } = await createAdminTestContext({}, {
+    lookupOpNicknamesImpl: async () => ({
+      nicknameByOpValue: new Map([[opValue, '待清空昵称']]),
+      detectedCount: 1,
+      failedCount: 0,
+    }),
+  });
+  await loginAsSuperAdmin(agent, config);
+  const imported = await agent.post('/api/admin/records/import-text').send({
+    rowsText: `clear-nickname@gmail.com----pass----assist@outlook.com----${opValue}`,
+  });
+
+  const cleared = await agent.delete(
+    `/api/admin/records/${imported.body.items[0].id}/op`,
+  );
+
+  assert.equal(cleared.status, 200);
+  assert.equal(cleared.body.item.opNickname, '');
 });
 
 test('text import keeps google account and op value unique for the same owner', async () => {
@@ -703,7 +770,7 @@ test('CSV export returns all matching records with full columns', async () => {
   );
   assert.match(
     response.text,
-    /"谷歌号","谷歌密码","谷歌辅助","谷歌到期时间","UID","UID创建时间","OP","OP链接","OP到期时间","备注"/,
+    /"谷歌号","谷歌密码","谷歌辅助","谷歌到期时间","UID","UID创建时间","OP","OP昵称","OP链接","OP到期时间","备注"/,
   );
   assert.match(response.text, /csv-match@gmail\.com/);
   assert.match(response.text, /csv-pass-1/);
@@ -762,7 +829,7 @@ test('CSV export formats all datetime columns as Asia Shanghai local time', asyn
   assert.equal(response.status, 200);
   assert.match(
     response.text,
-    /"csv-datetime@gmail\.com","csv-datetime-pass","csv-datetime-assist","2026\/6\/30 05:18:07","uid-datetime","2026\/6\/30 06:19:08","op-datetime","https:\/\/example\.com\/op\/datetime","2026\/6\/30 07:20:09","datetime-row"/,
+    /"csv-datetime@gmail\.com","csv-datetime-pass","csv-datetime-assist","2026\/6\/30 05:18:07","uid-datetime","2026\/6\/30 06:19:08","op-datetime","","https:\/\/example\.com\/op\/datetime","2026\/6\/30 07:20:09","datetime-row"/,
   );
 });
 

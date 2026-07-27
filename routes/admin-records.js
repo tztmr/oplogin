@@ -13,8 +13,14 @@ const {
   exportManagedRecordsCsv,
   importManagedRecordText,
 } = require('../lib/managed-records');
+const { lookupOpNicknames } = require('../lib/op-nickname');
 
-function createAdminRecordsRouter({ pool, config, requireAdminAuth }) {
+function createAdminRecordsRouter({
+  pool,
+  config,
+  requireAdminAuth,
+  lookupOpNicknamesImpl = lookupOpNicknames,
+}) {
   const router = express.Router();
 
   router.use(requireAdminAuth);
@@ -43,7 +49,8 @@ function createAdminRecordsRouter({ pool, config, requireAdminAuth }) {
         pool,
         config,
         req.body.rowsText,
-        req.adminUser
+        req.adminUser,
+        lookupOpNicknamesImpl,
       );
       return res.status(201).json(result);
     } catch (error) {

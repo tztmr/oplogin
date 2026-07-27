@@ -21,6 +21,7 @@ function createApp({
   sessionMiddleware,
   buildWakeUrlImpl,
   rateLimitMiddleware,
+  lookupOpNicknamesImpl,
 } = {}) {
   const app = express();
   const publicDir = path.join(__dirname, 'public');
@@ -42,7 +43,12 @@ function createApp({
     app.use('/api/admin/auth', createAdminAuthRouter({ pool, requireAdminAuth }));
     app.use(
       '/api/admin/records',
-      createAdminRecordsRouter({ pool, config, requireAdminAuth }),
+      createAdminRecordsRouter({
+        pool,
+        config,
+        requireAdminAuth,
+        lookupOpNicknamesImpl,
+      }),
     );
     app.use(
       '/api/admin/users',
