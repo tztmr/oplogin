@@ -8,6 +8,7 @@ const {
   encryptGooglePassword,
   buildGooglePasswordSearchHash,
 } = require('../lib/google-password-crypto');
+const { createManagedRecord } = require('../lib/managed-records');
 
 async function loginAsSuperAdmin(agent, config) {
   await agent.post('/api/admin/auth/login').send({
@@ -131,6 +132,156 @@ test('operator can create and read managed records', async () => {
   assert.equal(createResponse.status, 201);
   assert.equal(listResponse.status, 200);
   assert.equal(listResponse.body.items.length, 1);
+});
+
+test('operator can backfill only their own missing OP nicknames', async () => {
+  const duplicateOp = 'duplicate-op-for-backfill';
+  const failedOp = 'failed-op-for-backfill';
+  const otherOwnerOp = 'other-owner-op-for-backfill';
+  const lookupCalls = [];
+  const { agent, pool, config } = await createAdminTestContext({}, {
+    lookupOpNicknamesImpl: async (opValues) => {
+      lookupCalls.push([...opValues]);
+      return {
+        nicknameByOpValue: new Map([
+          [duplicateOp, '补全昵称'],
+          [failedOp, ''],
+        ]),
+        detectedCount: 1,
+        failedCount: 1,
+      };
+    },
+  });
+  const operatorId = crypto.randomUUID();
+  const otherOperatorId = crypto.randomUUID();
+  await pool.query(
+    `
+      insert into admin_users (id, login, email, password_hash, role, status)
+      values
+        ($1, 'backfill-operator', 'backfill-operator@example.com', $2, 'operator', 'active'),
+        ($3, 'other-backfill-operator', 'other-backfill-operator@example.com', $4, 'operator', 'active')
+    `,
+    [
+      operatorId,
+      await hashAdminPassword('operator-pass'),
+      otherOperatorId,
+      await hashAdminPassword('other-operator-pass'),
+    ],
+  );
+  await agent.post('/api/admin/auth/login').send({
+    identifier: 'backfill-operator',
+    password: 'operator-pass',
+  });
+
+  for (const [index, opValue] of [
+    duplicateOp,
+    duplicateOp,
+    failedOp,
+  ].entries()) {
+    await agent.post('/api/admin/records').send({
+      googleAccount: `backfill-${index}@gmail.com`,
+      googlePassword: `pass-${index}`,
+      googleAssist: `assist-${index}`,
+      uidValue: '',
+      opValue,
+      remark: '',
+    });
+  }
+  await agent.post('/api/admin/records').send({
+    googleAccount: 'existing-nickname@gmail.com',
+    googlePassword: 'existing-pass',
+    googleAssist: 'existing-assist',
+    uidValue: '',
+    opValue: 'existing-op-for-backfill',
+    opNickname: '已有昵称',
+    remark: '',
+  });
+  await agent.post('/api/admin/records').send({
+    googleAccount: 'empty-op@gmail.com',
+    googlePassword: 'empty-op-pass',
+    googleAssist: 'empty-op-assist',
+    uidValue: '',
+    opValue: '',
+    remark: '',
+  });
+  await createManagedRecord(
+    pool,
+    config,
+    {
+      googleAccount: 'other-owner@gmail.com',
+      googlePassword: 'other-owner-pass',
+      googleAssist: 'other-owner-assist',
+      uidValue: '',
+      opValue: otherOwnerOp,
+      remark: '',
+    },
+    { id: otherOperatorId, role: 'operator' },
+  );
+
+  const response = await agent
+    .post('/api/admin/records/backfill-op-nicknames')
+    .send();
+  const currentRows = await pool.query(
+    `select op_value, op_nickname
+       from managed_records
+      where owner_id = $1
+      order by google_account asc`,
+    [operatorId],
+  );
+  const otherRow = await pool.query(
+    `select op_nickname
+       from managed_records
+      where owner_id = $1 and op_value = $2`,
+    [otherOperatorId, otherOwnerOp],
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(lookupCalls, [[duplicateOp, failedOp]]);
+  assert.deepEqual(response.body, {
+    pendingCount: 3,
+    updatedCount: 2,
+    failedCount: 1,
+  });
+  assert.deepEqual(
+    currentRows.rows
+      .filter((row) => row.op_value === duplicateOp)
+      .map((row) => row.op_nickname),
+    ['补全昵称', '补全昵称'],
+  );
+  assert.equal(
+    currentRows.rows.find((row) => row.op_value === failedOp).op_nickname,
+    '',
+  );
+  assert.equal(
+    currentRows.rows.find(
+      (row) => row.op_value === 'existing-op-for-backfill',
+    ).op_nickname,
+    '已有昵称',
+  );
+  assert.equal(otherRow.rows[0].op_nickname, '');
+});
+
+test('nickname backfill skips lookup when the current account has no eligible records', async () => {
+  let lookupCalled = false;
+  const { agent, config } = await createAdminTestContext({}, {
+    lookupOpNicknamesImpl: async () => {
+      lookupCalled = true;
+      throw new Error('lookup should not run');
+    },
+  });
+  await loginAsSuperAdmin(agent, config);
+
+  const response = await agent
+    .post('/api/admin/records/backfill-op-nicknames')
+    .send();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body, {
+    pendingCount: 0,
+    updatedCount: 0,
+    failedCount: 0,
+  });
+  assert.equal(lookupCalled, false);
 });
 
 test('record list returns stable distribution order independent from display order', async () => {

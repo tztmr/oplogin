@@ -1,5 +1,6 @@
 const express = require('express');
 const {
+  backfillManagedRecordOpNicknames,
   createManagedRecord,
   listManagedRecords,
   getManagedRecordById,
@@ -130,6 +131,19 @@ function createAdminRecordsRouter({
         req.adminUser,
       );
       return res.status(200).json({ clearedCount });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/backfill-op-nicknames', async (req, res, next) => {
+    try {
+      const result = await backfillManagedRecordOpNicknames(
+        pool,
+        req.adminUser,
+        lookupOpNicknamesImpl,
+      );
+      return res.status(200).json(result);
     } catch (error) {
       return next(error);
     }
