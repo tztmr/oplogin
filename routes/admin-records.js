@@ -140,6 +140,7 @@ function createAdminRecordsRouter({
     try {
       const result = await backfillManagedRecordOpNicknames(
         pool,
+        req.body.ids,
         req.adminUser,
         lookupOpNicknamesImpl,
       );

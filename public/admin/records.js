@@ -485,10 +485,16 @@ function buildOpNicknameBackfillSummary(data) {
 }
 
 async function backfillOpNicknames() {
+  const ids = getSelectedRecordIds();
+  if (!ids.length) {
+    showToast('请先勾选要补全 OP 昵称的记录');
+    return;
+  }
+
   const button = document.getElementById('backfillOpNicknamesButton');
   if (
     !(await showConfirm(
-      '确认补全当前账号名下所有缺失的 OP 昵称吗？',
+      `确认补全已勾选的 ${ids.length} 条记录的 OP 昵称吗？`,
       { confirmText: '开始补全' },
     ))
   ) {
@@ -500,7 +506,10 @@ async function backfillOpNicknames() {
   try {
     const data = await adminFetch(
       '/api/admin/records/backfill-op-nicknames',
-      { method: 'POST' },
+      {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      },
     );
     await loadRecords();
     showToast(buildOpNicknameBackfillSummary(data));

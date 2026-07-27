@@ -970,6 +970,10 @@ test('OP nickname backfill confirms, shows loading state, refreshes, and restore
     },
   });
   const button = harness.document.getElementById('backfillOpNicknamesButton');
+  vm.runInContext(
+    "selectedRecordIds.add('selected-a'); selectedRecordIds.add('selected-b');",
+    harness.sandbox,
+  );
 
   const action = harness.sandbox.backfillOpNicknames();
   await flushManagementPromises();
@@ -984,16 +988,37 @@ test('OP nickname backfill confirms, shows loading state, refreshes, and restore
   await action;
 
   assert.deepEqual(confirmMessages, [
-    '确认补全当前账号名下所有缺失的 OP 昵称吗？',
+    '确认补全已勾选的 2 条记录的 OP 昵称吗？',
   ]);
   assert.equal(requests[0].url, '/api/admin/records/backfill-op-nicknames');
   assert.equal(requests[0].options.method, 'POST');
+  assert.deepEqual(JSON.parse(requests[0].options.body), {
+    ids: ['selected-a', 'selected-b'],
+  });
   assert.match(requests[1].url, /^\/api\/admin\/records\?/);
   assert.equal(button.disabled, false);
   assert.equal(button.textContent, '批量补全OP昵称');
   assert.deepEqual(
     harness.toastMessages,
     ['待补全 3 条，成功 2 条，未识别 1 条'],
+  );
+});
+
+test('OP nickname backfill requires selected records', async () => {
+  const requests = [];
+  const harness = loadManagementBehaviorScript('records.js', {
+    adminFetch: async (url, options) => {
+      requests.push({ url, options });
+      return {};
+    },
+  });
+
+  await harness.sandbox.backfillOpNicknames();
+
+  assert.deepEqual(requests, []);
+  assert.deepEqual(
+    harness.toastMessages,
+    ['请先勾选要补全 OP 昵称的记录'],
   );
 });
 

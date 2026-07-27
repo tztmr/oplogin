@@ -137,6 +137,7 @@ test('operator can create and read managed records', async () => {
 test('operator can backfill only their own missing OP nicknames', async () => {
   const duplicateOp = 'duplicate-op-for-backfill';
   const failedOp = 'failed-op-for-backfill';
+  const unselectedOp = 'unselected-op-for-backfill';
   const otherOwnerOp = 'other-owner-op-for-backfill';
   const lookupCalls = [];
   const { agent, pool, config } = await createAdminTestContext({}, {
@@ -173,12 +174,13 @@ test('operator can backfill only their own missing OP nicknames', async () => {
     password: 'operator-pass',
   });
 
+  const selectedIds = [];
   for (const [index, opValue] of [
     duplicateOp,
     duplicateOp,
     failedOp,
   ].entries()) {
-    await agent.post('/api/admin/records').send({
+    const created = await agent.post('/api/admin/records').send({
       googleAccount: `backfill-${index}@gmail.com`,
       googlePassword: `pass-${index}`,
       googleAssist: `assist-${index}`,
@@ -186,7 +188,16 @@ test('operator can backfill only their own missing OP nicknames', async () => {
       opValue,
       remark: '',
     });
+    selectedIds.push(created.body.item.id);
   }
+  await agent.post('/api/admin/records').send({
+    googleAccount: 'unselected-backfill@gmail.com',
+    googlePassword: 'unselected-pass',
+    googleAssist: 'unselected-assist',
+    uidValue: '',
+    opValue: unselectedOp,
+    remark: '',
+  });
   await agent.post('/api/admin/records').send({
     googleAccount: 'existing-nickname@gmail.com',
     googlePassword: 'existing-pass',
@@ -220,7 +231,7 @@ test('operator can backfill only their own missing OP nicknames', async () => {
 
   const response = await agent
     .post('/api/admin/records/backfill-op-nicknames')
-    .send();
+    .send({ ids: selectedIds });
   const currentRows = await pool.query(
     `select op_value, op_nickname
        from managed_records
@@ -253,6 +264,10 @@ test('operator can backfill only their own missing OP nicknames', async () => {
     '',
   );
   assert.equal(
+    currentRows.rows.find((row) => row.op_value === unselectedOp).op_nickname,
+    '',
+  );
+  assert.equal(
     currentRows.rows.find(
       (row) => row.op_value === 'existing-op-for-backfill',
     ).op_nickname,
@@ -273,7 +288,7 @@ test('nickname backfill skips lookup when the current account has no eligible re
 
   const response = await agent
     .post('/api/admin/records/backfill-op-nicknames')
-    .send();
+    .send({ ids: [crypto.randomUUID()] });
 
   assert.equal(response.status, 200);
   assert.deepEqual(response.body, {
@@ -282,6 +297,85 @@ test('nickname backfill skips lookup when the current account has no eligible re
     failedCount: 0,
   });
   assert.equal(lookupCalled, false);
+});
+
+test('super admin can backfill selected records across owners', async () => {
+  const firstOp = 'super-selected-op-1';
+  const secondOp = 'super-selected-op-2';
+  const { agent, pool, config } = await createAdminTestContext({}, {
+    lookupOpNicknamesImpl: async (opValues) => ({
+      nicknameByOpValue: new Map(
+        opValues.map((opValue) => [opValue, `昵称-${opValue}`]),
+      ),
+      detectedCount: opValues.length,
+      failedCount: 0,
+    }),
+  });
+  const firstOwnerId = crypto.randomUUID();
+  const secondOwnerId = crypto.randomUUID();
+  await pool.query(
+    `
+      insert into admin_users (id, login, email, password_hash, role, status)
+      values
+        ($1, 'selected-owner-1', 'selected-owner-1@example.com', $2, 'operator', 'active'),
+        ($3, 'selected-owner-2', 'selected-owner-2@example.com', $4, 'operator', 'active')
+    `,
+    [
+      firstOwnerId,
+      await hashAdminPassword('owner-pass-1'),
+      secondOwnerId,
+      await hashAdminPassword('owner-pass-2'),
+    ],
+  );
+  const first = await createManagedRecord(
+    pool,
+    config,
+    {
+      googleAccount: 'selected-owner-1@gmail.com',
+      googlePassword: 'selected-owner-pass-1',
+      googleAssist: 'selected-owner-assist-1',
+      uidValue: '',
+      opValue: firstOp,
+      remark: '',
+    },
+    { id: firstOwnerId, role: 'operator' },
+  );
+  const second = await createManagedRecord(
+    pool,
+    config,
+    {
+      googleAccount: 'selected-owner-2@gmail.com',
+      googlePassword: 'selected-owner-pass-2',
+      googleAssist: 'selected-owner-assist-2',
+      uidValue: '',
+      opValue: secondOp,
+      remark: '',
+    },
+    { id: secondOwnerId, role: 'operator' },
+  );
+  await loginAsSuperAdmin(agent, config);
+
+  const response = await agent
+    .post('/api/admin/records/backfill-op-nicknames')
+    .send({ ids: [first.id, second.id] });
+  const rows = await pool.query(
+    `select op_value, op_nickname
+       from managed_records
+      where id in ($1, $2)
+      order by op_value asc`,
+    [first.id, second.id],
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body, {
+    pendingCount: 2,
+    updatedCount: 2,
+    failedCount: 0,
+  });
+  assert.deepEqual(
+    rows.rows.map((row) => row.op_nickname),
+    [`昵称-${firstOp}`, `昵称-${secondOp}`],
+  );
 });
 
 test('record list returns stable distribution order independent from display order', async () => {
