@@ -15,6 +15,8 @@ test('parseOpToken extracts the token fields used by the wake payload', () => {
     openid: '785C405C8549B6018AD88946B1D497BA',
     accessToken: '61918848DC616E7304A2D7F3C4ED796D',
     payToken: 'F43DC53DD8E3AA6FD799EF322F5F71C6',
+    pfKey: '65fe51e82cf70df5ca345617887e1601',
+    authTime: '1780747973',
   });
 });
 
@@ -53,6 +55,9 @@ test('buildWakeUrl creates a Tencent app URL with a decodable pasteboard plist',
   assert.equal(decoded.openid, '785C405C8549B6018AD88946B1D497BA');
   assert.equal(decoded.access_token, '61918848DC616E7304A2D7F3C4ED796D');
   assert.equal(decoded.pay_token, 'F43DC53DD8E3AA6FD799EF322F5F71C6');
+  assert.equal(decoded.pfkey, '65fe51e82cf70df5ca345617887e1601');
+  assert.equal(decoded.auth_time, '1780747973');
+  assert.equal(decoded.expires_time, '1780747973');
   assert.equal(decoded.pf, 'openmobile_ios');
   assert.equal(decoded.ret, 0);
   assert.equal(decoded.expires_in, 7776000);
