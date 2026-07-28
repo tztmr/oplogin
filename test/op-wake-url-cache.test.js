@@ -75,3 +75,45 @@ test('createWakeUrlCache surfaces API errors and avoids poisoning the cache', as
   );
   assert.equal(callCount, 2);
 });
+
+test('createWakeUrlCache times out stuck requests and allows a retry', async () => {
+  const scheduledTimeouts = [];
+  let callCount = 0;
+  const cache = createWakeUrlCache({
+    timeoutMs: 1500,
+    setTimeoutImpl(callback) {
+      scheduledTimeouts.push(callback);
+      return scheduledTimeouts.length;
+    },
+    clearTimeoutImpl() {},
+    fetchImpl: async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        return await new Promise(() => {});
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return {
+            status: 'success',
+            url: 'tencent1105602870://qzapp/mqzone/0?pasteboard=retry-ok',
+          };
+        },
+      };
+    },
+  });
+
+  const firstAttempt = cache.prefetch('slow-token', '1105602870');
+  assert.equal(scheduledTimeouts.length, 1);
+
+  scheduledTimeouts[0]();
+
+  await assert.rejects(firstAttempt, /请求超时/);
+  assert.equal(cache.get('slow-token', '1105602870'), '');
+
+  const retryUrl = await cache.prefetch('slow-token', '1105602870');
+  assert.equal(callCount, 2);
+  assert.equal(retryUrl, 'tencent1105602870://qzapp/mqzone/0?pasteboard=retry-ok');
+});

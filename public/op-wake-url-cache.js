@@ -5,30 +5,61 @@ function buildWakeUrlCacheKey(opValue, game) {
 function createWakeUrlCache({
   endpoint = '/api/submit',
   fetchImpl = (...args) => fetch(...args),
+  timeoutMs = 12000,
+  setTimeoutImpl = (...args) => setTimeout(...args),
+  clearTimeoutImpl = (timerId) => clearTimeout(timerId),
 } = {}) {
   const resolvedCache = new Map();
   const inflightCache = new Map();
 
   async function requestWakeUrl(opValue, game) {
-    const response = await fetchImpl(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: opValue, game }),
-    });
-    const data = await response.json();
+    const abortController =
+      typeof AbortController === 'function' ? new AbortController() : null;
+    let timeoutId = null;
 
-    if (!response.ok || data.status !== 'success' || !data.url) {
-      throw new Error(
-        data.error ||
-          (response.status === 400
-            ? '提取失败或数据号无效'
-            : response.status === 500
-              ? '服务器编码失败'
-              : '网络异常，请重试'),
-      );
+    const requestPromise = (async () => {
+      const response = await fetchImpl(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: opValue, game }),
+        ...(abortController ? { signal: abortController.signal } : {}),
+      });
+      const data = await response.json();
+
+      if (!response.ok || data.status !== 'success' || !data.url) {
+        throw new Error(
+          data.error ||
+            (response.status === 400
+              ? '提取失败或数据号无效'
+              : response.status === 500
+                ? '服务器编码失败'
+                : '网络异常，请重试'),
+        );
+      }
+
+      return data.url;
+    })();
+
+    if (!timeoutMs || timeoutMs <= 0) {
+      return requestPromise;
     }
 
-    return data.url;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeoutImpl(() => {
+        if (abortController) {
+          abortController.abort();
+        }
+        reject(new Error('请求超时，请重试'));
+      }, timeoutMs);
+    });
+
+    try {
+      return await Promise.race([requestPromise, timeoutPromise]);
+    } finally {
+      if (timeoutId !== null) {
+        clearTimeoutImpl(timeoutId);
+      }
+    }
   }
 
   return {
