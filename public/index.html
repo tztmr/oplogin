@@ -650,12 +650,14 @@
         </div>
     </div>
 
+    <script src="/op-input.js"></script>
     <script src="/op-wake-url-cache.js"></script>
     <script>
         const wakeUrlCache = window.createWakeUrlCache();
         let pendingWakeUrl = '';
         let confirmTimer = null;
         let redirectTimer = null;
+        let prefetchTimer = null;
 
         function showToast(message, type = 'success') {
             const toast = document.getElementById('toast');
@@ -666,23 +668,6 @@
             showToast.timer = window.setTimeout(() => {
                 toast.classList.remove('show');
             }, 2600);
-        }
-
-        function extractInitialOpValue() {
-            const pathParts = window.location.pathname.split('/').filter(Boolean);
-            if (pathParts[0] === 'oplogin' && pathParts[1]) {
-                return decodeURIComponent(pathParts.slice(1).join('/'));
-            }
-
-            if (window.location.search) {
-                return decodeURIComponent(window.location.search.substring(1).replace(/^\/+/, ''));
-            }
-
-            if (window.location.hash) {
-                return decodeURIComponent(window.location.hash.substring(1).replace(/^\/+/, ''));
-            }
-
-            return '';
         }
 
         function maskToken(opValue) {
@@ -746,7 +731,7 @@
         async function prefetchWakeUrlForForm() {
             const urlInput = document.getElementById('url').value.trim();
             const gameInput = document.getElementById('game').value;
-            if (!urlInput || !gameInput) {
+            if (!urlInput || !gameInput || !window.shouldPrefetchWakeUrl(urlInput)) {
                 return '';
             }
 
@@ -760,7 +745,7 @@
         window.addEventListener('DOMContentLoaded', () => {
             const urlElement = document.getElementById('url');
             const gameElement = document.getElementById('game');
-            const initialValue = extractInitialOpValue();
+            const initialValue = window.extractInitialOpValueFromLocation(window.location);
 
             if (initialValue) {
                 urlElement.value = initialValue;
@@ -768,9 +753,16 @@
 
             setStatusText(urlElement.value.trim());
 
+            const schedulePrefetch = () => {
+                window.clearTimeout(prefetchTimer);
+                prefetchTimer = window.setTimeout(() => {
+                    void prefetchWakeUrlForForm();
+                }, 180);
+            };
+
             urlElement.addEventListener('input', () => {
                 setStatusText(urlElement.value.trim());
-                void prefetchWakeUrlForForm();
+                schedulePrefetch();
             });
             urlElement.addEventListener('change', () => {
                 setStatusText(urlElement.value.trim());

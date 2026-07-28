@@ -2,7 +2,10 @@ const express = require('express');
 const axios = require('axios');
 const { buildWakeUrl } = require('../lib/op-url');
 
-function createSubmitRouter({ buildWakeUrlImpl = buildWakeUrl } = {}) {
+function createSubmitRouter({
+  buildWakeUrlImpl = buildWakeUrl,
+  remoteTimeoutMs = 8000,
+} = {}) {
   const router = express.Router();
 
   router.post('/submit', async (req, res, next) => {
@@ -34,6 +37,7 @@ function createSubmitRouter({ buildWakeUrlImpl = buildWakeUrl } = {}) {
               'User-Agent':
                 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             },
+            timeout: remoteTimeoutMs,
           },
         );
 
@@ -43,8 +47,9 @@ function createSubmitRouter({ buildWakeUrlImpl = buildWakeUrl } = {}) {
         });
       } catch (remoteError) {
         remoteError.statusCode = 500;
-        remoteError.message =
-          'Failed to encode data locally or fetch from target API';
+        remoteError.message = remoteError.code === 'ECONNABORTED'
+          ? '远程编码请求超时，请重试'
+          : 'Failed to encode data locally or fetch from target API';
         remoteError.detail = localError.message;
         return next(remoteError);
       }

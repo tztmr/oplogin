@@ -6,6 +6,7 @@ const { createAdminTestContext } = require('./helpers/create-admin-test-context'
 const {
   extractInitialOpValueFromLocation,
   GAME_OPTIONS,
+  shouldPrefetchWakeUrl,
 } = require('../lib/public-op-page');
 
 async function login(agent, identifier, password) {
@@ -39,6 +40,15 @@ test('extractInitialOpValueFromLocation ignores bare /oplogin and keeps token ro
     }),
     'DDD|EEE',
   );
+});
+
+test('shouldPrefetchWakeUrl waits for the first three OP parts', () => {
+  assert.equal(shouldPrefetchWakeUrl(''), false);
+  assert.equal(shouldPrefetchWakeUrl('AAA'), false);
+  assert.equal(shouldPrefetchWakeUrl('AAA|BBB'), false);
+  assert.equal(shouldPrefetchWakeUrl('AAA| |CCC'), false);
+  assert.equal(shouldPrefetchWakeUrl('AAA|BBB|CCC'), true);
+  assert.equal(shouldPrefetchWakeUrl(' AAA|BBB|CCC|DDD|EEE '), true);
 });
 
 test('reserved /oplogin route is not hijacked by a user named oplogin', async () => {
