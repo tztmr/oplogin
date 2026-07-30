@@ -1024,7 +1024,7 @@ test('CSV export returns all matching records with full columns', async () => {
   assert.doesNotMatch(response.text, /csv-other@gmail\.com/);
 });
 
-test('CSV export formats all datetime columns as Asia Shanghai local time', async () => {
+test('CSV export formats all datetime columns as Asia Shanghai local time with padded year month day time', async () => {
   const { agent, pool, config } = await createAdminTestContext();
   await loginAsSuperAdmin(agent, config);
 
@@ -1074,7 +1074,7 @@ test('CSV export formats all datetime columns as Asia Shanghai local time', asyn
   assert.equal(response.status, 200);
   assert.match(
     response.text,
-    /"csv-datetime@gmail\.com","csv-datetime-pass","csv-datetime-assist","2026\/6\/30 05:18:07","uid-datetime","2026\/6\/30 06:19:08","op-datetime","","https:\/\/example\.com\/op\/datetime","2026\/6\/30 07:20:09","datetime-row"/,
+    /"csv-datetime@gmail\.com","csv-datetime-pass","csv-datetime-assist","2026\/06\/30 05:18:07","uid-datetime","2026\/06\/30 06:19:08","op-datetime","","https:\/\/example\.com\/op\/datetime","2026\/06\/30 07:20:09","datetime-row"/,
   );
 });
 
