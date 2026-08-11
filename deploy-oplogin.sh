@@ -22,6 +22,10 @@ DEFAULT_BRANCH="main"
 DEFAULT_INSTALL_DIR="/opt/oplogin"
 DEFAULT_APP_NAME="oplogin"
 DEFAULT_PORT="4399"
+MANAGED_DB_NAME="op_proxy"
+MANAGED_DB_USER="oplogin"
+PG_HBA_BEGIN="# BEGIN OPLOGIN MANAGED"
+PG_HBA_END="# END OPLOGIN MANAGED"
 STATE_DIR="${HOME}/.${APP_SLUG}-deploy"
 STATE_FILE="${STATE_DIR}/state.env"
 PROJECT_DIR=""
@@ -81,7 +85,8 @@ prompt_secret_default() {
   else
     printf '%s: ' "$prompt" >&2
   fi
-  read -r answer
+  read -r -s answer
+  printf '\n' >&2
   answer="$(trim "$answer")"
   [[ -z "$answer" ]] && answer="$current_value"
   printf '%s' "$answer"
@@ -160,7 +165,7 @@ configure_env() {
   local current_crypto=""
   local current_admin_user="admin"
   local current_admin_email="admin@example.com"
-  local current_admin_pass="change-me-now"
+  local current_admin_pass=""
   local current_cookie_secure="false"
   
   if [[ -f "$env_file" ]]; then
@@ -185,8 +190,11 @@ configure_env() {
   new_crypto="$(prompt_secret_default "谷歌密码加密密钥 (GOOGLE_PASSWORD_ENCRYPTION_KEY)" "${current_crypto}")"
   new_admin_user="$(prompt_default "默认超管账号 (INITIAL_SUPER_ADMIN_LOGIN)" "${current_admin_user:-admin}")"
   new_admin_email="$(prompt_default "默认超管邮箱 (INITIAL_SUPER_ADMIN_EMAIL)" "${current_admin_email:-admin@example.com}")"
-  new_admin_pass="$(prompt_secret_default "默认超管密码 (INITIAL_SUPER_ADMIN_PASSWORD)" "${current_admin_pass:-change-me-now}")"
+  new_admin_pass="$(prompt_secret_default "默认超管密码 (INITIAL_SUPER_ADMIN_PASSWORD)" "${current_admin_pass}")"
   new_cookie_secure="$(prompt_default "HTTPS 安全 Cookie (SESSION_COOKIE_SECURE)" "${current_cookie_secure}")"
+
+  [[ -n "$new_db" ]] || { error "DATABASE_URL 不能为空"; return 1; }
+  [[ -n "$new_admin_pass" ]] || { error "默认超管密码不能为空"; return 1; }
 
   cat > "$env_file" <<EOF
 PORT=${APP_PORT}
@@ -328,6 +336,247 @@ install_psql_if_needed() {
   fi
 
   ok "psql 客户端安装完成"
+}
+
+install_postgresql_server_if_needed() {
+  if command_exists psql && id postgres >/dev/null 2>&1; then
+    return 0
+  fi
+
+  ensure_root_capability
+  info "检测到未安装 PostgreSQL 服务端，开始自动安装"
+  if command_exists apt-get; then
+    run_root apt-get update -y -qq
+    run_root apt-get install -y -qq postgresql postgresql-client
+  elif command_exists dnf; then
+    run_root dnf install -y -q postgresql-server postgresql-contrib
+  elif command_exists yum; then
+    run_root yum install -y -q postgresql-server postgresql-contrib
+  else
+    error "不支持的系统包管理器，请手动安装 PostgreSQL 14 或更高版本"
+    return 1
+  fi
+
+  if ! command_exists psql || ! id postgres >/dev/null 2>&1; then
+    error "PostgreSQL 服务端安装不完整，未找到 psql 或 postgres 系统用户"
+    return 1
+  fi
+
+  ok "PostgreSQL 服务端安装完成"
+}
+
+initialize_postgresql_if_needed() {
+  if [[ -f /var/lib/pgsql/data/PG_VERSION ]]; then
+    return 0
+  fi
+
+  if command_exists postgresql-setup; then
+    info "初始化 PostgreSQL 数据目录"
+    run_root postgresql-setup --initdb
+  fi
+}
+
+detect_postgresql_service() {
+  command_exists systemctl || return 1
+
+  local unit
+  for unit in postgresql.service postgresql; do
+    if systemctl list-unit-files "$unit" --no-legend 2>/dev/null | grep -q '^postgresql'; then
+      printf '%s' "$unit"
+      return 0
+    fi
+  done
+
+  unit="$(
+    systemctl list-unit-files --type=service --no-legend 2>/dev/null \
+      | awk '$1 ~ /^postgresql-[0-9]+\.service$/ { print $1; exit }'
+  )"
+  [[ -n "$unit" ]] || return 1
+  printf '%s' "$unit"
+}
+
+ensure_postgresql_running() {
+  install_postgresql_server_if_needed
+  initialize_postgresql_if_needed
+
+  local service_unit
+  service_unit="$(detect_postgresql_service)" || {
+    error "未找到 PostgreSQL systemd 服务，请确认 PostgreSQL 已正确安装"
+    return 1
+  }
+
+  info "启动 PostgreSQL 服务：${service_unit}"
+  run_root systemctl enable "$service_unit" >/dev/null
+  run_root systemctl start "$service_unit"
+
+  local server_major
+  server_major="$(postgresql_server_major)" || {
+    error "无法读取 PostgreSQL 服务端版本"
+    return 1
+  }
+  if ! postgresql_server_supported "$server_major"; then
+    error "PostgreSQL ${server_major} 版本过低，需要 PostgreSQL 14 或更高版本"
+    return 1
+  fi
+}
+
+run_as_postgres() {
+  (
+    cd /tmp
+    if [[ "$(id -un)" == "postgres" ]]; then
+      "$@"
+    elif [[ "$(id -u)" -eq 0 ]] && command_exists runuser; then
+      runuser -u postgres -- "$@"
+    elif command_exists sudo; then
+      sudo -u postgres "$@"
+    else
+      error "无法切换到 postgres 用户执行数据库管理命令"
+      return 1
+    fi
+  )
+}
+
+postgresql_server_major() {
+  local version_num
+  version_num="$(run_as_postgres psql -tAc 'SHOW server_version_num' | xargs)" || return 1
+  [[ "$version_num" =~ ^[0-9]+$ ]] || return 1
+  printf '%s' "$((version_num / 10000))"
+}
+
+postgresql_server_supported() {
+  local major="${1:-}"
+  [[ "$major" =~ ^[0-9]+$ ]] && (( major >= 14 ))
+}
+
+write_managed_pg_hba() {
+  local hba_file="$1"
+  local backup_file="${hba_file}.oplogin.bak"
+  local cleaned_file output_file
+  cleaned_file="$(mktemp)"
+  output_file="$(mktemp)"
+
+  if [[ ! -f "$backup_file" ]]; then
+    if [[ -w "$(dirname "$hba_file")" ]]; then
+      cp "$hba_file" "$backup_file"
+    else
+      run_root cp "$hba_file" "$backup_file"
+    fi
+  fi
+
+  if [[ -r "$hba_file" ]]; then
+    awk -v begin="$PG_HBA_BEGIN" -v end="$PG_HBA_END" '
+      $0 == begin { managed = 1; next }
+      $0 == end { managed = 0; next }
+      !managed { print }
+    ' "$hba_file" > "$cleaned_file"
+  else
+    run_root awk -v begin="$PG_HBA_BEGIN" -v end="$PG_HBA_END" '
+      $0 == begin { managed = 1; next }
+      $0 == end { managed = 0; next }
+      !managed { print }
+    ' "$hba_file" > "$cleaned_file"
+  fi
+
+  {
+    printf '%s\n' "$PG_HBA_BEGIN"
+    printf 'host    %s    %s    127.0.0.1/32    scram-sha-256\n' "$MANAGED_DB_NAME" "$MANAGED_DB_USER"
+    printf 'host    %s    %s    ::1/128         scram-sha-256\n' "$MANAGED_DB_NAME" "$MANAGED_DB_USER"
+    printf '%s\n' "$PG_HBA_END"
+    cat "$cleaned_file"
+  } > "$output_file"
+
+  if [[ "$(id -u)" -eq 0 ]] && id postgres >/dev/null 2>&1; then
+    install -o postgres -g postgres -m 0600 "$output_file" "$hba_file"
+  elif [[ -w "$hba_file" ]]; then
+    install -m 0600 "$output_file" "$hba_file"
+  else
+    run_root install -o postgres -g postgres -m 0600 "$output_file" "$hba_file"
+  fi
+
+  rm -f "$cleaned_file" "$output_file"
+}
+
+database_url_works() {
+  local database_url="$1"
+  [[ -n "$database_url" ]] || return 1
+  psql "$database_url" -v ON_ERROR_STOP=1 -tAc 'SELECT 1' >/dev/null 2>&1
+}
+
+generate_database_password() {
+  LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32 || true
+}
+
+create_managed_database() {
+  local password="$1"
+  local hba_file
+
+  if ! run_as_postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname = '${MANAGED_DB_USER}'" | grep -q 1; then
+    run_as_postgres psql -v ON_ERROR_STOP=1 -c "CREATE ROLE ${MANAGED_DB_USER} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE"
+  fi
+
+  printf "SET password_encryption = 'scram-sha-256'; ALTER ROLE %s WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD '%s';\n" \
+    "$MANAGED_DB_USER" "$password" \
+    | run_as_postgres psql -v ON_ERROR_STOP=1
+
+  if ! run_as_postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname = '${MANAGED_DB_NAME}'" | grep -q 1; then
+    run_as_postgres createdb --owner="$MANAGED_DB_USER" "$MANAGED_DB_NAME"
+  fi
+  run_as_postgres psql -v ON_ERROR_STOP=1 -c "ALTER DATABASE ${MANAGED_DB_NAME} OWNER TO ${MANAGED_DB_USER}"
+
+  hba_file="$(run_as_postgres psql -tAc 'SHOW hba_file' | xargs)"
+  [[ -n "$hba_file" && -f "$hba_file" ]] || {
+    error "无法确定 PostgreSQL 的 pg_hba.conf 路径"
+    return 1
+  }
+  write_managed_pg_hba "$hba_file"
+  run_as_postgres psql -v ON_ERROR_STOP=1 -c 'SELECT pg_reload_conf()' >/dev/null
+}
+
+provision_managed_local_database() {
+  local target_dir="$1"
+  local password database_url
+
+  ensure_postgresql_running
+  password="$(generate_database_password)"
+  [[ ${#password} -eq 32 ]] || {
+    error "数据库密码生成失败"
+    return 1
+  }
+
+  create_managed_database "$password"
+  database_url="postgres://${MANAGED_DB_USER}:${password}@127.0.0.1:5432/${MANAGED_DB_NAME}"
+  set_env_value "$target_dir" "DATABASE_URL" "$database_url"
+
+  if ! database_url_works "$database_url"; then
+    error "自动创建的 PostgreSQL 数据库连接验证失败"
+    return 1
+  fi
+  ok "本机 PostgreSQL 数据库已创建并通过连接验证"
+}
+
+prepare_database() {
+  local target_dir="$1"
+  local env_file="${target_dir}/.env"
+  local current_url=""
+
+  install_psql_if_needed
+  current_url="$(read_env_value "$env_file" "DATABASE_URL")"
+  if [[ -n "$current_url" ]] && database_url_works "$current_url"; then
+    ok "现有 PostgreSQL 数据库连接验证成功，继续复用"
+    return 0
+  fi
+
+  if [[ -n "$current_url" ]]; then
+    warn "现有 PostgreSQL 数据库连接不可用（连接串已隐藏）"
+    if ! ask_yes_no "是否自动创建本机专用数据库并替换现有连接" "y"; then
+      error "数据库连接不可用，部署已停止"
+      return 1
+    fi
+  else
+    info "未配置 DATABASE_URL，开始创建本机专用 PostgreSQL 数据库"
+  fi
+
+  provision_managed_local_database "$target_dir"
 }
 
 install_nginx_if_needed() {

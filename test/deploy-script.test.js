@@ -1,16 +1,17 @@
 const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
 const scriptPath = path.join(__dirname, '..', 'deploy-oplogin.sh');
 
-function runSourcedScript(body, input = '') {
+function runSourcedScript(body, input = '', env = {}) {
   return spawnSync(
     'bash',
     ['-c', 'source "$1"; shift; eval "$1"', 'bash', scriptPath, body],
-    { encoding: 'utf8', input },
+    { encoding: 'utf8', input, env: { ...process.env, ...env } },
   );
 }
 
@@ -36,6 +37,74 @@ test('secret defaults are preserved without being rendered', () => {
   assert.equal(result.stdout, 'do-not-print');
   assert.doesNotMatch(result.stderr, /do-not-print/);
   assert.match(result.stderr, /已配置，回车保留/);
+});
+
+test('managed pg_hba rules are scoped, first-match, backed up, and idempotent', (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oplogin-hba-'));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+  const hbaPath = path.join(tempDir, 'pg_hba.conf');
+  const original = [
+    '# PostgreSQL Client Authentication Configuration File',
+    'local all all peer',
+    'host all all 127.0.0.1/32 ident',
+    '',
+  ].join('\n');
+  fs.writeFileSync(hbaPath, original);
+
+  const result = runSourcedScript(
+    'write_managed_pg_hba "$TEST_HBA"; write_managed_pg_hba "$TEST_HBA"',
+    '',
+    { TEST_HBA: hbaPath },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  const updated = fs.readFileSync(hbaPath, 'utf8');
+  assert.match(
+    updated,
+    /# BEGIN OPLOGIN MANAGED\nhost\s+op_proxy\s+oplogin\s+127\.0\.0\.1\/32\s+scram-sha-256\nhost\s+op_proxy\s+oplogin\s+::1\/128\s+scram-sha-256\n# END OPLOGIN MANAGED/,
+  );
+  assert.ok(
+    updated.indexOf('# BEGIN OPLOGIN MANAGED')
+      < updated.indexOf('host all all 127.0.0.1/32 ident'),
+  );
+  assert.equal((updated.match(/# BEGIN OPLOGIN MANAGED/g) || []).length, 1);
+  assert.equal(
+    fs.readFileSync(`${hbaPath}.oplogin.bak`, 'utf8'),
+    original,
+  );
+});
+
+test('prepare_database preserves a working existing database URL', (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oplogin-db-'));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+  const envPath = path.join(tempDir, '.env');
+  fs.writeFileSync(envPath, 'DATABASE_URL=postgres://existing.example/op_proxy\n');
+
+  const result = runSourcedScript(`
+    install_psql_if_needed() { return 0; }
+    database_url_works() { return 0; }
+    provision_managed_local_database() { printf 'PROVISION_CALLED'; return 99; }
+    prepare_database "$TEST_PROJECT"
+  `, '', { TEST_PROJECT: tempDir });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stdout, /PROVISION_CALLED/);
+  assert.equal(
+    fs.readFileSync(envPath, 'utf8'),
+    'DATABASE_URL=postgres://existing.example/op_proxy\n',
+  );
+});
+
+test('managed database rejects PostgreSQL older than 14', () => {
+  const result = runSourcedScript(`
+    if postgresql_server_supported 13; then pg13=0; else pg13=$?; fi
+    if postgresql_server_supported 14; then pg14=0; else pg14=$?; fi
+    if postgresql_server_supported 17; then pg17=0; else pg17=$?; fi
+    printf '%s %s %s' "$pg13" "$pg14" "$pg17"
+  `);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, '1 0 0');
 });
 
 test('deploy script targets the current GitHub repository over HTTPS and installs runtime dependencies', () => {
