@@ -74,6 +74,19 @@ prompt_default() {
   printf '%s' "$answer"
 }
 
+prompt_secret_default() {
+  local prompt="$1" current_value="${2:-}" answer=""
+  if [[ -n "$current_value" ]]; then
+    printf '%s [已配置，回车保留]: ' "$prompt" >&2
+  else
+    printf '%s: ' "$prompt" >&2
+  fi
+  read -r answer
+  answer="$(trim "$answer")"
+  [[ -z "$answer" ]] && answer="$current_value"
+  printf '%s' "$answer"
+}
+
 ask_yes_no() {
   local prompt="$1" default_value="${2:-y}" answer="" hint="[Y/n]"
   [[ "$default_value" == "n" ]] && hint="[y/N]"
@@ -167,12 +180,12 @@ configure_env() {
   [[ -z "$current_cookie_secure" ]] && current_cookie_secure="false"
 
   local new_db new_session new_crypto new_admin_user new_admin_email new_admin_pass new_cookie_secure
-  new_db="$(prompt_default "PostgreSQL 数据库连接 (DATABASE_URL)" "${current_db}")"
-  new_session="$(prompt_default "会话密钥 (SESSION_SECRET)" "${current_session}")"
-  new_crypto="$(prompt_default "谷歌密码加密密钥 (GOOGLE_PASSWORD_ENCRYPTION_KEY)" "${current_crypto}")"
+  new_db="$(prompt_secret_default "PostgreSQL 数据库连接 (DATABASE_URL)" "${current_db}")"
+  new_session="$(prompt_secret_default "会话密钥 (SESSION_SECRET)" "${current_session}")"
+  new_crypto="$(prompt_secret_default "谷歌密码加密密钥 (GOOGLE_PASSWORD_ENCRYPTION_KEY)" "${current_crypto}")"
   new_admin_user="$(prompt_default "默认超管账号 (INITIAL_SUPER_ADMIN_LOGIN)" "${current_admin_user:-admin}")"
   new_admin_email="$(prompt_default "默认超管邮箱 (INITIAL_SUPER_ADMIN_EMAIL)" "${current_admin_email:-admin@example.com}")"
-  new_admin_pass="$(prompt_default "默认超管密码 (INITIAL_SUPER_ADMIN_PASSWORD)" "${current_admin_pass:-change-me-now}")"
+  new_admin_pass="$(prompt_secret_default "默认超管密码 (INITIAL_SUPER_ADMIN_PASSWORD)" "${current_admin_pass:-change-me-now}")"
   new_cookie_secure="$(prompt_default "HTTPS 安全 Cookie (SESSION_COOKIE_SECURE)" "${current_cookie_secure}")"
 
   cat > "$env_file" <<EOF
@@ -185,6 +198,8 @@ INITIAL_SUPER_ADMIN_EMAIL=${new_admin_email}
 INITIAL_SUPER_ADMIN_PASSWORD=${new_admin_pass}
 SESSION_COOKIE_SECURE=${new_cookie_secure}
 EOF
+
+  chmod 600 "$env_file" 2>/dev/null || true
 
   ok "环境变量已保存至 ${env_file}"
 }
@@ -224,29 +239,54 @@ install_git_if_needed() {
   ok "Git 安装完成"
 }
 
+node_major_version() {
+  command_exists node || return 1
+  node --version 2>/dev/null | sed -E 's/^v([0-9]+).*/\1/'
+}
+
+node_runtime_supported() {
+  local major="${1:-}"
+  if [[ -z "$major" ]]; then
+    major="$(node_major_version)" || return 1
+  fi
+  [[ "$major" =~ ^[0-9]+$ ]] && (( major >= 18 ))
+}
+
 install_node_if_needed() {
-  if command_exists node && command_exists npm; then
+  if command_exists node && command_exists npm && node_runtime_supported; then
     return 0
   fi
 
   ensure_root_capability
-  info "检测到未安装 Node.js，开始自动安装"
+  if command_exists node; then
+    warn "当前 Node.js $(node --version 2>/dev/null || true) 低于项目要求，开始升级到 Node.js 22"
+  else
+    info "检测到未安装 Node.js，开始自动安装 Node.js 22"
+  fi
   if command_exists apt-get; then
     run_root apt-get update -y -qq
     run_root apt-get install -y -qq ca-certificates curl gnupg
-    curl -fsSL https://deb.nodesource.com/setup_20.x | run_root bash -
+    curl -fsSL https://deb.nodesource.com/setup_22.x | run_root bash -
     run_root apt-get install -y -qq nodejs
   elif command_exists dnf; then
-    run_root dnf module reset -y nodejs >/dev/null 2>&1 || true
-    run_root dnf install -y -q nodejs npm
+    run_root dnf install -y -q ca-certificates curl
+    curl -fsSL https://rpm.nodesource.com/setup_22.x | run_root bash -
+    run_root dnf install -y -q nodejs
   elif command_exists yum; then
-    run_root yum install -y -q nodejs npm
+    run_root yum install -y -q ca-certificates curl
+    curl -fsSL https://rpm.nodesource.com/setup_22.x | run_root bash -
+    run_root yum install -y -q nodejs
   else
     error "不支持的系统包管理器，请手动安装 Node.js"
     return 1
   fi
 
-  ok "Node.js 安装完成"
+  if ! command_exists npm || ! node_runtime_supported; then
+    error "Node.js 安装后版本仍不符合要求，需要 Node.js 18 或更高版本"
+    return 1
+  fi
+
+  ok "Node.js 安装完成：$(node --version)"
 }
 
 install_pm2_if_needed() {
@@ -751,4 +791,6 @@ main() {
   esac
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

@@ -1,9 +1,42 @@
 const assert = require('node:assert/strict');
+const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
 const scriptPath = path.join(__dirname, '..', 'deploy-oplogin.sh');
+
+function runSourcedScript(body, input = '') {
+  return spawnSync(
+    'bash',
+    ['-c', 'source "$1"; shift; eval "$1"', 'bash', scriptPath, body],
+    { encoding: 'utf8', input },
+  );
+}
+
+test('deploy script rejects Node 16 and accepts supported Node majors', () => {
+  const result = runSourcedScript(`
+    if node_runtime_supported 16; then node16=0; else node16=$?; fi
+    if node_runtime_supported 18; then node18=0; else node18=$?; fi
+    if node_runtime_supported 22; then node22=0; else node22=$?; fi
+    printf '%s %s %s' "$node16" "$node18" "$node22"
+  `);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, '1 0 0');
+});
+
+test('secret defaults are preserved without being rendered', () => {
+  const result = runSourcedScript(
+    'prompt_secret_default "数据库连接" "do-not-print"',
+    '\n',
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, 'do-not-print');
+  assert.doesNotMatch(result.stderr, /do-not-print/);
+  assert.match(result.stderr, /已配置，回车保留/);
+});
 
 test('deploy script targets the current GitHub repository over HTTPS and installs runtime dependencies', () => {
   const script = fs.readFileSync(scriptPath, 'utf8');
