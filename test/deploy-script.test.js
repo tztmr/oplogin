@@ -107,6 +107,48 @@ test('managed database rejects PostgreSQL older than 14', () => {
   assert.equal(result.stdout, '1 0 0');
 });
 
+test('deploy prepares and verifies the database before PM2 startup', () => {
+  const orchestrationDoubles = `
+    events=''
+    record() { events="\${events} $1"; }
+    install_git_if_needed() { :; }
+    install_node_if_needed() { :; }
+    install_pm2_if_needed() { :; }
+    ensure_pm2_startup() { :; }
+    load_state() { return 1; }
+    prompt_default() { printf '%s' "$2"; }
+    port_owner() { :; }
+    sync_project_code() { PROJECT_DIR="$1"; record sync; }
+    assert_project_layout() { :; }
+    install_app_dependencies() { record dependencies; }
+    configure_env() { record configure_env; }
+    verify_configured_database() { record verify_configured_database; }
+    start_or_restart_app() { record start_or_restart_app; }
+    wait_for_app_ready() { record wait_for_app_ready; }
+    save_state() { record save_state; }
+  `;
+
+  const success = runSourcedScript(`${orchestrationDoubles}
+    prepare_database() { record prepare_database; }
+    deploy_app >/dev/null
+    printf '%s' "$events"
+  `);
+  assert.equal(success.status, 0, success.stderr);
+  assert.match(
+    success.stdout,
+    /dependencies prepare_database configure_env verify_configured_database start_or_restart_app wait_for_app_ready save_state$/,
+  );
+
+  const failure = runSourcedScript(`${orchestrationDoubles}
+    prepare_database() { record prepare_database; return 23; }
+    if deploy_app >/dev/null; then deploy_status=0; else deploy_status=$?; fi
+    printf 'status=%s events=%s' "$deploy_status" "$events"
+  `);
+  assert.equal(failure.status, 0, failure.stderr);
+  assert.match(failure.stdout, /^status=23 /);
+  assert.doesNotMatch(failure.stdout, /start_or_restart_app/);
+});
+
 test('deploy script targets the current GitHub repository over HTTPS and installs runtime dependencies', () => {
   const script = fs.readFileSync(scriptPath, 'utf8');
 

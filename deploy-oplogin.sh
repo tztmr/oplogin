@@ -196,7 +196,9 @@ configure_env() {
   [[ -n "$new_db" ]] || { error "DATABASE_URL 不能为空"; return 1; }
   [[ -n "$new_admin_pass" ]] || { error "默认超管密码不能为空"; return 1; }
 
-  cat > "$env_file" <<EOF
+  local tmp_env_file
+  tmp_env_file="$(mktemp)"
+  cat > "$tmp_env_file" <<EOF
 PORT=${APP_PORT}
 DATABASE_URL=${new_db}
 SESSION_SECRET=${new_session}
@@ -206,8 +208,8 @@ INITIAL_SUPER_ADMIN_EMAIL=${new_admin_email}
 INITIAL_SUPER_ADMIN_PASSWORD=${new_admin_pass}
 SESSION_COOKIE_SECURE=${new_cookie_secure}
 EOF
-
-  chmod 600 "$env_file" 2>/dev/null || true
+  install -m 0600 "$tmp_env_file" "$env_file"
+  rm -f "$tmp_env_file"
 
   ok "环境变量已保存至 ${env_file}"
 }
@@ -579,6 +581,21 @@ prepare_database() {
   provision_managed_local_database "$target_dir"
 }
 
+verify_configured_database() {
+  local target_dir="$1"
+  local database_url
+  database_url="$(read_env_value "${target_dir}/.env" "DATABASE_URL")"
+  if [[ -z "$database_url" ]]; then
+    error "DATABASE_URL 不能为空"
+    return 1
+  fi
+  if ! database_url_works "$database_url"; then
+    error "PostgreSQL 数据库连接验证失败（连接串已隐藏）"
+    return 1
+  fi
+  ok "PostgreSQL 数据库连接验证成功"
+}
+
 install_nginx_if_needed() {
   if command_exists nginx; then
     return 0
@@ -882,7 +899,9 @@ deploy_app() {
   info "开始安装依赖"
   install_app_dependencies
 
-  configure_env "$install_dir"
+  prepare_database "$install_dir" || return $?
+  configure_env "$install_dir" || return $?
+  verify_configured_database "$install_dir" || return $?
 
   info "开始启动 PM2 服务"
   start_or_restart_app

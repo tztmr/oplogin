@@ -81,7 +81,7 @@
 
 ## 环境要求
 
-- `Node.js 18+`，推荐 `20+`
+- `Node.js 18+`，推荐 `22+`
 - `PostgreSQL 14+`
 - `npm`
 
@@ -118,7 +118,7 @@ cp .env.example .env
 
 ```env
 PORT=4399
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/op_proxy
+DATABASE_URL=postgres://oplogin:replace-with-a-database-password@127.0.0.1:5432/op_proxy
 SESSION_SECRET=replace-with-a-long-random-string
 GOOGLE_PASSWORD_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 INITIAL_SUPER_ADMIN_LOGIN=admin
@@ -307,6 +307,17 @@ chmod +x ./deploy-oplogin.sh
 bash ./deploy-oplogin.sh
 ```
 
+首次执行菜单中的“拉代码 + 安装依赖 + PM2 部署”时，脚本会自动完成以下检查：
+
+- Node.js 缺失或低于 18 时自动安装 Node.js 22。
+- 已有 `DATABASE_URL` 可以连接时原样复用，包括远程 PostgreSQL。
+- 未配置数据库时，自动安装并启动本机 PostgreSQL 14+，创建非超级用户 `oplogin` 和数据库 `op_proxy`。
+- 只为 `op_proxy`/`oplogin` 添加本机回环地址的 `scram-sha-256` 认证规则，不修改其他数据库和用户的认证方式。
+- 自动创建的数据库密码只写入权限为 `0600` 的 `.env`，不会显示在终端提示或日志中。
+- 数据库连接验证通过后才启动 PM2；验证失败会停止部署并显示不含连接凭据的错误。
+
+如果系统软件源只能提供低于 14 的 PostgreSQL，脚本会停止并要求先安装受支持版本，不会对旧数据库执行自动升级。
+
 ### 命令模式
 
 ```bash
@@ -325,7 +336,7 @@ bash ./deploy-oplogin.sh reset-admin-password
 ### 推荐部署顺序
 
 1. 执行 `deploy`
-2. 执行 `env` 配置 `.env`
+2. 按提示设置首次使用的超管密码；其他已生成的密钥直接回车保留
 3. 用 `status` / `logs` 检查运行状态
 4. 服务正常后执行 `https`
 
@@ -333,7 +344,7 @@ bash ./deploy-oplogin.sh reset-admin-password
 
 - 生产环境必须替换默认超管密码
 - 生产环境必须替换 `SESSION_SECRET`
-- 建议使用独立的 PostgreSQL 数据库
+- 应用应使用独立的 PostgreSQL 账号，避免使用 `postgres` 超级用户；一键部署会自动创建 `oplogin`
 - 完成 HTTPS 反向代理后，再将 `SESSION_COOKIE_SECURE` 改为 `true`
 - 如首次部署失败，优先检查 `.env`、数据库连接、`pm2 logs` 和 Nginx 配置
 
