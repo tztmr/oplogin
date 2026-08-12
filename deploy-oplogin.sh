@@ -161,6 +161,7 @@ configure_env() {
   local env_file="${target_dir}/.env"
   
   local current_db=""
+  local current_db_mode=""
   local current_session=""
   local current_crypto=""
   local current_admin_user="admin"
@@ -170,6 +171,7 @@ configure_env() {
   
   if [[ -f "$env_file" ]]; then
     current_db="$(read_env_value "$env_file" "DATABASE_URL")"
+    current_db_mode="$(read_env_value "$env_file" "DATABASE_MODE")"
     current_session="$(read_env_value "$env_file" "SESSION_SECRET")"
     current_crypto="$(read_env_value "$env_file" "GOOGLE_PASSWORD_ENCRYPTION_KEY")"
     current_admin_user="$(read_env_value "$env_file" "INITIAL_SUPER_ADMIN_LOGIN")"
@@ -183,9 +185,13 @@ configure_env() {
   [[ -z "$current_crypto" ]] && current_crypto=$(LC_ALL=C tr -dc 'a-f0-9' < /dev/urandom | head -c 64 || true)
   [[ -z "$current_admin_email" ]] && current_admin_email="admin@example.com"
   [[ -z "$current_cookie_secure" ]] && current_cookie_secure="false"
+  [[ -n "$current_db" ]] || { error "DATABASE_URL 不能为空，请先选择并配置数据库"; return 1; }
+  case "$current_db_mode" in
+    local|cloud) ;;
+    *) current_db_mode="$(infer_database_mode "$current_db")" ;;
+  esac
 
-  local new_db new_session new_crypto new_admin_user new_admin_email new_admin_pass new_cookie_secure
-  new_db="$(prompt_secret_default "PostgreSQL 数据库连接 (DATABASE_URL)" "${current_db}")"
+  local new_session new_crypto new_admin_user new_admin_email new_admin_pass new_cookie_secure
   new_session="$(prompt_secret_default "会话密钥 (SESSION_SECRET)" "${current_session}")"
   new_crypto="$(prompt_secret_default "谷歌密码加密密钥 (GOOGLE_PASSWORD_ENCRYPTION_KEY)" "${current_crypto}")"
   new_admin_user="$(prompt_default "默认超管账号 (INITIAL_SUPER_ADMIN_LOGIN)" "${current_admin_user:-admin}")"
@@ -193,14 +199,14 @@ configure_env() {
   new_admin_pass="$(prompt_secret_default "默认超管密码 (INITIAL_SUPER_ADMIN_PASSWORD)" "${current_admin_pass}")"
   new_cookie_secure="$(prompt_default "HTTPS 安全 Cookie (SESSION_COOKIE_SECURE)" "${current_cookie_secure}")"
 
-  [[ -n "$new_db" ]] || { error "DATABASE_URL 不能为空"; return 1; }
   [[ -n "$new_admin_pass" ]] || { error "默认超管密码不能为空"; return 1; }
 
   local tmp_env_file
   tmp_env_file="$(mktemp)"
   cat > "$tmp_env_file" <<EOF
 PORT=${APP_PORT}
-DATABASE_URL=${new_db}
+DATABASE_MODE=${current_db_mode}
+DATABASE_URL=${current_db}
 SESSION_SECRET=${new_session}
 GOOGLE_PASSWORD_ENCRYPTION_KEY=${new_crypto}
 INITIAL_SUPER_ADMIN_LOGIN=${new_admin_user}
@@ -1005,7 +1011,7 @@ deploy_app() {
   info "开始安装依赖"
   install_app_dependencies
 
-  prepare_database "$install_dir" || return $?
+  prepare_database "$install_dir" true || return $?
   configure_env "$install_dir" || return $?
   verify_configured_database "$install_dir" || return $?
 
@@ -1078,6 +1084,13 @@ restart_app() {
   ok "服务已重启"
 }
 
+configure_and_restart() {
+  load_state || { error "请先执行应用部署"; return 1; }
+  configure_env "$PROJECT_DIR" || return $?
+  verify_configured_database "$PROJECT_DIR" || return $?
+  restart_app
+}
+
 rebuild_app() {
   load_state || { error "请先执行应用部署"; return 1; }
   install_git_if_needed
@@ -1086,6 +1099,7 @@ rebuild_app() {
   ensure_pm2_startup
   sync_project_code "$PROJECT_DIR" "$REPO_URL" "$BRANCH"
   assert_project_layout
+  prepare_database "$PROJECT_DIR" false || return $?
   install_app_dependencies
   start_or_restart_app
   wait_for_app_ready
@@ -1130,7 +1144,7 @@ interactive_main() {
     case "$choice" in
       1) deploy_app ;;
       2) setup_https ;;
-      3) load_state && configure_env "$PROJECT_DIR" && restart_app ;;
+      3) configure_and_restart ;;
       4) status_app ;;
       5) logs_app ;;
       6) restart_app ;;
@@ -1148,7 +1162,7 @@ main() {
   case "${1:-}" in
     deploy) deploy_app ;;
     https) setup_https ;;
-    env) load_state && configure_env "$PROJECT_DIR" && restart_app ;;
+    env) configure_and_restart ;;
     status) status_app ;;
     logs) logs_app ;;
     restart) restart_app ;;

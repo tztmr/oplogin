@@ -106,6 +106,7 @@ cp .env.example .env
 | 变量 | 必填 | 说明 |
 | --- | --- | --- |
 | `PORT` | 是 | 服务端口，默认 `4399` |
+| `DATABASE_MODE` | 是 | 数据库来源：`local` 或 `cloud` |
 | `DATABASE_URL` | 是 | PostgreSQL 连接串 |
 | `SESSION_SECRET` | 是 | 会话密钥，生产环境务必替换 |
 | `GOOGLE_PASSWORD_ENCRYPTION_KEY` | 是 | 64 位十六进制字符串，用于加密 Google 密码 |
@@ -118,6 +119,7 @@ cp .env.example .env
 
 ```env
 PORT=4399
+DATABASE_MODE=local
 DATABASE_URL=postgres://oplogin:replace-with-a-database-password@127.0.0.1:5432/op_proxy
 SESSION_SECRET=replace-with-a-long-random-string
 GOOGLE_PASSWORD_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
@@ -307,11 +309,24 @@ chmod +x ./deploy-oplogin.sh
 bash ./deploy-oplogin.sh
 ```
 
-首次执行菜单中的“拉代码 + 安装依赖 + PM2 部署”时，脚本会自动完成以下检查：
+执行菜单中的“拉代码 + 安装依赖 + PM2 部署”时，脚本会先询问数据库来源：
+
+```text
+数据库类型：
+1) 本地 PostgreSQL（自动安装并创建）
+2) 云 PostgreSQL（手动输入 DATABASE_URL）
+请选择 [1-2] [上次选择]:
+```
+
+- 第一次默认选择本地数据库；选择后写入 `DATABASE_MODE`，以后部署直接回车即可沿用。
+- 选择本地：自动安装并启动 PostgreSQL 14+，创建非超级用户 `oplogin` 和数据库 `op_proxy`。
+- 选择云端：隐藏输入 `postgres://` 或 `postgresql://` 连接串，连接验证通过后才写入 `.env`。
+- 本地与云端互相切换时需要再次确认；取消后原配置保持不变。
+- 执行 `rebuild` 时只验证已保存的数据库，不重新询问，也不会自动切换来源。
+
+脚本还会自动完成以下检查：
 
 - Node.js 缺失或低于 18 时自动安装 Node.js 22。
-- 已有 `DATABASE_URL` 可以连接时原样复用，包括远程 PostgreSQL。
-- 未配置数据库时，自动安装并启动本机 PostgreSQL 14+，创建非超级用户 `oplogin` 和数据库 `op_proxy`。
 - 只为 `op_proxy`/`oplogin` 添加本机回环地址的 `scram-sha-256` 认证规则，不修改其他数据库和用户的认证方式。
 - 自动创建的数据库密码只写入权限为 `0600` 的 `.env`，不会显示在终端提示或日志中。
 - 数据库连接验证通过后才启动 PM2；验证失败会停止部署并显示不含连接凭据的错误。

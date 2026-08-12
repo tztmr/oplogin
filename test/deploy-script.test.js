@@ -157,6 +157,102 @@ test('failed cloud database validation leaves the existing env unchanged', (t) =
   assert.doesNotMatch(unreachable.stderr, /user:secret/);
 });
 
+test('declining a database mode switch preserves the existing configuration', (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oplogin-switch-cancel-'));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+  const envPath = path.join(tempDir, '.env');
+  const original = 'DATABASE_MODE=local\nDATABASE_URL=postgres://oplogin:old@127.0.0.1:5432/op_proxy\n';
+  fs.writeFileSync(envPath, original);
+
+  const result = runSourcedScript(`
+    install_psql_if_needed() { :; }
+    prompt_database_mode() { printf 'cloud'; }
+    ask_yes_no() { return 1; }
+    prepare_cloud_database() { printf 'CLOUD_PREPARE_CALLED'; return 93; }
+    if prepare_database "$TEST_PROJECT" true; then status=0; else status=$?; fi
+    printf 'status=%s' "$status"
+  `, '', { TEST_PROJECT: tempDir });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /status=1/);
+  assert.doesNotMatch(result.stdout, /CLOUD_PREPARE_CALLED/);
+  assert.equal(fs.readFileSync(envPath, 'utf8'), original);
+});
+
+test('configure_env preserves database settings without prompting for them', (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oplogin-env-preserve-'));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+  const envPath = path.join(tempDir, '.env');
+  const databaseUrl = 'postgresql://cloud-user:secret@db.example.com/app';
+  fs.writeFileSync(envPath, [
+    'PORT=4399',
+    'DATABASE_MODE=cloud',
+    `DATABASE_URL=${databaseUrl}`,
+    'SESSION_SECRET=session-secret',
+    'GOOGLE_PASSWORD_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    'INITIAL_SUPER_ADMIN_LOGIN=admin',
+    'INITIAL_SUPER_ADMIN_EMAIL=admin@example.com',
+    'INITIAL_SUPER_ADMIN_PASSWORD=admin-secret',
+    'SESSION_COOKIE_SECURE=false',
+    '',
+  ].join('\n'));
+
+  const result = runSourcedScript(`
+    APP_PORT=4399
+    prompt_default() { printf '%s' "$2"; }
+    prompt_secret_default() {
+      if [[ "$1" == *DATABASE_URL* ]]; then printf 'DATABASE_PROMPT_CALLED'; return 88; fi
+      printf '%s' "$2"
+    }
+    configure_env "$TEST_PROJECT"
+  `, '\n\n\n\n\n', { TEST_PROJECT: tempDir });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stdout, /DATABASE_PROMPT_CALLED/);
+  const env = fs.readFileSync(envPath, 'utf8');
+  assert.match(env, /^DATABASE_MODE=cloud$/m);
+  assert.match(env, new RegExp(`^DATABASE_URL=${databaseUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm'));
+});
+
+test('rebuild validates the saved database without prompting before PM2', () => {
+  const result = runSourcedScript(`
+    events=''
+    record() { events="\${events} $1"; }
+    load_state() { PROJECT_DIR=/tmp/oplogin; REPO_URL=x; BRANCH=main; APP_NAME=oplogin; APP_PORT=4399; }
+    install_git_if_needed() { :; }
+    install_node_if_needed() { :; }
+    install_pm2_if_needed() { :; }
+    ensure_pm2_startup() { :; }
+    sync_project_code() { record sync; }
+    assert_project_layout() { :; }
+    prepare_database() { record "prepare_database:$2"; }
+    install_app_dependencies() { record dependencies; }
+    start_or_restart_app() { record start; }
+    wait_for_app_ready() { record ready; }
+    save_state() { record save; }
+    rebuild_app >/dev/null
+    printf '%s' "$events"
+  `);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /sync prepare_database:false dependencies start ready save$/);
+});
+
+test('env command validates the preserved database before restart', () => {
+  const result = runSourcedScript(`
+    events=''
+    load_state() { PROJECT_DIR=/tmp/oplogin; }
+    configure_env() { events="$events configure"; }
+    verify_configured_database() { events="$events verify"; }
+    restart_app() { events="$events restart"; }
+    configure_and_restart
+    printf '%s' "$events"
+  `);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, ' configure verify restart');
+});
+
 test('secret defaults are preserved without being rendered', () => {
   const result = runSourcedScript(
     'prompt_secret_default "数据库连接" "do-not-print"',
@@ -221,7 +317,7 @@ test('prepare_database preserves a working existing database URL', (t) => {
   assert.doesNotMatch(result.stdout, /PROVISION_CALLED/);
   assert.equal(
     fs.readFileSync(envPath, 'utf8'),
-    'DATABASE_URL=postgres://existing.example/op_proxy\n',
+    'DATABASE_URL=postgres://existing.example/op_proxy\nDATABASE_MODE=cloud\n',
   );
 });
 
