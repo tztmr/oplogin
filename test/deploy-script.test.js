@@ -27,6 +27,35 @@ test('deploy script rejects Node 16 and accepts supported Node majors', () => {
   assert.equal(result.stdout, '1 0 0');
 });
 
+test('RHEL Node upgrade disables AppStream and retries package conflicts with allowerasing', (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oplogin-node-'));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+  const callsPath = path.join(tempDir, 'calls.log');
+
+  const result = runSourcedScript(`
+    run_root() {
+      printf '%s\n' "$*" >> "$TEST_CALLS"
+      if [[ "$1" == 'dnf' && "$2" == 'install' && "$3" == '-y' && "$4" == 'nodejs' ]]; then
+        return 1
+      fi
+      if [[ "$*" == 'bash -' ]]; then
+        cat >/dev/null
+      fi
+      return 0
+    }
+    curl() { printf '# repository setup'; }
+    install_node_with_dnf
+  `, '', { TEST_CALLS: callsPath });
+
+  assert.equal(result.status, 0, result.stderr);
+  const calls = fs.readFileSync(callsPath, 'utf8');
+  assert.match(calls, /^dnf install -y ca-certificates curl$/m);
+  assert.match(calls, /^dnf module disable -y nodejs$/m);
+  assert.match(calls, /^dnf install -y nodejs$/m);
+  assert.match(calls, /^dnf install -y --allowerasing nodejs$/m);
+  assert.match(result.stdout, /旧版 Node\.js\/npm 软件包冲突/);
+});
+
 test('secret defaults are preserved without being rendered', () => {
   const result = runSourcedScript(
     'prompt_secret_default "数据库连接" "do-not-print"',

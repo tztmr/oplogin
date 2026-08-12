@@ -262,6 +262,16 @@ node_runtime_supported() {
   [[ "$major" =~ ^[0-9]+$ ]] && (( major >= 18 ))
 }
 
+install_node_with_dnf() {
+  run_root dnf install -y ca-certificates curl
+  run_root dnf module disable -y nodejs >/dev/null 2>&1 || true
+  curl -fsSL https://rpm.nodesource.com/setup_22.x | run_root bash -
+  if ! run_root dnf install -y nodejs; then
+    warn "检测到旧版 Node.js/npm 软件包冲突，使用 --allowerasing 清理冲突包后重试"
+    run_root dnf install -y --allowerasing nodejs
+  fi
+}
+
 install_node_if_needed() {
   if command_exists node && command_exists npm && node_runtime_supported; then
     return 0
@@ -279,13 +289,12 @@ install_node_if_needed() {
     curl -fsSL https://deb.nodesource.com/setup_22.x | run_root bash -
     run_root apt-get install -y -qq nodejs
   elif command_exists dnf; then
-    run_root dnf install -y -q ca-certificates curl
-    curl -fsSL https://rpm.nodesource.com/setup_22.x | run_root bash -
-    run_root dnf install -y -q nodejs
+    install_node_with_dnf
   elif command_exists yum; then
-    run_root yum install -y -q ca-certificates curl
+    run_root yum install -y ca-certificates curl
+    run_root yum module disable -y nodejs >/dev/null 2>&1 || true
     curl -fsSL https://rpm.nodesource.com/setup_22.x | run_root bash -
-    run_root yum install -y -q nodejs
+    run_root yum install -y nodejs
   else
     error "不支持的系统包管理器，请手动安装 Node.js"
     return 1
