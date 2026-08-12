@@ -262,6 +262,42 @@ node_runtime_supported() {
   [[ "$major" =~ ^[0-9]+$ ]] && (( major >= 18 ))
 }
 
+infer_database_mode() {
+  local database_url="${1:-}"
+  if [[ -z "$database_url" ]]; then
+    printf 'local'
+  elif [[ "$database_url" =~ ^postgres(ql)?://oplogin:[^@]+@(127\.0\.0\.1|localhost)(:5432)?/op_proxy([?].*)?$ ]]; then
+    printf 'local'
+  else
+    printf 'cloud'
+  fi
+}
+
+prompt_database_mode() {
+  local default_mode="${1:-local}" answer="" default_choice="1"
+  [[ "$default_mode" == "cloud" ]] && default_choice="2"
+
+  while true; do
+    printf '\n数据库类型：\n' >&2
+    printf '1) 本地 PostgreSQL（自动安装并创建）\n' >&2
+    printf '2) 云 PostgreSQL（手动输入 DATABASE_URL）\n' >&2
+    printf '请选择 [1-2] [%s]: ' "$default_choice" >&2
+    read -r answer
+    answer="$(trim "$answer")"
+    [[ -z "$answer" ]] && answer="$default_choice"
+    case "$answer" in
+      1) printf 'local'; return 0 ;;
+      2) printf 'cloud'; return 0 ;;
+      *) warn "请输入 1 或 2" >&2 ;;
+    esac
+  done
+}
+
+database_url_scheme_valid() {
+  local database_url="${1:-}"
+  [[ "$database_url" == postgres://* || "$database_url" == postgresql://* ]]
+}
+
 install_node_with_dnf() {
   run_root dnf install -y ca-certificates curl
   run_root dnf module disable -y nodejs >/dev/null 2>&1 || true

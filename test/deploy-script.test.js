@@ -56,6 +56,38 @@ test('RHEL Node upgrade disables AppStream and retries package conflicts with al
   assert.match(result.stdout, /旧版 Node\.js\/npm 软件包冲突/);
 });
 
+test('database mode inference recognizes managed local and cloud URLs', () => {
+  const result = runSourcedScript(`
+    printf '%s ' "$(infer_database_mode '')"
+    printf '%s ' "$(infer_database_mode 'postgres://oplogin:x@127.0.0.1:5432/op_proxy')"
+    printf '%s ' "$(infer_database_mode 'postgresql://oplogin:x@localhost/op_proxy')"
+    printf '%s' "$(infer_database_mode 'postgres://cloud-user:x@db.example.com/app')"
+  `);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, 'local local local cloud');
+});
+
+test('database mode prompt retries invalid input and returns cloud', () => {
+  const result = runSourcedScript('prompt_database_mode local', '9\n2\n');
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, 'cloud');
+  assert.match(result.stderr, /数据库类型/);
+  assert.match(result.stderr, /请输入 1 或 2/);
+});
+
+test('database URL scheme accepts PostgreSQL URLs only', () => {
+  const result = runSourcedScript(`
+    for url in 'postgres://host/db' 'postgresql://host/db' 'mysql://host/db' ''; do
+      if database_url_scheme_valid "$url"; then printf '1'; else printf '0'; fi
+    done
+  `);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, '1100');
+});
+
 test('secret defaults are preserved without being rendered', () => {
   const result = runSourcedScript(
     'prompt_secret_default "数据库连接" "do-not-print"',
