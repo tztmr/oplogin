@@ -287,7 +287,7 @@ test('managed pg_hba rules are scoped, first-match, backed up, and idempotent', 
   const updated = fs.readFileSync(hbaPath, 'utf8');
   assert.match(
     updated,
-    /# BEGIN OPLOGIN MANAGED\nhost\s+op_proxy\s+oplogin\s+127\.0\.0\.1\/32\s+scram-sha-256\nhost\s+op_proxy\s+oplogin\s+::1\/128\s+scram-sha-256\n# END OPLOGIN MANAGED/,
+    /# BEGIN OPLOGIN MANAGED\nhost\s+op_proxy\s+oplogin\s+127\.0\.0\.1\/32\s+scram-sha-256\nhost\s+op_proxy\s+oplogin\s+::1\/128\s+scram-sha-256\nhost\s+xui\s+all\s+127\.0\.0\.1\/32\s+md5\nhost\s+xui\s+all\s+::1\/128\s+md5\n# END OPLOGIN MANAGED/,
   );
   assert.ok(
     updated.indexOf('# BEGIN OPLOGIN MANAGED')
@@ -312,7 +312,7 @@ test('managed pg_hba keeps an existing local xui database on password auth', (t)
   ].join('\n'));
 
   const result = runSourcedScript(
-    'write_managed_pg_hba "$TEST_HBA" true',
+    'write_managed_pg_hba "$TEST_HBA"',
     '',
     { TEST_HBA: hbaPath },
   );

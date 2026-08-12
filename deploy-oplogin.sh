@@ -542,7 +542,6 @@ postgresql_server_supported() {
 
 write_managed_pg_hba() {
   local hba_file="$1"
-  local protect_xui="${2:-false}"
   local backup_file="${hba_file}.oplogin.bak"
   local cleaned_file output_file
   cleaned_file="$(mktemp)"
@@ -574,10 +573,8 @@ write_managed_pg_hba() {
     printf '%s\n' "$PG_HBA_BEGIN"
     printf 'host    %s    %s    127.0.0.1/32    scram-sha-256\n' "$MANAGED_DB_NAME" "$MANAGED_DB_USER"
     printf 'host    %s    %s    ::1/128         scram-sha-256\n' "$MANAGED_DB_NAME" "$MANAGED_DB_USER"
-    if [[ "$protect_xui" == "true" ]]; then
-      printf 'host    xui    all    127.0.0.1/32    md5\n'
-      printf 'host    xui    all    ::1/128         md5\n'
-    fi
+    printf 'host    xui    all    127.0.0.1/32    md5\n'
+    printf 'host    xui    all    ::1/128         md5\n'
     printf '%s\n' "$PG_HBA_END"
     cat "$cleaned_file"
   } > "$output_file"
@@ -605,7 +602,7 @@ generate_database_password() {
 
 create_managed_database() {
   local password="$1"
-  local hba_file protect_xui="false"
+  local hba_file
 
   if ! run_as_postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname = '${MANAGED_DB_USER}'" | grep -q 1; then
     run_as_postgres psql -v ON_ERROR_STOP=1 -c "CREATE ROLE ${MANAGED_DB_USER} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE" || return $?
@@ -625,24 +622,16 @@ create_managed_database() {
     error "无法确定 PostgreSQL 的 pg_hba.conf 路径"
     return 1
   }
-  if run_as_postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname = 'xui'" | grep -q 1; then
-    protect_xui="true"
-    warn "检测到现有 xui 数据库，将保留 3x-ui 的本机密码认证"
-  fi
-  write_managed_pg_hba "$hba_file" "$protect_xui" || return $?
+  write_managed_pg_hba "$hba_file" || return $?
   run_as_postgres psql -v ON_ERROR_STOP=1 -c 'SELECT pg_reload_conf()' >/dev/null || return $?
 }
 
 refresh_managed_pg_hba() {
-  local hba_file protect_xui="false"
+  local hba_file
   hba_file="$(run_as_postgres psql -tAc 'SHOW hba_file' | xargs)" || return $?
   [[ -n "$hba_file" && -f "$hba_file" ]] || return 1
 
-  if run_as_postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname = 'xui'" | grep -q 1; then
-    protect_xui="true"
-    warn "检测到现有 xui 数据库，将保留 3x-ui 的本机密码认证"
-  fi
-  write_managed_pg_hba "$hba_file" "$protect_xui" || return $?
+  write_managed_pg_hba "$hba_file" || return $?
   run_as_postgres psql -v ON_ERROR_STOP=1 -c 'SELECT pg_reload_conf()' >/dev/null || return $?
 }
 
