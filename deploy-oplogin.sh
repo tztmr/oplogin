@@ -308,10 +308,9 @@ install_node_with_dnf() {
   run_root dnf install -y ca-certificates curl
   run_root dnf module disable -y nodejs >/dev/null 2>&1 || true
   curl -fsSL https://rpm.nodesource.com/setup_22.x | run_root bash -
-  if ! run_root dnf install -y nodejs; then
-    warn "检测到旧版 Node.js/npm 软件包冲突，使用 --allowerasing 清理冲突包后重试"
-    run_root dnf install -y --allowerasing nodejs
-  fi
+  info "移除与 NodeSource 22 冲突的旧版 Node.js/npm RPM"
+  run_root dnf remove -y npm nodejs nodejs-docs nodejs-full-i18n
+  run_root dnf install -y --disablerepo=nodesource-nsolid nodejs
 }
 
 install_node_if_needed() {
@@ -391,20 +390,53 @@ install_psql_if_needed() {
   ok "psql 客户端安装完成"
 }
 
+postgresql_server_installed() {
+  if command_exists apt-get; then
+    command_exists dpkg-query \
+      && dpkg-query -W -f='${Status}' postgresql 2>/dev/null \
+        | grep -q '^install ok installed$'
+    return $?
+  fi
+
+  if command_exists dnf || command_exists yum; then
+    command_exists rpm || return 1
+    rpm -qa 2>/dev/null \
+      | grep -Eq '^postgresql([0-9]+)?-server-'
+    return $?
+  fi
+
+  return 1
+}
+
+enable_supported_postgresql_dnf_module() {
+  local version
+  for version in 16 15 14; do
+    if dnf module info "postgresql:${version}" >/dev/null 2>&1; then
+      info "启用 PostgreSQL ${version} 软件模块"
+      run_root dnf module reset -y postgresql || return $?
+      run_root dnf module enable -y "postgresql:${version}" || return $?
+      return 0
+    fi
+  done
+
+  warn "系统软件源未提供 PostgreSQL 14+ 模块，将使用默认软件流并在启动后检查版本"
+}
+
 install_postgresql_server_if_needed() {
-  if command_exists psql && id postgres >/dev/null 2>&1; then
+  if postgresql_server_installed; then
     return 0
   fi
 
   ensure_root_capability
   info "检测到未安装 PostgreSQL 服务端，开始自动安装"
   if command_exists apt-get; then
-    run_root apt-get update -y -qq
-    run_root apt-get install -y -qq postgresql postgresql-client
+    run_root apt-get update -y -qq || return $?
+    run_root apt-get install -y -qq postgresql postgresql-client || return $?
   elif command_exists dnf; then
-    run_root dnf install -y -q postgresql-server postgresql-contrib
+    enable_supported_postgresql_dnf_module || return $?
+    run_root dnf install -y postgresql-server postgresql-contrib || return $?
   elif command_exists yum; then
-    run_root yum install -y -q postgresql-server postgresql-contrib
+    run_root yum install -y postgresql-server postgresql-contrib || return $?
   else
     error "不支持的系统包管理器，请手动安装 PostgreSQL 14 或更高版本"
     return 1
@@ -425,7 +457,10 @@ initialize_postgresql_if_needed() {
 
   if command_exists postgresql-setup; then
     info "初始化 PostgreSQL 数据目录"
-    run_root postgresql-setup --initdb
+    run_root postgresql-setup --initdb || return $?
+  else
+    error "PostgreSQL 数据目录尚未初始化，且未找到 postgresql-setup"
+    return 1
   fi
 }
 
@@ -449,8 +484,8 @@ detect_postgresql_service() {
 }
 
 ensure_postgresql_running() {
-  install_postgresql_server_if_needed
-  initialize_postgresql_if_needed
+  install_postgresql_server_if_needed || return $?
+  initialize_postgresql_if_needed || return $?
 
   local service_unit
   service_unit="$(detect_postgresql_service)" || {
@@ -459,8 +494,12 @@ ensure_postgresql_running() {
   }
 
   info "启动 PostgreSQL 服务：${service_unit}"
-  run_root systemctl enable "$service_unit" >/dev/null
-  run_root systemctl start "$service_unit"
+  run_root systemctl enable "$service_unit" >/dev/null || return $?
+  run_root systemctl start "$service_unit" || return $?
+  if ! run_root systemctl is-active --quiet "$service_unit"; then
+    error "PostgreSQL 服务启动后未进入 active 状态：${service_unit}"
+    return 1
+  fi
 
   local server_major
   server_major="$(postgresql_server_major)" || {
@@ -564,41 +603,41 @@ create_managed_database() {
   local hba_file
 
   if ! run_as_postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname = '${MANAGED_DB_USER}'" | grep -q 1; then
-    run_as_postgres psql -v ON_ERROR_STOP=1 -c "CREATE ROLE ${MANAGED_DB_USER} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE"
+    run_as_postgres psql -v ON_ERROR_STOP=1 -c "CREATE ROLE ${MANAGED_DB_USER} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE" || return $?
   fi
 
   printf "SET password_encryption = 'scram-sha-256'; ALTER ROLE %s WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD '%s';\n" \
     "$MANAGED_DB_USER" "$password" \
-    | run_as_postgres psql -v ON_ERROR_STOP=1
+    | run_as_postgres psql -v ON_ERROR_STOP=1 || return $?
 
   if ! run_as_postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname = '${MANAGED_DB_NAME}'" | grep -q 1; then
-    run_as_postgres createdb --owner="$MANAGED_DB_USER" "$MANAGED_DB_NAME"
+    run_as_postgres createdb --owner="$MANAGED_DB_USER" "$MANAGED_DB_NAME" || return $?
   fi
-  run_as_postgres psql -v ON_ERROR_STOP=1 -c "ALTER DATABASE ${MANAGED_DB_NAME} OWNER TO ${MANAGED_DB_USER}"
+  run_as_postgres psql -v ON_ERROR_STOP=1 -c "ALTER DATABASE ${MANAGED_DB_NAME} OWNER TO ${MANAGED_DB_USER}" || return $?
 
   hba_file="$(run_as_postgres psql -tAc 'SHOW hba_file' | xargs)"
   [[ -n "$hba_file" && -f "$hba_file" ]] || {
     error "无法确定 PostgreSQL 的 pg_hba.conf 路径"
     return 1
   }
-  write_managed_pg_hba "$hba_file"
-  run_as_postgres psql -v ON_ERROR_STOP=1 -c 'SELECT pg_reload_conf()' >/dev/null
+  write_managed_pg_hba "$hba_file" || return $?
+  run_as_postgres psql -v ON_ERROR_STOP=1 -c 'SELECT pg_reload_conf()' >/dev/null || return $?
 }
 
 provision_managed_local_database() {
   local target_dir="$1"
   local password database_url
 
-  ensure_postgresql_running
+  ensure_postgresql_running || return $?
   password="$(generate_database_password)"
   [[ ${#password} -eq 32 ]] || {
     error "数据库密码生成失败"
     return 1
   }
 
-  create_managed_database "$password"
+  create_managed_database "$password" || return $?
   database_url="postgres://${MANAGED_DB_USER}:${password}@127.0.0.1:5432/${MANAGED_DB_NAME}"
-  set_env_value "$target_dir" "DATABASE_URL" "$database_url"
+  set_env_value "$target_dir" "DATABASE_URL" "$database_url" || return $?
 
   if ! database_url_works "$database_url"; then
     error "自动创建的 PostgreSQL 数据库连接验证失败"

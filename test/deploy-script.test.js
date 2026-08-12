@@ -27,7 +27,7 @@ test('deploy script rejects Node 16 and accepts supported Node majors', () => {
   assert.equal(result.stdout, '1 0 0');
 });
 
-test('RHEL Node upgrade disables AppStream and retries package conflicts with allowerasing', (t) => {
+test('RHEL Node upgrade removes legacy RPMs before installing from NodeSource', (t) => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oplogin-node-'));
   t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
   const callsPath = path.join(tempDir, 'calls.log');
@@ -35,9 +35,6 @@ test('RHEL Node upgrade disables AppStream and retries package conflicts with al
   const result = runSourcedScript(`
     run_root() {
       printf '%s\n' "$*" >> "$TEST_CALLS"
-      if [[ "$1" == 'dnf' && "$2" == 'install' && "$3" == '-y' && "$4" == 'nodejs' ]]; then
-        return 1
-      fi
       if [[ "$*" == 'bash -' ]]; then
         cat >/dev/null
       fi
@@ -51,9 +48,12 @@ test('RHEL Node upgrade disables AppStream and retries package conflicts with al
   const calls = fs.readFileSync(callsPath, 'utf8');
   assert.match(calls, /^dnf install -y ca-certificates curl$/m);
   assert.match(calls, /^dnf module disable -y nodejs$/m);
-  assert.match(calls, /^dnf install -y nodejs$/m);
-  assert.match(calls, /^dnf install -y --allowerasing nodejs$/m);
-  assert.match(result.stdout, /旧版 Node\.js\/npm 软件包冲突/);
+  assert.match(calls, /^dnf remove -y npm nodejs nodejs-docs nodejs-full-i18n$/m);
+  assert.match(calls, /^dnf install -y --disablerepo=nodesource-nsolid nodejs$/m);
+  assert.ok(
+    calls.indexOf('dnf remove -y npm nodejs nodejs-docs nodejs-full-i18n')
+      < calls.indexOf('dnf install -y --disablerepo=nodesource-nsolid nodejs'),
+  );
 });
 
 test('database mode inference recognizes managed local and cloud URLs', () => {
@@ -331,6 +331,42 @@ test('managed database rejects PostgreSQL older than 14', () => {
 
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stdout, '1 0 0');
+});
+
+test('EL9 installs PostgreSQL server even when psql and postgres user already exist', () => {
+  const result = runSourcedScript(`
+    command_exists() { [[ "$1" == 'psql' || "$1" == 'dnf' ]]; }
+    id() { return 0; }
+    rpm() { return 1; }
+    dnf() { [[ "$*" == 'module info postgresql:16' ]]; }
+    ensure_root_capability() { :; }
+    run_root() { printf '%s\n' "$*"; }
+    install_postgresql_server_if_needed
+  `);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /^dnf module reset -y postgresql$/m);
+  assert.match(result.stdout, /^dnf module enable -y postgresql:16$/m);
+  assert.match(result.stdout, /^dnf install -y postgresql-server postgresql-contrib$/m);
+  assert.ok(
+    result.stdout.indexOf('dnf module enable -y postgresql:16')
+      < result.stdout.indexOf('dnf install -y postgresql-server postgresql-contrib'),
+  );
+});
+
+test('managed local database stops immediately when PostgreSQL cannot start', () => {
+  const result = runSourcedScript(`
+    ensure_postgresql_running() { printf 'START_FAILED '; return 41; }
+    generate_database_password() { printf 'PASSWORD_GENERATED'; return 42; }
+    create_managed_database() { printf 'DATABASE_CREATED'; return 43; }
+    set_env_value() { printf 'ENV_CHANGED'; return 44; }
+    if provision_managed_local_database /tmp/oplogin; then status=0; else status=$?; fi
+    printf 'status=%s' "$status"
+  `);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /START_FAILED status=41/);
+  assert.doesNotMatch(result.stdout, /PASSWORD_GENERATED|DATABASE_CREATED|ENV_CHANGED/);
 });
 
 test('deploy prepares and verifies the database before PM2 startup', () => {
