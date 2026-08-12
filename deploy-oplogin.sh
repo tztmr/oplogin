@@ -601,29 +601,90 @@ provision_managed_local_database() {
   ok "本机 PostgreSQL 数据库已创建并通过连接验证"
 }
 
-prepare_database() {
+prepare_local_database() {
   local target_dir="$1"
-  local env_file="${target_dir}/.env"
-  local current_url=""
+  local current_url="${2:-}"
 
-  install_psql_if_needed
-  current_url="$(read_env_value "$env_file" "DATABASE_URL")"
-  if [[ -n "$current_url" ]] && database_url_works "$current_url"; then
-    ok "现有 PostgreSQL 数据库连接验证成功，继续复用"
+  if [[ -n "$current_url" ]] \
+    && [[ "$(infer_database_mode "$current_url")" == "local" ]] \
+    && database_url_works "$current_url"; then
+    set_env_value "$target_dir" "DATABASE_MODE" "local"
+    ok "本机 PostgreSQL 数据库连接验证成功，继续复用"
     return 0
   fi
 
-  if [[ -n "$current_url" ]]; then
-    warn "现有 PostgreSQL 数据库连接不可用（连接串已隐藏）"
-    if ! ask_yes_no "是否自动创建本机专用数据库并替换现有连接" "y"; then
-      error "数据库连接不可用，部署已停止"
-      return 1
-    fi
-  else
-    info "未配置 DATABASE_URL，开始创建本机专用 PostgreSQL 数据库"
+  provision_managed_local_database "$target_dir" || return $?
+  set_env_value "$target_dir" "DATABASE_MODE" "local"
+}
+
+prepare_cloud_database() {
+  local target_dir="$1"
+  local database_url="${2:-}"
+
+  if ! database_url_scheme_valid "$database_url"; then
+    error "云数据库 URL 必须以 postgres:// 或 postgresql:// 开头（连接串已隐藏）"
+    return 1
+  fi
+  if ! database_url_works "$database_url"; then
+    error "云 PostgreSQL 数据库连接验证失败（连接串已隐藏）"
+    return 1
   fi
 
-  provision_managed_local_database "$target_dir"
+  set_env_value "$target_dir" "DATABASE_URL" "$database_url"
+  set_env_value "$target_dir" "DATABASE_MODE" "cloud"
+  ok "云 PostgreSQL 数据库连接验证成功"
+}
+
+prepare_database() {
+  local target_dir="$1"
+  local interactive="${2:-true}"
+  local env_file="${target_dir}/.env"
+  local current_url=""
+  local saved_mode="" current_mode="" selected_mode="" cloud_url=""
+
+  install_psql_if_needed
+  current_url="$(read_env_value "$env_file" "DATABASE_URL")"
+  saved_mode="$(read_env_value "$env_file" "DATABASE_MODE")"
+  case "$saved_mode" in
+    local|cloud) current_mode="$saved_mode" ;;
+    *) current_mode="$(infer_database_mode "$current_url")" ;;
+  esac
+
+  if [[ "$interactive" != "true" ]]; then
+    if [[ -z "$current_url" ]]; then
+      error "未配置 DATABASE_URL，无法执行非交互式重建"
+      return 1
+    fi
+    if [[ "$current_mode" == "cloud" ]] && ! database_url_scheme_valid "$current_url"; then
+      error "已保存的云数据库 URL 格式无效（连接串已隐藏）"
+      return 1
+    fi
+    if ! database_url_works "$current_url"; then
+      error "已保存的 PostgreSQL 数据库连接验证失败（连接串已隐藏）"
+      return 1
+    fi
+    set_env_value "$target_dir" "DATABASE_MODE" "$current_mode"
+    ok "已保存的 PostgreSQL 数据库连接验证成功"
+    return 0
+  fi
+
+  selected_mode="$(prompt_database_mode "$current_mode")"
+  if [[ -n "$current_url" && "$selected_mode" != "$current_mode" ]]; then
+    if ! ask_yes_no "确认从 ${current_mode} 数据库切换为 ${selected_mode} 数据库" "n"; then
+      error "已取消数据库类型切换，部署停止且原配置保持不变"
+      return 1
+    fi
+  fi
+
+  if [[ "$selected_mode" == "local" ]]; then
+    prepare_local_database "$target_dir" "$current_url"
+  else
+    if [[ "$current_mode" == "cloud" ]]; then
+      cloud_url="$current_url"
+    fi
+    cloud_url="$(prompt_secret_default "云 PostgreSQL 数据库连接 (DATABASE_URL)" "$cloud_url")"
+    prepare_cloud_database "$target_dir" "$cloud_url"
+  fi
 }
 
 verify_configured_database() {

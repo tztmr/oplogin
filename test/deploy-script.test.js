@@ -88,6 +88,75 @@ test('database URL scheme accepts PostgreSQL URLs only', () => {
   assert.equal(result.stdout, '1100');
 });
 
+test('local database selection provisions locally without requesting a cloud URL', (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oplogin-local-mode-'));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const result = runSourcedScript(`
+    install_psql_if_needed() { :; }
+    prompt_database_mode() { printf 'local'; }
+    prompt_secret_default() { printf 'CLOUD_PROMPT_CALLED'; return 91; }
+    provision_managed_local_database() {
+      set_env_value "$1" DATABASE_URL 'postgres://oplogin:new@127.0.0.1:5432/op_proxy'
+      printf 'LOCAL_PROVISIONED '
+    }
+    prepare_database "$TEST_PROJECT" true
+  `, '', { TEST_PROJECT: tempDir });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /LOCAL_PROVISIONED/);
+  assert.doesNotMatch(result.stdout, /CLOUD_PROMPT_CALLED/);
+  const env = fs.readFileSync(path.join(tempDir, '.env'), 'utf8');
+  assert.match(env, /^DATABASE_URL=postgres:\/\/oplogin:new@127\.0\.0\.1:5432\/op_proxy$/m);
+  assert.match(env, /^DATABASE_MODE=local$/m);
+});
+
+test('cloud database selection validates before storing and skips local provisioning', (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oplogin-cloud-mode-'));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+  const cloudUrl = 'postgresql://cloud-user:secret@db.example.com/app';
+
+  const result = runSourcedScript(`
+    install_psql_if_needed() { :; }
+    prompt_database_mode() { printf 'cloud'; }
+    prompt_secret_default() { printf '%s' "$TEST_CLOUD_URL"; }
+    database_url_works() { [[ "$1" == "$TEST_CLOUD_URL" ]]; }
+    provision_managed_local_database() { printf 'LOCAL_PROVISION_CALLED'; return 92; }
+    prepare_database "$TEST_PROJECT" true
+  `, '', { TEST_PROJECT: tempDir, TEST_CLOUD_URL: cloudUrl });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stdout, /LOCAL_PROVISION_CALLED/);
+  const env = fs.readFileSync(path.join(tempDir, '.env'), 'utf8');
+  assert.match(env, /^DATABASE_URL=postgresql:\/\/cloud-user:secret@db\.example\.com\/app$/m);
+  assert.match(env, /^DATABASE_MODE=cloud$/m);
+  assert.doesNotMatch(result.stderr, /cloud-user|secret/);
+});
+
+test('failed cloud database validation leaves the existing env unchanged', (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oplogin-cloud-fail-'));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+  const envPath = path.join(tempDir, '.env');
+  const original = 'DATABASE_MODE=local\nDATABASE_URL=postgres://oplogin:old@127.0.0.1:5432/op_proxy\nKEEP_ME=yes\n';
+  fs.writeFileSync(envPath, original);
+
+  const invalidScheme = runSourcedScript(`
+    database_url_works() { return 0; }
+    prepare_cloud_database "$TEST_PROJECT" 'mysql://user:secret@host/db'
+  `, '', { TEST_PROJECT: tempDir });
+  assert.notEqual(invalidScheme.status, 0);
+  assert.equal(fs.readFileSync(envPath, 'utf8'), original);
+  assert.doesNotMatch(invalidScheme.stderr, /mysql:\/\//);
+
+  const unreachable = runSourcedScript(`
+    database_url_works() { return 1; }
+    prepare_cloud_database "$TEST_PROJECT" 'postgres://user:secret@host/db'
+  `, '', { TEST_PROJECT: tempDir });
+  assert.notEqual(unreachable.status, 0);
+  assert.equal(fs.readFileSync(envPath, 'utf8'), original);
+  assert.doesNotMatch(unreachable.stderr, /user:secret/);
+});
+
 test('secret defaults are preserved without being rendered', () => {
   const result = runSourcedScript(
     'prompt_secret_default "数据库连接" "do-not-print"',
