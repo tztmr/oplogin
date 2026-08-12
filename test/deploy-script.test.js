@@ -300,6 +300,45 @@ test('managed pg_hba rules are scoped, first-match, backed up, and idempotent', 
   );
 });
 
+test('managed pg_hba keeps an existing local xui database on password auth', (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oplogin-xui-hba-'));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+  const hbaPath = path.join(tempDir, 'pg_hba.conf');
+  fs.writeFileSync(hbaPath, [
+    '# PostgreSQL Client Authentication Configuration File',
+    'host all all 127.0.0.1/32 ident',
+    'host all all ::1/128 ident',
+    '',
+  ].join('\n'));
+
+  const result = runSourcedScript(
+    'write_managed_pg_hba "$TEST_HBA" true',
+    '',
+    { TEST_HBA: hbaPath },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  const updated = fs.readFileSync(hbaPath, 'utf8');
+  assert.match(updated, /host\s+xui\s+all\s+127\.0\.0\.1\/32\s+md5/);
+  assert.match(updated, /host\s+xui\s+all\s+::1\/128\s+md5/);
+  assert.ok(
+    updated.indexOf('host    xui')
+      < updated.indexOf('host all all 127.0.0.1/32 ident'),
+  );
+});
+
+test('reusing a managed local database refreshes coexistence rules', () => {
+  const result = runSourcedScript(`
+    database_url_works() { return 0; }
+    set_env_value() { :; }
+    refresh_managed_pg_hba() { printf 'REFRESHED'; }
+    prepare_local_database /tmp/oplogin 'postgres://oplogin:secret@127.0.0.1:5432/op_proxy'
+  `);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /REFRESHED/);
+});
+
 test('prepare_database preserves a working existing database URL', (t) => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oplogin-db-'));
   t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));

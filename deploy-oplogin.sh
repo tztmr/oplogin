@@ -542,6 +542,7 @@ postgresql_server_supported() {
 
 write_managed_pg_hba() {
   local hba_file="$1"
+  local protect_xui="${2:-false}"
   local backup_file="${hba_file}.oplogin.bak"
   local cleaned_file output_file
   cleaned_file="$(mktemp)"
@@ -573,6 +574,10 @@ write_managed_pg_hba() {
     printf '%s\n' "$PG_HBA_BEGIN"
     printf 'host    %s    %s    127.0.0.1/32    scram-sha-256\n' "$MANAGED_DB_NAME" "$MANAGED_DB_USER"
     printf 'host    %s    %s    ::1/128         scram-sha-256\n' "$MANAGED_DB_NAME" "$MANAGED_DB_USER"
+    if [[ "$protect_xui" == "true" ]]; then
+      printf 'host    xui    all    127.0.0.1/32    md5\n'
+      printf 'host    xui    all    ::1/128         md5\n'
+    fi
     printf '%s\n' "$PG_HBA_END"
     cat "$cleaned_file"
   } > "$output_file"
@@ -600,7 +605,7 @@ generate_database_password() {
 
 create_managed_database() {
   local password="$1"
-  local hba_file
+  local hba_file protect_xui="false"
 
   if ! run_as_postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname = '${MANAGED_DB_USER}'" | grep -q 1; then
     run_as_postgres psql -v ON_ERROR_STOP=1 -c "CREATE ROLE ${MANAGED_DB_USER} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE" || return $?
@@ -620,7 +625,24 @@ create_managed_database() {
     error "无法确定 PostgreSQL 的 pg_hba.conf 路径"
     return 1
   }
-  write_managed_pg_hba "$hba_file" || return $?
+  if run_as_postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname = 'xui'" | grep -q 1; then
+    protect_xui="true"
+    warn "检测到现有 xui 数据库，将保留 3x-ui 的本机密码认证"
+  fi
+  write_managed_pg_hba "$hba_file" "$protect_xui" || return $?
+  run_as_postgres psql -v ON_ERROR_STOP=1 -c 'SELECT pg_reload_conf()' >/dev/null || return $?
+}
+
+refresh_managed_pg_hba() {
+  local hba_file protect_xui="false"
+  hba_file="$(run_as_postgres psql -tAc 'SHOW hba_file' | xargs)" || return $?
+  [[ -n "$hba_file" && -f "$hba_file" ]] || return 1
+
+  if run_as_postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname = 'xui'" | grep -q 1; then
+    protect_xui="true"
+    warn "检测到现有 xui 数据库，将保留 3x-ui 的本机密码认证"
+  fi
+  write_managed_pg_hba "$hba_file" "$protect_xui" || return $?
   run_as_postgres psql -v ON_ERROR_STOP=1 -c 'SELECT pg_reload_conf()' >/dev/null || return $?
 }
 
@@ -653,6 +675,10 @@ prepare_local_database() {
   if [[ -n "$current_url" ]] \
     && [[ "$(infer_database_mode "$current_url")" == "local" ]] \
     && database_url_works "$current_url"; then
+    refresh_managed_pg_hba || {
+      error "无法刷新本机 PostgreSQL 兼容认证规则"
+      return 1
+    }
     set_env_value "$target_dir" "DATABASE_MODE" "local"
     ok "本机 PostgreSQL 数据库连接验证成功，继续复用"
     return 0
