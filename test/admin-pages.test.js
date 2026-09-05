@@ -286,6 +286,15 @@ test('GET /admin serves the record management shell', async () => {
   assert.equal(response.status, 200);
   assert.match(response.text, /谷歌号/);
   assert.match(response.text, /UID创建时间/);
+  assert.match(response.text, /<th>手机号<\/th>/);
+  assert.match(response.text, /<th>手机到期时间<\/th>/);
+  assert.match(response.text, /id="recordPhoneExpireAt"/);
+  assert.match(response.text, /id="recordPhoneSmsUrl"/);
+  assert.match(response.text, /手机号----接码链接/);
+  assert.match(response.text, /<th>接码链接<\/th>/);
+  assert.match(response.text, /<th>手机状态<\/th>/);
+  assert.match(response.text, /<th>机型<\/th>/);
+  assert.match(response.text, /<option value="12mini" selected>12mini<\/option>/);
   assert.match(response.text, /id="recordTable"/);
   assert.match(response.text, /批量导入/);
   assert.match(response.text, /导出勾选/);

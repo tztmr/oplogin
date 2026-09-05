@@ -67,6 +67,7 @@
 - Google 辅助信息
 - Google 到期时间
 - UID 与 UID 录入时间
+- 手机号、接码链接、手机到期时间、绑定状态与默认机型（`11` / `12mini` / `14` / `x`）
 - OP 值
 - OP 链接
 - OP 到期时间
@@ -245,6 +246,14 @@ curl -X POST http://localhost:4399/api/submit \
 | `GET /api/admin/records/export.csv` | CSV 导出 |
 | `POST /api/admin/records/export.csv` | 按条件导出 CSV |
 
+手机号批量导入每行使用 `手机号----接码链接` 格式，例如：
+
+```text
+95092681----http://206.119.186.15:30123/sm.asp?mtype=BytePlus&token=your-token
+```
+
+导入后手机到期时间默认为 30 天后，绑定状态默认为“未绑定”，机型默认为“12mini”。
+
 ### 后台短 OP 接口
 
 | 路径 | 说明 |
@@ -285,6 +294,8 @@ curl -X POST http://localhost:4399/api/submit \
 | --- | --- |
 | `GET /api/public/user/:username/batch` | 获取当前批次及二维码配置 |
 | `POST /api/public/user/:username/batch/slots/:slot/uid` | 提交某个槽位的 UID |
+| `POST /api/public/user/:username/batch/slots/:slot/phone/bind` | 将当前槽位记录的手机号标记为已绑定 |
+| `PUT /api/public/user/:username/batch/slots/:slot/phone-model` | 保存当前槽位记录的默认机型 |
 | `POST /api/public/user/:username/batch/advance` | 推进到下一批次 |
 | `GET /api/public/user/:username/uid-availability` | 检查 UID 是否可用 |
 | `GET /api/public/user/:username/record` | 拉取当前用户可分发记录 |

@@ -4,7 +4,9 @@ const { decryptGooglePassword } = require('../lib/google-password-crypto');
 const { isManagedRecordUidUniqueViolation } = require('../lib/uid-value');
 const {
   getCurrentBatch,
+  markBatchSlotPhoneBound,
   submitBatchSlotUid,
+  updateBatchSlotPhoneModel,
   advanceBatch,
 } = require('../lib/public-user-batches');
 
@@ -80,6 +82,56 @@ function createUserPublicRouter({ pool, config }) {
       }
 
       const batch = await submitBatchSlotUid(pool, config, user, slotNumber, req.body || {});
+      return res.status(200).json({
+        status: 'success',
+        batch,
+        qrConfig: buildQrConfig(user),
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/:username/batch/slots/:slot/phone/bind', async (req, res, next) => {
+    try {
+      const user = await findActiveUser(req.params.username);
+      const slotNumber = Number.parseInt(String(req.params.slot || '').trim(), 10);
+      if (!Number.isInteger(slotNumber) || slotNumber < 1 || slotNumber > 6) {
+        return res.status(400).json({ error: '槽位必须在 1 到 6 之间' });
+      }
+
+      const batch = await markBatchSlotPhoneBound(
+        pool,
+        config,
+        user,
+        slotNumber,
+        req.body && req.body.phoneStatus,
+      );
+      return res.status(200).json({
+        status: 'success',
+        batch,
+        qrConfig: buildQrConfig(user),
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.put('/:username/batch/slots/:slot/phone-model', async (req, res, next) => {
+    try {
+      const user = await findActiveUser(req.params.username);
+      const slotNumber = Number.parseInt(String(req.params.slot || '').trim(), 10);
+      if (!Number.isInteger(slotNumber) || slotNumber < 1 || slotNumber > 6) {
+        return res.status(400).json({ error: '槽位必须在 1 到 6 之间' });
+      }
+
+      const batch = await updateBatchSlotPhoneModel(
+        pool,
+        config,
+        user,
+        slotNumber,
+        req.body && req.body.phoneModel,
+      );
       return res.status(200).json({
         status: 'success',
         batch,
@@ -195,6 +247,11 @@ function createUserPublicRouter({ pool, config }) {
             row.google_password_encrypted,
             config.googlePasswordEncryptionKey,
           ),
+          phoneNumber: row.phone_number || '',
+          phoneSmsUrl: row.phone_sms_url || '',
+          phoneExpireAt: row.phone_expire_at,
+          phoneStatus: row.phone_status || '未绑定',
+          phoneModel: row.phone_model || '12mini',
           opValue: row.op_value,
           hasPrevious: recordIndex > 0,
           hasNext: recordIndex < result.rows.length - 1,

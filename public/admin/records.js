@@ -165,6 +165,11 @@ function renderRows(data) {
           <td>${formatDateTime(item.googleExpireAt)}</td>
           <td>${item.uidValue}</td>
           <td>${formatDateTime(item.uidCreatedAt)}</td>
+          <td>${escapeHtmlAttribute(item.phoneNumber)}</td>
+          <td>${formatDateTime(item.phoneExpireAt)}</td>
+          <td>${renderTruncatedLink(item.phoneSmsUrl)}</td>
+          <td><span class="status-label ${item.phoneStatus === '已绑定' ? '' : 'is-unbound'}">${escapeHtmlAttribute(item.phoneStatus)}</span></td>
+          <td>${escapeHtmlAttribute(item.phoneModel)}</td>
           <td>${renderTruncatedText(item.opValue, 'cell-truncate-op')}</td>
           <td>${renderTruncatedText(item.opNickname, 'cell-truncate-op-nickname')}</td>
           <td>${renderTruncatedLink(item.opLink)}</td>
@@ -268,6 +273,11 @@ function readRecordFormPayload() {
     googleAssist: document.getElementById('recordGoogleAssist').value.trim(),
     googleExpireAt: document.getElementById('recordGoogleExpireAt').value || null,
     uidValue: document.getElementById('recordUidValue').value.trim(),
+    phoneNumber: document.getElementById('recordPhoneNumber').value.trim(),
+    phoneSmsUrl: document.getElementById('recordPhoneSmsUrl').value.trim(),
+    phoneExpireAt: document.getElementById('recordPhoneExpireAt').value || null,
+    phoneStatus: document.getElementById('recordPhoneStatus').value,
+    phoneModel: document.getElementById('recordPhoneModel').value,
     opValue: document.getElementById('recordOpValue').value.trim(),
     opLink: document.getElementById('recordOpLink').value.trim(),
     opExpireAt: document.getElementById('recordOpExpireAt').value || null,
@@ -532,6 +542,15 @@ window.openEditRecord = async function openEditRecord(id) {
   document.getElementById('recordUidCreatedAt').value = formatDateTime(
     data.item.uidCreatedAt,
   );
+  document.getElementById('recordPhoneNumber').value = data.item.phoneNumber || '';
+  document.getElementById('recordPhoneSmsUrl').value = data.item.phoneSmsUrl || '';
+  document.getElementById('recordPhoneExpireAt').value = toDateTimeLocalValue(
+    data.item.phoneExpireAt,
+  );
+  document.getElementById('recordPhoneStatus').value =
+    data.item.phoneStatus || '未绑定';
+  document.getElementById('recordPhoneModel').value =
+    data.item.phoneModel || '12mini';
   document.getElementById('recordOpValue').value = data.item.opValue;
   document.getElementById('recordOpLink').value = data.item.opLink;
   document.getElementById('recordOpExpireAt').value = toDateTimeLocalValue(
@@ -890,6 +909,11 @@ window.addEventListener('DOMContentLoaded', async () => {
       document.getElementById('recordForm').reset();
       document.getElementById('recordId').value = '';
       document.getElementById('recordUidCreatedAt').value = '';
+      document.getElementById('recordPhoneNumber').value = '';
+      document.getElementById('recordPhoneSmsUrl').value = '';
+      document.getElementById('recordPhoneExpireAt').value = '';
+      document.getElementById('recordPhoneStatus').value = '未绑定';
+      document.getElementById('recordPhoneModel').value = '12mini';
       document.getElementById('recordOpLink').value = '';
       document.getElementById('recordDialog').showModal();
     });

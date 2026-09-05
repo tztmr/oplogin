@@ -60,6 +60,16 @@ test('ensureDatabaseSchema creates the admin and record tables', async () => {
   );
   assert.ok(recordColumns.rows.some((row) => row.column_name === 'op_nickname'));
   assert.ok(recordColumns.rows.some((row) => row.column_name === 'op_link'));
+  assert.ok(recordColumns.rows.some((row) => row.column_name === 'phone_number'));
+  assert.ok(recordColumns.rows.some((row) => row.column_name === 'phone_sms_url'));
+  assert.ok(recordColumns.rows.some((row) => row.column_name === 'phone_expire_at'));
+  assert.ok(
+    recordColumns.rows.some((row) => row.column_name === 'phone_connected'),
+  );
+  assert.ok(
+    recordColumns.rows.some((row) => row.column_name === 'phone_status'),
+  );
+  assert.ok(recordColumns.rows.some((row) => row.column_name === 'phone_model'));
 });
 
 test('ensureDatabaseSchema creates short OP tables and seeds default Douyin app', async () => {

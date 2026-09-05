@@ -442,59 +442,79 @@ td .row-actions {
 }
 
 #recordTable col.record-col-select {
-  width: 3%;
+  width: 2.5%;
 }
 
 #recordTable col.record-col-order {
-  width: 5%;
+  width: 3.5%;
 }
 
 #recordTable col.record-col-google-account {
-  width: 10%;
+  width: 7.5%;
 }
 
 #recordTable col.record-col-google-password {
-  width: 8%;
+  width: 5.5%;
 }
 
 #recordTable col.record-col-google-assist {
-  width: 8%;
+  width: 5.5%;
 }
 
 #recordTable col.record-col-google-expire {
-  width: 7%;
+  width: 6%;
 }
 
 #recordTable col.record-col-uid {
-  width: 5%;
+  width: 4%;
 }
 
 #recordTable col.record-col-uid-created {
-  width: 7%;
+  width: 5.5%;
+}
+
+#recordTable col.record-col-phone-number {
+  width: 5.5%;
+}
+
+#recordTable col.record-col-phone-expire {
+  width: 6%;
+}
+
+#recordTable col.record-col-phone-connected {
+  width: 8%;
+}
+
+#recordTable col.record-col-phone-status {
+  width: 4.5%;
+}
+
+#recordTable col.record-col-phone-model {
+  width: 4.5%;
 }
 
 #recordTable col.record-col-op {
-  width: 9%;
-}
-
-#recordTable col.record-col-op-nickname {
-  width: 6%;
-}
-
-#recordTable col.record-col-op-link {
-  width: 9%;
-}
-
-#recordTable col.record-col-op-expire {
   width: 7%;
 }
 
-#recordTable col.record-col-remark {
+#recordTable col.record-col-op-nickname {
+  width: 5%;
+}
+
+#recordTable col.record-col-op-link {
+  width: 7%;
+}
+
+#recordTable col.record-col-op-expire {
   width: 6%;
 }
 
+#recordTable col.record-col-remark {
+  width: 5%;
+}
+
 #recordTable col.record-col-actions {
-  width: 10%;
+  width: 4.5%;
 }
 
 #recordTable th,
@@ -581,6 +601,16 @@ td .row-actions {
   background: #fee2e2;
 }
 
+.status-label.is-offline {
+  color: #4b5563;
+  background: #f3f4f6;
+}
+
+.status-label.is-unbound {
+  color: #92400e;
+  background: #fef3c7;
+}
+
 .default-label {
   color: var(--primary);
   font-weight: 600;
@@ -607,28 +637,10 @@ td .row-actions {
   font-size: 13px;
 }
 
-@media (max-width: 1920px) {
+@media (max-width: 1366px) {
   #recordTable th,
   #recordTable td {
-    padding: 12px 8px;
-  }
-
-  #recordTable col.record-col-google-account {
-    width: 9.5%;
-  }
-
-  #recordTable col.record-col-google-password,
-  #recordTable col.record-col-google-assist {
-    width: 8%;
-  }
-
-  #recordTable col.record-col-op,
-  #recordTable col.record-col-op-link {
-    width: 10%;
-  }
-
-  #recordTable col.record-col-actions {
-    width: 9.5%;
+    padding: 10px 6px;
   }
 }
 

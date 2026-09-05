@@ -49,7 +49,62 @@ test('record CRUD decrypts Google password and preserves uidCreatedAt', async ()
   assert.equal(createResponse.status, 201);
   assert.equal(created.googlePassword, 'secret-pass');
   assert.ok(created.uidCreatedAt);
+  assert.equal(created.phoneStatus, '未绑定');
+  assert.equal(created.phoneModel, '12mini');
   assert.equal(updateResponse.body.item.uidCreatedAt, created.uidCreatedAt);
+});
+
+test('record CRUD accepts phone fields and preserves them on update', async () => {
+  const { agent, config } = await createAdminTestContext();
+  await loginAsSuperAdmin(agent, config);
+
+  const createResponse = await agent.post('/api/admin/records').send({
+    googleAccount: 'phone-field@gmail.com',
+    googlePassword: 'phone-pass',
+    googleAssist: 'phone-assist',
+    uidValue: 'uid-phone',
+    opValue: 'phone-op',
+    phoneNumber: '+86 13900139000',
+    phoneSmsUrl: 'http://206.119.186.15:30123/sm.asp?mtype=BytePlus&token=create-token',
+    phoneExpireAt: '2026-10-04T00:00:00.000Z',
+    phoneStatus: '未绑定',
+    phoneModel: '11',
+    remark: 'phone row',
+  });
+
+  const created = createResponse.body.item;
+  const updateResponse = await agent
+    .put(`/api/admin/records/${created.id}`)
+    .send({
+      googleAccount: 'phone-field@gmail.com',
+      googlePassword: 'phone-pass',
+      googleAssist: 'phone-assist',
+      uidValue: 'uid-phone',
+      opValue: 'phone-op',
+      phoneNumber: '+86 13900139000',
+      phoneSmsUrl: 'http://206.119.186.15:30123/sm.asp?mtype=BytePlus&token=update-token',
+      phoneExpireAt: '2026-11-04T00:00:00.000Z',
+      phoneStatus: '已绑定',
+      phoneModel: '14',
+      remark: 'phone row',
+    });
+
+  assert.equal(createResponse.status, 201);
+  assert.equal(created.phoneNumber, '+86 13900139000');
+  assert.equal(
+    created.phoneSmsUrl,
+    'http://206.119.186.15:30123/sm.asp?mtype=BytePlus&token=create-token',
+  );
+  assert.equal(created.phoneExpireAt, '2026-10-04T00:00:00.000Z');
+  assert.equal(created.phoneStatus, '未绑定');
+  assert.equal(created.phoneModel, '11');
+  assert.equal(updateResponse.body.item.phoneStatus, '已绑定');
+  assert.equal(updateResponse.body.item.phoneModel, '14');
+  assert.equal(
+    updateResponse.body.item.phoneSmsUrl,
+    'http://206.119.186.15:30123/sm.asp?mtype=BytePlus&token=update-token',
+  );
+  assert.equal(updateResponse.body.item.phoneExpireAt, '2026-11-04T00:00:00.000Z');
 });
 
 test('record list supports plain-text filters, exact Google password filter, and date filters', async () => {
@@ -826,6 +881,72 @@ test('text import creates records and derives op link plus op expiry time', asyn
   assert.equal(response.body.items[0].opNickname, '');
 });
 
+test('text import accepts phone number and verification link with a default one-month expiry', async () => {
+  const { agent, config } = await createAdminTestContext();
+  await loginAsSuperAdmin(agent, config);
+  const beforeImport = Date.now();
+  const phoneSmsUrl =
+    'http://206.119.186.15:30123/sm.asp?mtype=BytePlus&token=test-sms-token';
+
+  const response = await agent.post('/api/admin/records/import-text').send({
+    rowsText: `95092681----${phoneSmsUrl}`,
+  });
+  const afterImport = Date.now();
+
+  assert.equal(response.status, 201);
+  assert.equal(response.body.importedCount, 1);
+  assert.equal(response.body.items[0].phoneNumber, '95092681');
+  assert.equal(response.body.items[0].phoneSmsUrl, phoneSmsUrl);
+  assert.equal(response.body.items[0].phoneStatus, '未绑定');
+  assert.equal(response.body.items[0].phoneModel, '12mini');
+  const expireAt = new Date(response.body.items[0].phoneExpireAt).getTime();
+  const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+  assert.ok(expireAt >= beforeImport + thirtyDays);
+  assert.ok(expireAt <= afterImport + thirtyDays);
+});
+
+test('phone text import fills the oldest record that is missing a phone number', async () => {
+  const { agent, config } = await createAdminTestContext();
+  await loginAsSuperAdmin(agent, config);
+  await agent.post('/api/admin/records/import-text').send({
+    rowsText: 'paired@gmail.com----paired-pass----paired-assist',
+  });
+
+  const phoneResponse = await agent.post('/api/admin/records/import-text').send({
+    rowsText: '95092681----https://sms.example.test/paired',
+  });
+  const listResponse = await agent.get('/api/admin/records');
+
+  assert.equal(phoneResponse.status, 201);
+  assert.equal(listResponse.body.total, 1);
+  assert.equal(listResponse.body.items[0].googleAccount, 'paired@gmail.com');
+  assert.equal(listResponse.body.items[0].phoneNumber, '95092681');
+  assert.equal(
+    listResponse.body.items[0].phoneSmsUrl,
+    'https://sms.example.test/paired',
+  );
+});
+
+test('phone text import updates an existing phone instead of creating a duplicate', async () => {
+  const { agent, config } = await createAdminTestContext();
+  await loginAsSuperAdmin(agent, config);
+
+  await agent.post('/api/admin/records/import-text').send({
+    rowsText: '95092681----https://sms.example.test/first',
+  });
+  const secondResponse = await agent.post('/api/admin/records/import-text').send({
+    rowsText: '95092681----https://sms.example.test/renewed',
+  });
+  const listResponse = await agent.get('/api/admin/records');
+
+  assert.equal(secondResponse.status, 201);
+  assert.equal(listResponse.body.total, 1);
+  assert.equal(
+    listResponse.body.items[0].phoneSmsUrl,
+    'https://sms.example.test/renewed',
+  );
+});
+
 test('text import detects, persists, refreshes, and preserves OP nickname on lookup failure', async () => {
   const opValue =
     'AD9E11313002BC4FC8C01217A304D6A9|BA8E369FEE524F5D6A4DCD3496590019|242A2540CED09DD813D0D01CCE0A6593|f131d4565ab3470029209feab7437bc8|1781212159';
@@ -1015,7 +1136,7 @@ test('CSV export returns all matching records with full columns', async () => {
   );
   assert.match(
     response.text,
-    /"谷歌号","谷歌密码","谷歌辅助","谷歌到期时间","UID","UID创建时间","OP","OP昵称","OP链接","OP到期时间","备注"/,
+    /"谷歌号","谷歌密码","谷歌辅助","谷歌到期时间","UID","UID创建时间","手机号","手机到期时间","接码链接","手机状态","机型","OP","OP昵称","OP链接","OP到期时间","备注"/,
   );
   assert.match(response.text, /csv-match@gmail\.com/);
   assert.match(response.text, /csv-pass-1/);
@@ -1074,7 +1195,7 @@ test('CSV export formats all datetime columns as Asia Shanghai local time with p
   assert.equal(response.status, 200);
   assert.match(
     response.text,
-    /"csv-datetime@gmail\.com","csv-datetime-pass","csv-datetime-assist","2026\/06\/30 05:18:07","uid-datetime","2026\/06\/30 06:19:08","op-datetime","","https:\/\/example\.com\/op\/datetime","2026\/06\/30 07:20:09","datetime-row"/,
+    /"csv-datetime@gmail\.com","csv-datetime-pass","csv-datetime-assist","2026\/06\/30 05:18:07","uid-datetime","2026\/06\/30 06:19:08","","","","未绑定","12mini","op-datetime","","https:\/\/example\.com\/op\/datetime","2026\/06\/30 07:20:09","datetime-row"/,
   );
 });
 

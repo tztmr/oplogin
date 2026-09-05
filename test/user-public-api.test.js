@@ -37,6 +37,21 @@ async function insertManagedRecord(pool, config, ownerId, overrides = {}) {
     uidValue: Object.prototype.hasOwnProperty.call(overrides, 'uidValue')
       ? overrides.uidValue
       : '',
+    phoneNumber: Object.prototype.hasOwnProperty.call(overrides, 'phoneNumber')
+      ? overrides.phoneNumber
+      : '',
+    phoneSmsUrl: Object.prototype.hasOwnProperty.call(overrides, 'phoneSmsUrl')
+      ? overrides.phoneSmsUrl
+      : '',
+    phoneExpireAt: Object.prototype.hasOwnProperty.call(overrides, 'phoneExpireAt')
+      ? overrides.phoneExpireAt
+      : null,
+    phoneStatus: Object.prototype.hasOwnProperty.call(overrides, 'phoneStatus')
+      ? overrides.phoneStatus
+      : '未绑定',
+    phoneModel: Object.prototype.hasOwnProperty.call(overrides, 'phoneModel')
+      ? overrides.phoneModel
+      : '12mini',
     opValue: Object.prototype.hasOwnProperty.call(overrides, 'opValue')
       ? overrides.opValue
       : '',
@@ -61,13 +76,18 @@ async function insertManagedRecord(pool, config, ownerId, overrides = {}) {
         google_password_search_hash,
         google_assist,
         uid_value,
+        phone_number,
+        phone_sms_url,
+        phone_expire_at,
+        phone_status,
+        phone_model,
         op_value,
         op_link,
         remark,
         created_at,
         updated_at
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
     `,
     [
       payload.id,
@@ -77,6 +97,11 @@ async function insertManagedRecord(pool, config, ownerId, overrides = {}) {
       passwordHash,
       payload.googleAssist,
       payload.uidValue,
+      payload.phoneNumber,
+      payload.phoneSmsUrl,
+      payload.phoneExpireAt,
+      payload.phoneStatus,
+      payload.phoneModel,
       payload.opValue,
       payload.opLink,
       payload.remark,
@@ -681,6 +706,102 @@ test('public user batch API returns wifi qr config for the user center', async (
   });
 });
 
+test('public user batch exposes phone fields and marks phone status bound', async () => {
+  const { app, pool, config } = await createAdminTestContext();
+  const operator = await createAdminUser(pool, {
+    login: 'phone-user',
+    email: 'phone-user@example.com',
+    password: 'change-me-now',
+    role: 'operator',
+  });
+  const record = await insertManagedRecord(pool, config, operator.id, {
+    googleAccount: 'phone-bind@gmail.com',
+    opValue: 'phone-bind-op',
+    phoneNumber: '+86 13037174892',
+    phoneSmsUrl: 'https://sms.example.test/read',
+    phoneExpireAt: '2026-10-04T00:00:00.000Z',
+    phoneStatus: '未绑定',
+    phoneModel: '12mini',
+  });
+
+  const batchResponse = await request(app).get('/api/public/user/phone-user/batch');
+  assert.equal(batchResponse.status, 200);
+  assert.deepEqual(
+    {
+      phoneNumber: batchResponse.body.batch.slots[0].record.phoneNumber,
+      phoneSmsUrl: batchResponse.body.batch.slots[0].record.phoneSmsUrl,
+      phoneExpireAt: batchResponse.body.batch.slots[0].record.phoneExpireAt,
+      phoneStatus: batchResponse.body.batch.slots[0].record.phoneStatus,
+      phoneModel: batchResponse.body.batch.slots[0].record.phoneModel,
+    },
+    {
+      phoneNumber: '+86 13037174892',
+      phoneSmsUrl: 'https://sms.example.test/read',
+      phoneExpireAt: '2026-10-04T00:00:00.000Z',
+      phoneStatus: '未绑定',
+      phoneModel: '12mini',
+    },
+  );
+
+  const bindResponse = await request(app)
+    .post('/api/public/user/phone-user/batch/slots/1/phone/bind')
+    .send({});
+  assert.equal(bindResponse.status, 200);
+  const boundRecord = bindResponse.body.batch.slots.find(
+    (slot) => slot.record && slot.record.id === record.id,
+  );
+  assert.equal(boundRecord.record.phoneStatus, '已绑定');
+  const boundResult = await pool.query(
+    'select phone_status from managed_records where id = $1',
+    [record.id],
+  );
+  assert.equal(boundResult.rows[0].phone_status, '已绑定');
+
+  const unbindResponse = await request(app)
+    .post('/api/public/user/phone-user/batch/slots/1/phone/bind')
+    .send({ phoneStatus: '未绑定' });
+  assert.equal(unbindResponse.status, 200);
+  const unboundResult = await pool.query(
+    'select phone_status from managed_records where id = $1',
+    [record.id],
+  );
+  assert.equal(unboundResult.rows[0].phone_status, '未绑定');
+
+  const modelResponse = await request(app)
+    .put('/api/public/user/phone-user/batch/slots/1/phone-model')
+    .send({ phoneModel: '14' });
+  assert.equal(modelResponse.status, 200);
+  const modelResult = await pool.query(
+    'select phone_model from managed_records where id = $1',
+    [record.id],
+  );
+  assert.equal(modelResult.rows[0].phone_model, '14');
+});
+
+test('public user phone bind rejects records without a phone number', async () => {
+  const { app, pool, config } = await createAdminTestContext();
+  const operator = await createAdminUser(pool, {
+    login: 'no-phone',
+    email: 'no-phone@example.com',
+    password: 'change-me-now',
+    role: 'operator',
+  });
+  await insertManagedRecord(pool, config, operator.id, {
+    googleAccount: 'no-phone@gmail.com',
+    opValue: 'no-phone-op',
+  });
+
+  await request(app).get('/api/public/user/no-phone/batch');
+  const response = await request(app)
+    .post('/api/public/user/no-phone/batch/slots/1/phone/bind')
+    .send({});
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(response.body, {
+    error: '当前记录没有手机号，无法修改状态',
+  });
+});
+
 test('public user page renders left and right qr card placeholders', async () => {
   const { app, pool } = await createAdminTestContext();
   await createAdminUser(pool, {
@@ -695,6 +816,14 @@ test('public user page renders left and right qr card placeholders', async () =>
   assert.equal(response.status, 200);
   assert.match(response.text, /id="userCenterQrImage"/);
   assert.match(response.text, /id="wifiQrImage"/);
+  assert.match(response.text, /id="bindPhoneNumberButton"/);
+  assert.match(response.text, /id="phoneStatusButton"/);
+  assert.match(response.text, /id="phoneSmsUrlLink"/);
+  assert.match(response.text, /id="phoneModelSelect"/);
+  assert.match(response.text, /<option value="11">11<\/option>/);
+  assert.match(response.text, /<option value="12mini" selected>12mini<\/option>/);
+  assert.match(response.text, /<option value="14">14<\/option>/);
+  assert.match(response.text, /<option value="x">x<\/option>/);
   assert.match(response.text, /buildWifiQrPayload/);
   assert.match(response.text, /buildQrImageUrl/);
 });

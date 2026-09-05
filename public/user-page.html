@@ -270,6 +270,85 @@
             background: rgba(79, 70, 229, 0.18);
         }
 
+        .input-with-action {
+            display: flex;
+            gap: 8px;
+        }
+
+        .input-with-action input {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .btn-paste {
+            align-self: stretch;
+            padding: 8px 12px;
+            color: #047857;
+            background: rgba(16, 185, 129, 0.1);
+            border-color: rgba(16, 185, 129, 0.22);
+        }
+
+        .btn-paste:hover {
+            background: rgba(16, 185, 129, 0.18);
+        }
+
+        .phone-number-button {
+            flex: 1;
+            min-width: 0;
+            font-family: monospace;
+            font-size: 15px;
+            text-align: left;
+            padding: 10px 12px;
+            color: var(--primary);
+            background: rgba(79, 70, 229, 0.08);
+            border: 1px solid rgba(79, 70, 229, 0.18);
+            border-radius: 8px;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .phone-number-button:hover:not(:disabled) {
+            background: rgba(79, 70, 229, 0.18);
+        }
+
+        .phone-number-button.is-bound {
+            color: #047857;
+            background: rgba(16, 185, 129, 0.12);
+            border-color: rgba(16, 185, 129, 0.25);
+            cursor: default;
+        }
+
+        .phone-number-button:disabled {
+            color: #9ca3af;
+            background: rgba(255, 255, 255, 0.45);
+            border-color: rgba(255, 255, 255, 0.8);
+            cursor: default;
+            opacity: 1;
+        }
+
+        .phone-number-button.is-bound:disabled {
+            color: #047857;
+            background: rgba(16, 185, 129, 0.12);
+            border-color: rgba(16, 185, 129, 0.25);
+        }
+
+        .phone-model-select {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .phone-sms-url-link {
+            color: var(--primary);
+            text-decoration: none;
+        }
+
+        .phone-sms-url-link:not([href]) {
+            color: var(--text-muted);
+            pointer-events: none;
+        }
+
         .divider {
             height: 1px;
             background: rgba(0, 0, 0, 0.1);
@@ -485,7 +564,15 @@
                     <div class="value" id="googlePasswordText"></div>
                     <button class="btn-copy" onclick="copyText('googlePasswordText')">复制</button>
                 </div>
-
+                <div class="info-row">
+                    <div class="label">手机号</div>
+                    <button type="button" class="phone-number-button" id="bindPhoneNumberButton" disabled></button>
+                    <button type="button" class="btn-copy" onclick="copyText('bindPhoneNumberButton')">复制</button>
+                </div>
+                <div class="info-row">
+                    <div class="label">接码链接</div>
+                    <a class="value phone-sms-url-link" id="phoneSmsUrlLink" target="_blank" rel="noreferrer"></a>
+                </div>
                 <div class="status-note" id="batchSummaryText"></div>
 
                 <div class="divider"></div>
@@ -548,13 +635,29 @@
 
                 <div class="form-group">
                     <label for="uid">确认使用 (填写 UID)</label>
-                    <input type="text" id="uid" placeholder="请在此处填写提取的 UID" required>
+                    <div class="input-with-action">
+                        <input type="text" id="uid" placeholder="请在此处填写提取的 UID" required>
+                        <button type="button" class="btn-copy btn-paste" onclick="pasteUid()">粘贴</button>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label for="remark">备注 (选填)</label>
                     <input type="text" id="remark" placeholder="备注默认为空 可填可不填">
                 </div>
+                <div class="form-group">
+                    <label for="phoneModelSelect">默认机型</label>
+                    <select class="phone-model-select" id="phoneModelSelect" onchange="updateCurrentSlotPhoneModel()">
+                        <option value="11">11</option>
+                        <option value="12mini" selected>12mini</option>
+                        <option value="14">14</option>
+                        <option value="x">x</option>
+                    </select>
+                </div>
                 <button type="button" id="submitUidBtn" class="btn-submit btn-secondary" onclick="submitUid()">保存 UID</button>
+                <div class="info-row" style="margin-top: 16px;">
+                    <div class="label">手机号状态</div>
+                    <button type="button" class="phone-number-button" id="phoneStatusButton" onclick="toggleCurrentSlotPhoneStatus()">未绑定</button>
+                </div>
             </div>
 
             <div id="emptyContainer" class="empty-state" style="display: none;">
@@ -587,6 +690,13 @@
 
         function getUidInput() {
             return document.getElementById('uid');
+        }
+
+        function formatDateTime(value) {
+            if (!value) {
+                return '';
+            }
+            return new Date(value).toLocaleString('zh-CN', { hour12: false });
         }
 
         function getRemarkDraftStorageKey() {
@@ -629,6 +739,20 @@
                 showToast('复制成功');
             } catch (error) {
                 showToast('复制失败，请手动复制', 'error');
+            }
+        }
+
+        async function pasteUid() {
+            try {
+                const text = (await navigator.clipboard.readText()).trim();
+                if (!text) {
+                    showToast('剪贴板为空', 'error');
+                    return;
+                }
+                getUidInput().value = text;
+                showToast('已粘贴 UID');
+            } catch (error) {
+                showToast('粘贴失败，请检查浏览器剪贴板权限', 'error');
             }
         }
 
@@ -689,12 +813,43 @@
             if (!currentBatch) {
                 return 1;
             }
-            const availableSlot = currentBatch.slots.find((slot) => slot.status === 'available');
+            const availableSlot = currentBatch.slots.find(
+                (slot) => slot.status === 'available' && slot.record && slot.record.phoneNumber,
+            );
             if (availableSlot) {
                 return availableSlot.slot;
             }
-            const doneSlot = currentBatch.slots.find((slot) => slot.status === 'done');
-            return doneSlot ? doneSlot.slot : 1;
+            const doneSlot = currentBatch.slots.find(
+                (slot) => slot.status === 'done' && slot.record && slot.record.phoneNumber,
+            );
+            return doneSlot ? doneSlot.slot : null;
+        }
+
+        function buildPhoneVisibleBatch(batch) {
+            if (!batch || !Array.isArray(batch.slots)) {
+                return batch;
+            }
+
+            const slots = batch.slots.map((slot) => {
+                if (slot.record && !(slot.record.phoneNumber || '').trim()) {
+                    return { slot: slot.slot, status: 'empty', record: null };
+                }
+                return slot;
+            });
+
+            return { ...batch, slots };
+        }
+
+        function resolveSelectableSlot(preferredSlotNumber) {
+            const preferredSlot = getSlot(preferredSlotNumber);
+            if (
+                preferredSlot &&
+                preferredSlot.record &&
+                (preferredSlot.record.phoneNumber || '').trim()
+            ) {
+                return preferredSlotNumber;
+            }
+            return getFirstSelectableSlot();
         }
 
         function getNextAvailableSlot(afterSlotNumber) {
@@ -816,17 +971,8 @@
             const opButton = document.getElementById('opLoginBtn');
             const enterOpButton = document.getElementById('enterOpBtn');
 
-            if (!slot || !slot.record) {
-                currentRecord = null;
-                document.getElementById('slotStateText').textContent = `槽位 ${currentSlotNumber} / 空槽`;
-                document.getElementById('recordIndexText').textContent = '--';
-                document.getElementById('googleAccountText').textContent = '--';
-                document.getElementById('googlePasswordText').textContent = '--';
-                document.getElementById('uid').value = '';
-                getRemarkInput().value = '';
-                submitButton.disabled = true;
-                opButton.disabled = true;
-                enterOpButton.disabled = true;
+            if (!slot || !slot.record || !(slot.record.phoneNumber || '').trim()) {
+                showEmptyState();
                 return;
             }
 
@@ -835,6 +981,27 @@
             document.getElementById('recordIndexText').textContent = `${slot.record.distributionOrder} / ${slot.record.total}`;
             document.getElementById('googleAccountText').textContent = slot.record.googleAccount;
             document.getElementById('googlePasswordText').textContent = slot.record.googlePassword;
+            const phoneNumber = slot.record.phoneNumber || '';
+            const phoneStatus = slot.record.phoneStatus || '未绑定';
+            const phoneButton = document.getElementById('bindPhoneNumberButton');
+            phoneButton.textContent = phoneNumber || '--';
+            phoneButton.classList.toggle('is-bound', phoneStatus === '已绑定');
+            phoneButton.disabled = true;
+            const phoneStatusButton = document.getElementById('phoneStatusButton');
+            phoneStatusButton.textContent = phoneStatus;
+            phoneStatusButton.classList.toggle('is-bound', phoneStatus === '已绑定');
+            phoneStatusButton.disabled = !phoneNumber;
+            const phoneSmsUrlLink = document.getElementById('phoneSmsUrlLink');
+            if (slot.record.phoneSmsUrl) {
+                phoneSmsUrlLink.textContent = '打开接码链接';
+                phoneSmsUrlLink.href = slot.record.phoneSmsUrl;
+            } else {
+                phoneSmsUrlLink.textContent = '--';
+                phoneSmsUrlLink.removeAttribute('href');
+            }
+            const phoneModelSelect = document.getElementById('phoneModelSelect');
+            phoneModelSelect.disabled = false;
+            phoneModelSelect.value = slot.record.phoneModel || '12mini';
             document.getElementById('uid').value = '';
             lastAutoFillClipboardText = '';
             restoreRemarkDraft();
@@ -842,6 +1009,76 @@
             opButton.disabled = !slot.record.opValue;
             enterOpButton.disabled = !slot.record.opValue;
             void prefetchCurrentWakeUrl();
+        }
+
+        function applyPhoneMutationResponse(data, successMessage) {
+            applyQrConfig(data.qrConfig);
+            currentBatch = data.batch;
+            renderBatchSlots();
+            renderSelectedSlot();
+            renderBatchSummary();
+            document.getElementById('pageSubtitle').textContent = `当前批次 ${currentBatch.id.slice(0, 8)}，红色待处理，绿色已保存`;
+            showToast(successMessage);
+        }
+
+        async function toggleCurrentSlotPhoneStatus() {
+            const slot = getSlot(currentSlotNumber);
+            const record = currentRecord;
+            if (!slot || !record || !(record.phoneNumber || '').trim()) {
+                showToast('当前记录没有手机号', 'error');
+                return;
+            }
+
+            const nextStatus = record.phoneStatus === '已绑定' ? '未绑定' : '已绑定';
+
+            const button = document.getElementById('phoneStatusButton');
+            const originalText = button.textContent;
+            button.textContent = '标记中...';
+            button.disabled = true;
+            try {
+                const response = await fetch(`/api/public/user/${encodeURIComponent(username)}/batch/slots/${currentSlotNumber}/phone/bind`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phoneStatus: nextStatus }),
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || '标记失败');
+                }
+                applyPhoneMutationResponse(
+                    data,
+                    nextStatus === '已绑定' ? '手机号已标记为已绑定' : '手机号已标记为未绑定',
+                );
+            } catch (error) {
+                button.textContent = originalText;
+                button.disabled = false;
+                showToast(error.message || '网络异常，标记失败', 'error');
+            }
+        }
+
+        async function updateCurrentSlotPhoneModel() {
+            if (!currentRecord) {
+                return;
+            }
+
+            const select = document.getElementById('phoneModelSelect');
+            const originalModel = currentRecord.phoneModel || '12mini';
+            const selectedModel = select.value;
+            try {
+                const response = await fetch(`/api/public/user/${encodeURIComponent(username)}/batch/slots/${currentSlotNumber}/phone-model`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phoneModel: selectedModel }),
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || '机型保存失败');
+                }
+                applyPhoneMutationResponse(data, '默认机型已保存');
+            } catch (error) {
+                select.value = originalModel;
+                showToast(error.message || '网络异常，机型保存失败', 'error');
+            }
         }
 
         async function prefetchCurrentWakeUrl() {
@@ -874,12 +1111,12 @@
         }
 
         function applyBatch(batch, preferredSlotNumber = null) {
-            currentBatch = batch;
-            currentSlotNumber = preferredSlotNumber || getFirstSelectableSlot();
+            currentBatch = buildPhoneVisibleBatch(batch);
+            currentSlotNumber = resolveSelectableSlot(preferredSlotNumber);
 
-            const hasRealRecord = batch.slots.some((slot) => Boolean(slot.record));
+            const hasRealRecord = currentBatch.slots.some((slot) => Boolean(slot.record));
             document.getElementById('mainCard').style.display = 'block';
-            if (!hasRealRecord) {
+            if (!hasRealRecord || currentSlotNumber === null) {
                 showEmptyState();
                 return;
             }
