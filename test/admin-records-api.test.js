@@ -17,6 +17,89 @@ async function loginAsSuperAdmin(agent, config) {
   });
 }
 
+test('batch clear phone removes selected phone data while preserving other fields and unselected records', async () => {
+  const { agent, config } = await createAdminTestContext();
+  await loginAsSuperAdmin(agent, config);
+  const records = [];
+  for (let index = 0; index < 3; index += 1) {
+    const response = await agent.post('/api/admin/records').send({
+      phoneNumber: `1380000000${index}`,
+      phoneSmsUrl: `https://example.com/sms/${index}`,
+      phoneExpireAt: '2026-12-31T00:00:00.000Z',
+      phoneStatus: '已绑定',
+      phoneModel: '14',
+      ...(index === 1 ? {} : {
+        googleAccount: `phone-clear-${index}@example.com`,
+        googlePassword: 'keep-password',
+        googleAssist: 'keep-assist',
+        googleExpireAt: '2026-12-01T00:00:00.000Z',
+        opValue: `keep-op-${index}`,
+        opNickname: '保留昵称',
+        opLink: `https://example.com/op/${index}`,
+        opExpireAt: '2026-12-01T00:00:00.000Z',
+        uidValue: `keep-uid-${index}`,
+      }),
+      remark: '保留备注',
+    });
+    assert.equal(response.status, 201);
+    records.push(response.body.item);
+  }
+
+  const response = await agent.post('/api/admin/records/batch-clear-phone').send({
+    ids: [records[0].id, records[1].id, records[0].id, crypto.randomUUID()],
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.body.clearedCount, 2);
+
+  for (const [index, record] of records.entries()) {
+    const after = await agent.get(`/api/admin/records/${record.id}`);
+    assert.equal(after.status, 200);
+    const expected = index === 2 ? record : {
+      ...record,
+      phoneNumber: '', phoneSmsUrl: '', phoneExpireAt: null,
+      phoneStatus: '未绑定', phoneModel: '12mini',
+    };
+    const { updatedAt: beforeUpdatedAt, ...expectedFields } = expected;
+    const { updatedAt: afterUpdatedAt, ...actualFields } = after.body.item;
+    assert.deepEqual(actualFields, expectedFields);
+  }
+});
+
+test('batch clear phone requires authentication and a nonempty selection', async () => {
+  const { agent, config } = await createAdminTestContext();
+  const unauthenticated = await agent.post('/api/admin/records/batch-clear-phone').send({ ids: [] });
+  assert.equal(unauthenticated.status, 401);
+  await loginAsSuperAdmin(agent, config);
+  for (const payload of [{}, { ids: [] }, { ids: [' ', ''] }]) {
+    const response = await agent.post('/api/admin/records/batch-clear-phone').send(payload);
+    assert.equal(response.status, 400);
+  }
+});
+
+test('batch clear phone respects operator ownership', async () => {
+  const { agent, pool, config } = await createAdminTestContext();
+  await loginAsSuperAdmin(agent, config);
+  const otherRecord = await agent.post('/api/admin/records').send({ phoneNumber: '13800000001' });
+  const operatorId = crypto.randomUUID();
+  await pool.query(
+    `insert into admin_users (id, login, email, password_hash, role, status)
+     values ($1, 'phone-operator', 'phone-operator@example.com', $2, 'operator', 'active')`,
+    [operatorId, await hashAdminPassword('operator-pass')],
+  );
+  await agent.post('/api/admin/auth/login').send({ identifier: 'phone-operator', password: 'operator-pass' });
+  const ownRecord = await agent.post('/api/admin/records').send({ phoneNumber: '13800000002' });
+  const response = await agent.post('/api/admin/records/batch-clear-phone').send({
+    ids: [ownRecord.body.item.id, otherRecord.body.item.id],
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.body.clearedCount, 1);
+  const ownAfter = await agent.get(`/api/admin/records/${ownRecord.body.item.id}`);
+  assert.equal(ownAfter.body.item.phoneNumber, '');
+  await loginAsSuperAdmin(agent, config);
+  const otherAfter = await agent.get(`/api/admin/records/${otherRecord.body.item.id}`);
+  assert.equal(otherAfter.body.item.phoneNumber, '13800000001');
+});
+
 test('record CRUD decrypts Google password and preserves uidCreatedAt', async () => {
   const { agent, config } = await createAdminTestContext();
   await loginAsSuperAdmin(agent, config);
@@ -774,6 +857,7 @@ test('record list returns public batch eligibility stats for incomplete inventor
       'eligible-pass',
       'eligible assist',
       '',
+      '13800000001',
       'eligible-op',
       'eligible row',
     ],
@@ -783,6 +867,7 @@ test('record list returns public batch eligibility stats for incomplete inventor
       '',
       'missing password assist',
       '',
+      '13800000002',
       'missing-password-op',
       'missing password row',
     ],
@@ -792,6 +877,7 @@ test('record list returns public batch eligibility stats for incomplete inventor
       'missing-op-pass',
       'missing op assist',
       '',
+      '13800000003',
       '',
       'missing op row',
     ],
@@ -801,12 +887,23 @@ test('record list returns public batch eligibility stats for incomplete inventor
       'used-pass',
       'used assist',
       'uid-used',
+      '13800000004',
       'used-op',
       'used row',
     ],
+    [
+      crypto.randomUUID(),
+      'missing-phone@gmail.com',
+      'missing-phone-pass',
+      'missing phone assist',
+      '',
+      '',
+      'missing-phone-op',
+      'missing phone row',
+    ],
   ];
 
-  for (const [id, googleAccount, googlePassword, googleAssist, uidValue, opValue, remark] of values) {
+  for (const [id, googleAccount, googlePassword, googleAssist, uidValue, phoneNumber, opValue, remark] of values) {
     await pool.query(
       `
         insert into managed_records (
@@ -819,12 +916,13 @@ test('record list returns public batch eligibility stats for incomplete inventor
           google_expire_at,
           uid_value,
           uid_created_at,
+          phone_number,
           op_value,
           op_link,
           op_expire_at,
           remark
         ) values (
-          $1, $2, $3, $4, $5, $6, null, $7, null, $8, '', null, $9
+          $1, $2, $3, $4, $5, $6, null, $7, null, $8, $9, '', null, $10
         )
       `,
       [
@@ -835,6 +933,7 @@ test('record list returns public batch eligibility stats for incomplete inventor
         buildGooglePasswordSearchHash(googlePassword, config.googlePasswordEncryptionKey),
         googleAssist,
         uidValue,
+        phoneNumber,
         opValue,
         remark,
       ],
@@ -850,7 +949,8 @@ test('record list returns public batch eligibility stats for incomplete inventor
     missingGooglePasswordCount: 1,
     missingOpCount: 1,
     filledUidCount: 1,
-    blockedTotalCount: 3,
+    missingPhoneCount: 1,
+    blockedTotalCount: 4,
   });
 });
 

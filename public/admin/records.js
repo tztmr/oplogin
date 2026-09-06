@@ -126,6 +126,14 @@ function buildBatchClearOpConfirmMessage(count) {
   ].join('\n');
 }
 
+function buildBatchClearPhoneConfirmMessage(count) {
+  return [
+    `确认删除已勾选的 ${count} 条记录的手机号吗？`,
+    '将清空：手机号、接码链接、手机到期时间',
+    '手机状态重置为未绑定，机型重置为 12mini；保留谷歌号、OP、UID 和备注。',
+  ].join('\n');
+}
+
 function renderRows(data) {
   const items = data.items;
   const isAllPageSize = currentPageSize === 'all';
@@ -226,7 +234,7 @@ function renderPublicBatchEligibility(data) {
   card.classList.toggle('has-warning', stats.blockedTotalCount > 0);
   summary.textContent = `可进入公开批次 ${stats.eligibleCount} 条，受阻 ${stats.blockedTotalCount} 条`;
   details.textContent =
-    `缺谷歌号 ${stats.missingGoogleAccountCount} 条，缺谷歌密码 ${stats.missingGooglePasswordCount} 条，缺 OP ${stats.missingOpCount} 条，已有 UID ${stats.filledUidCount} 条。`;
+    `缺谷歌号 ${stats.missingGoogleAccountCount} 条，缺谷歌密码 ${stats.missingGooglePasswordCount} 条，缺 OP ${stats.missingOpCount} 条，缺手机号 ${stats.missingPhoneCount} 条，已有 UID ${stats.filledUidCount} 条。`;
 }
 
 async function loadRecords() {
@@ -245,6 +253,7 @@ function syncBatchDeleteState() {
   syncBatchActionButton('batchDeleteButton', '批量删除', selectedCount);
   syncBatchActionButton('batchClearGoogleButton', '批量删除谷歌号', selectedCount);
   syncBatchActionButton('batchClearOpButton', '批量删除OP', selectedCount);
+  syncBatchActionButton('batchClearPhoneButton', '批量删除手机号', selectedCount);
 
   const totalVisible = currentPageRecordIds.length;
   const selectedVisible = currentPageRecordIds.filter((id) =>
@@ -789,6 +798,61 @@ async function clearSelectedOpFields() {
   }
 }
 
+async function clearSelectedPhoneFields() {
+  const ids = getSelectedRecordIds();
+  if (!ids.length) {
+    showToast('请先勾选要删除手机号的记录');
+    return;
+  }
+
+  if (
+    !(await showConfirm(buildBatchClearPhoneConfirmMessage(ids.length), {
+      confirmText: '删除手机号',
+      tone: 'danger',
+    }))
+  ) {
+    return;
+  }
+
+  startBatchDeleteProgress({
+    buttonId: 'batchClearPhoneButton',
+    loadingButtonText: '删除手机号中...',
+    startText: '正在删除勾选记录的手机号...',
+    runningText: '正在同步手机号删除结果...',
+  });
+
+  try {
+    const data = await adminFetch('/api/admin/records/batch-clear-phone', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    });
+
+    stopBatchDeleteProgressTimer();
+    setBatchDeleteProgressState(100, '手机号删除完成');
+    if (data.clearedCount > 0) {
+      selectedRecordIds.clear();
+      await loadRecords();
+      window.setTimeout(() => {
+        resetBatchDeleteProgressState();
+        showToast(`已删除 ${data.clearedCount} 条记录的手机号、接码链接、手机到期时间，手机状态和机型已重置`);
+      }, 220);
+      return;
+    }
+
+    window.setTimeout(() => {
+      resetBatchDeleteProgressState();
+      showToast('未删除任何手机号，请重新勾选后再试');
+    }, 220);
+  } catch (error) {
+    stopBatchDeleteProgressTimer();
+    const errMsg = error.message || '请稍后重试';
+    setBatchDeleteProgressState(100, `删除手机号失败: ${errMsg}`);
+    document.getElementById('batchClearPhoneButton').disabled = false;
+    document.getElementById('batchClearPhoneButton').textContent = '重新删除手机号';
+    throw error;
+  }
+}
+
 async function exportSelectedRecords() {
   const ids = getSelectedRecordIds();
   if (!ids.length) {
@@ -936,6 +1000,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   document
     .getElementById('batchClearOpButton')
     .addEventListener('click', clearSelectedOpFields);
+  document
+    .getElementById('batchClearPhoneButton')
+    .addEventListener('click', clearSelectedPhoneFields);
   document
     .getElementById('selectAllRecordsCheckbox')
     .addEventListener('change', (event) => {

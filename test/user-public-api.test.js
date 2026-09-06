@@ -39,7 +39,7 @@ async function insertManagedRecord(pool, config, ownerId, overrides = {}) {
       : '',
     phoneNumber: Object.prototype.hasOwnProperty.call(overrides, 'phoneNumber')
       ? overrides.phoneNumber
-      : '',
+      : `138${String(managedRecordInsertOffset + 1).padStart(8, '0')}`,
     phoneSmsUrl: Object.prototype.hasOwnProperty.call(overrides, 'phoneSmsUrl')
       ? overrides.phoneSmsUrl
       : '',
@@ -312,7 +312,7 @@ test('public user batch API preserves distribution order for microsecond timesta
   assert.equal(batchResponse.body.batch.slots[1].record.total, 2);
 });
 
-test('public user batch API only includes records with google account, password, op, and blank uid', async () => {
+test('public user batch API only includes records with google account, password, op, phone, and blank uid', async () => {
   const { app, pool, config } = await createAdminTestContext();
   const operator = await createAdminUser(pool, {
     login: 'lz',
@@ -325,6 +325,7 @@ test('public user batch API only includes records with google account, password,
     googleAccount: 'eligible@gmail.com',
     googlePassword: 'eligible-pass',
     opValue: 'eligible-op',
+    phoneNumber: '13800000001',
     uidValue: '',
   });
   await insertManagedRecord(pool, config, operator.id, {
@@ -351,6 +352,13 @@ test('public user batch API only includes records with google account, password,
     opValue: 'used-op',
     uidValue: 'already-used',
   });
+  await insertManagedRecord(pool, config, operator.id, {
+    googleAccount: 'missing-phone@gmail.com',
+    googlePassword: 'has-pass',
+    opValue: 'missing-phone-op',
+    phoneNumber: '',
+    uidValue: '',
+  });
 
   const batchResponse = await request(app).get('/api/public/user/lz/batch');
 
@@ -359,6 +367,159 @@ test('public user batch API only includes records with google account, password,
   assert.deepEqual(
     batchResponse.body.batch.slots.map((slot) => slot.status),
     ['available', 'empty', 'empty', 'empty', 'empty', 'empty'],
+  );
+});
+
+test('public user batch API skips records without phone numbers and fills vacant slots with new phone stock', async () => {
+  const { app, pool, config } = await createAdminTestContext();
+  const operator = await createAdminUser(pool, {
+    login: 'wb',
+    email: 'wb@example.com',
+    password: 'change-me-now',
+    role: 'operator',
+  });
+
+  const firstWithPhone = await insertManagedRecord(pool, config, operator.id, {
+    googleAccount: 'phone-1@gmail.com',
+    opValue: 'phone-1',
+    phoneNumber: '13800000001',
+  });
+  const secondWithPhone = await insertManagedRecord(pool, config, operator.id, {
+    googleAccount: 'phone-2@gmail.com',
+    opValue: 'phone-2',
+    phoneNumber: '13800000002',
+  });
+  for (let index = 1; index <= 6; index += 1) {
+    await insertManagedRecord(pool, config, operator.id, {
+      googleAccount: `no-phone-${index}@gmail.com`,
+      opValue: `no-phone-${index}`,
+      phoneNumber: '',
+    });
+  }
+
+  const firstBatchResponse = await request(app).get('/api/public/user/wb/batch');
+  assert.equal(firstBatchResponse.status, 200);
+  assert.deepEqual(
+    firstBatchResponse.body.batch.slots.map((slot) => slot.record && slot.record.id),
+    [firstWithPhone.id, secondWithPhone.id, null, null, null, null],
+  );
+
+  const extraWithPhone = [];
+  for (let index = 3; index <= 6; index += 1) {
+    extraWithPhone.push(
+      await insertManagedRecord(pool, config, operator.id, {
+        googleAccount: `phone-${index}@gmail.com`,
+        opValue: `phone-${index}`,
+        phoneNumber: `1380000000${index}`,
+      }),
+    );
+  }
+
+  const refilledResponse = await request(app).get('/api/public/user/wb/batch');
+  assert.equal(refilledResponse.status, 200);
+  assert.equal(refilledResponse.body.batch.id, firstBatchResponse.body.batch.id);
+  assert.deepEqual(
+    refilledResponse.body.batch.slots.map((slot) => slot.record && slot.record.id),
+    [
+      firstWithPhone.id,
+      secondWithPhone.id,
+      extraWithPhone[0].id,
+      extraWithPhone[1].id,
+      extraWithPhone[2].id,
+      extraWithPhone[3].id,
+    ],
+  );
+});
+
+test('public user batch GET replaces leftover no-phone slot occupants with new phone stock', async () => {
+  const { app, pool, config } = await createAdminTestContext();
+  const operator = await createAdminUser(pool, {
+    login: 'wb',
+    email: 'wb@example.com',
+    password: 'change-me-now',
+    role: 'operator',
+  });
+
+  const firstWithPhone = await insertManagedRecord(pool, config, operator.id, {
+    googleAccount: 'keep-phone@gmail.com',
+    opValue: 'keep-phone',
+    phoneNumber: '13800000001',
+  });
+  const firstBatchResponse = await request(app).get('/api/public/user/wb/batch');
+  assert.equal(firstBatchResponse.status, 200);
+  assert.equal(firstBatchResponse.body.batch.slots[0].record.id, firstWithPhone.id);
+
+  const leftoverNoPhone = await insertManagedRecord(pool, config, operator.id, {
+    googleAccount: 'stuck-no-phone@gmail.com',
+    opValue: 'stuck-no-phone',
+    phoneNumber: '',
+  });
+  await pool.query(
+    `
+      update public_user_batch_slots
+      set record_id = $1, status = 'available', updated_at = now()
+      where batch_id = $2 and slot_number = 2
+    `,
+    [leftoverNoPhone.id, firstBatchResponse.body.batch.id],
+  );
+
+  const replacementWithPhone = await insertManagedRecord(pool, config, operator.id, {
+    googleAccount: 'replacement-phone@gmail.com',
+    opValue: 'replacement-phone',
+    phoneNumber: '13800000002',
+  });
+
+  const refilledResponse = await request(app).get('/api/public/user/wb/batch');
+  assert.equal(refilledResponse.status, 200);
+  assert.equal(refilledResponse.body.batch.id, firstBatchResponse.body.batch.id);
+  assert.deepEqual(
+    refilledResponse.body.batch.slots.map((slot) => slot.record && slot.record.id),
+    [firstWithPhone.id, replacementWithPhone.id, null, null, null, null],
+  );
+});
+
+test('public user batch advance drops leftover records without phones and pulls new phone stock', async () => {
+  const { app, pool, config } = await createAdminTestContext();
+  const operator = await createAdminUser(pool, {
+    login: 'wb',
+    email: 'wb@example.com',
+    password: 'change-me-now',
+    role: 'operator',
+  });
+
+  const firstWithPhone = await insertManagedRecord(pool, config, operator.id, {
+    googleAccount: 'keep-1@gmail.com',
+    opValue: 'keep-1',
+    phoneNumber: '13800000001',
+  });
+  const secondWithPhone = await insertManagedRecord(pool, config, operator.id, {
+    googleAccount: 'keep-2@gmail.com',
+    opValue: 'keep-2',
+    phoneNumber: '13800000002',
+  });
+  await insertManagedRecord(pool, config, operator.id, {
+    googleAccount: 'skip-no-phone@gmail.com',
+    opValue: 'skip-no-phone',
+    phoneNumber: '',
+  });
+  const nextWithPhone = await insertManagedRecord(pool, config, operator.id, {
+    googleAccount: 'next-phone@gmail.com',
+    opValue: 'next-phone',
+    phoneNumber: '13800000003',
+  });
+
+  const firstBatchResponse = await request(app).get('/api/public/user/wb/batch');
+  assert.equal(firstBatchResponse.status, 200);
+
+  const nextBatchResponse = await request(app)
+    .post('/api/public/user/wb/batch/advance')
+    .send({});
+
+  assert.equal(nextBatchResponse.status, 200);
+  assert.notEqual(nextBatchResponse.body.batch.id, firstBatchResponse.body.batch.id);
+  assert.deepEqual(
+    nextBatchResponse.body.batch.slots.map((slot) => slot.record && slot.record.id),
+    [firstWithPhone.id, secondWithPhone.id, nextWithPhone.id, null, null, null],
   );
 });
 
@@ -789,16 +950,23 @@ test('public user phone bind rejects records without a phone number', async () =
   await insertManagedRecord(pool, config, operator.id, {
     googleAccount: 'no-phone@gmail.com',
     opValue: 'no-phone-op',
+    phoneNumber: '',
   });
 
-  await request(app).get('/api/public/user/no-phone/batch');
+  const batchResponse = await request(app).get('/api/public/user/no-phone/batch');
+  assert.equal(batchResponse.status, 200);
+  assert.deepEqual(
+    batchResponse.body.batch.slots.map((slot) => slot.status),
+    ['empty', 'empty', 'empty', 'empty', 'empty', 'empty'],
+  );
+
   const response = await request(app)
     .post('/api/public/user/no-phone/batch/slots/1/phone/bind')
     .send({});
 
   assert.equal(response.status, 400);
   assert.deepEqual(response.body, {
-    error: '当前记录没有手机号，无法修改状态',
+    error: '当前槽位没有可提交的数据',
   });
 });
 

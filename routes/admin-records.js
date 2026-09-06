@@ -9,6 +9,7 @@ const {
   clearManagedRecordOpFields,
   clearManagedRecordGoogleFieldsBatch,
   clearManagedRecordOpFieldsBatch,
+  clearManagedRecordPhoneFieldsBatch,
   deleteManagedRecord,
   deleteManagedRecords,
   exportManagedRecordsCsv,
@@ -127,6 +128,19 @@ function createAdminRecordsRouter({
       const clearedCount = await clearManagedRecordOpFieldsBatch(
         pool,
         config,
+        req.body.ids,
+        req.adminUser,
+      );
+      return res.status(200).json({ clearedCount });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/batch-clear-phone', async (req, res, next) => {
+    try {
+      const clearedCount = await clearManagedRecordPhoneFieldsBatch(
+        pool,
         req.body.ids,
         req.adminUser,
       );

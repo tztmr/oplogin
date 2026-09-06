@@ -242,6 +242,7 @@ curl -X POST http://localhost:4399/api/submit \
 | `DELETE /api/admin/records/:id` | 删除单条记录 |
 | `DELETE /api/admin/records` | 按条件删除记录 |
 | `POST /api/admin/records/batch-delete` | 批量删除 |
+| `POST /api/admin/records/batch-clear-phone` | 按 `ids` 批量清空手机号、接码链接和手机到期时间，将手机状态和机型恢复为未绑定、12mini，保留其他字段 |
 | `POST /api/admin/records/import-text` | 文本批量导入 |
 | `GET /api/admin/records/export.csv` | CSV 导出 |
 | `POST /api/admin/records/export.csv` | 按条件导出 CSV |
