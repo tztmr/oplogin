@@ -1012,15 +1012,21 @@ test('phone text import fills the oldest record that is missing a phone number',
     rowsText: 'paired@gmail.com----paired-pass----paired-assist',
   });
 
+  const beforeImport = Date.now();
   const phoneResponse = await agent.post('/api/admin/records/import-text').send({
     rowsText: '95092681----https://sms.example.test/paired',
+    phoneDurationDays: 60,
   });
+  const afterImport = Date.now();
   const listResponse = await agent.get('/api/admin/records');
 
   assert.equal(phoneResponse.status, 201);
   assert.equal(listResponse.body.total, 1);
   assert.equal(listResponse.body.items[0].googleAccount, 'paired@gmail.com');
   assert.equal(listResponse.body.items[0].phoneNumber, '95092681');
+  const expireAt = new Date(listResponse.body.items[0].phoneExpireAt).getTime();
+  assert.ok(expireAt >= beforeImport + 60 * 86400000);
+  assert.ok(expireAt <= afterImport + 60 * 86400000);
   assert.equal(
     listResponse.body.items[0].phoneSmsUrl,
     'https://sms.example.test/paired',
@@ -1034,13 +1040,19 @@ test('phone text import updates an existing phone instead of creating a duplicat
   await agent.post('/api/admin/records/import-text').send({
     rowsText: '95092681----https://sms.example.test/first',
   });
+  const beforeImport = Date.now();
   const secondResponse = await agent.post('/api/admin/records/import-text').send({
     rowsText: '95092681----https://sms.example.test/renewed',
+    phoneDurationDays: 150,
   });
+  const afterImport = Date.now();
   const listResponse = await agent.get('/api/admin/records');
 
   assert.equal(secondResponse.status, 201);
   assert.equal(listResponse.body.total, 1);
+  const expireAt = new Date(listResponse.body.items[0].phoneExpireAt).getTime();
+  assert.ok(expireAt >= beforeImport + 150 * 86400000);
+  assert.ok(expireAt <= afterImport + 150 * 86400000);
   assert.equal(
     listResponse.body.items[0].phoneSmsUrl,
     'https://sms.example.test/renewed',

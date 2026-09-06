@@ -458,7 +458,10 @@ async function submitBatchImportForm(event) {
   try {
     const data = await adminFetch('/api/admin/records/import-text', {
       method: 'POST',
-      body: JSON.stringify({ rowsText }),
+      body: JSON.stringify({
+        rowsText,
+        phoneDurationDays: Number(document.getElementById('batchImportPhoneDurationDays').value),
+      }),
     });
 
     setBatchImportProgressState(100, '导入完成');

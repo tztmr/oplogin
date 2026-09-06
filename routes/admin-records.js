@@ -53,6 +53,7 @@ function createAdminRecordsRouter({
         req.body.rowsText,
         req.adminUser,
         lookupOpNicknamesImpl,
+        req.body.phoneDurationDays,
       );
       return res.status(201).json(result);
     } catch (error) {

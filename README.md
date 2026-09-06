@@ -243,7 +243,7 @@ curl -X POST http://localhost:4399/api/submit \
 | `DELETE /api/admin/records` | 按条件删除记录 |
 | `POST /api/admin/records/batch-delete` | 批量删除 |
 | `POST /api/admin/records/batch-clear-phone` | 按 `ids` 批量清空手机号、接码链接和手机到期时间，将手机状态和机型恢复为未绑定、12mini，保留其他字段 |
-| `POST /api/admin/records/import-text` | 文本批量导入 |
+| `POST /api/admin/records/import-text` | 文本批量导入；手机号行可通过 `phoneDurationDays` 选择 30/60/90/120/150 天有效期，缺省为 30 天 |
 | `GET /api/admin/records/export.csv` | CSV 导出 |
 | `POST /api/admin/records/export.csv` | 按条件导出 CSV |
 
@@ -253,7 +253,7 @@ curl -X POST http://localhost:4399/api/submit \
 95092681----http://206.119.186.15:30123/sm.asp?mtype=BytePlus&token=your-token
 ```
 
-导入后手机到期时间默认为 30 天后，绑定状态默认为“未绑定”，机型默认为“12mini”。
+导入后绑定状态默认为“未绑定”，机型默认为“12mini”。手机到期时间按导入时选择的有效期计算，可选 30、60、90、120 或 150 天，缺省为 30 天。
 
 ### 后台短 OP 接口
 

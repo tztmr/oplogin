@@ -216,11 +216,21 @@
       <div class="import-help">
         <p>系统会自动识别每行数据格式，支持以下四种导入模式：</p>
         <ul>
-          <li><b>导入手机号：</b> <code>手机号----接码链接</code><br/>(默认到期时间 +30天，绑定状态为未绑定，机型为 12mini)</li>
+          <li><b>导入手机号：</b> <code>手机号----接码链接</code><br/>(到期时间按所选有效期计算，绑定状态为未绑定，机型为 12mini)</li>
           <li><b>导入谷歌号：</b> <code>谷歌号----谷歌密码----谷歌辅助</code><br/>(默认到期时间 +7天，如果库中有未绑定谷歌号的 OP，将自动互补绑定)</li>
           <li><b>导入 OP：</b> <code>OP数据</code><br/>(以 | 分隔的字符串，自动生成链接和到期时间 +30天。如果库中有未绑定 OP 的谷歌号，将自动互补绑定)</li>
           <li><b>综合导入：</b> <code>谷歌号----密码----辅助----OP数据</code><br/>(完整导入一条记录)</li>
         </ul>
+      </div>
+      <div class="filter-item">
+        <label for="batchImportPhoneDurationDays">手机号有效期</label>
+        <select id="batchImportPhoneDurationDays">
+          <option value="30" selected>30 天</option>
+          <option value="60">60 天</option>
+          <option value="90">90 天</option>
+          <option value="120">120 天</option>
+          <option value="150">150 天</option>
+        </select>
       </div>
       <textarea
         id="batchImportText"
