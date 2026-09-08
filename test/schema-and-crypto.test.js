@@ -15,6 +15,51 @@ const {
 const encryptionKey =
   '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
+async function createLegacyPhoneSchema(pool) {
+  await pool.query(`
+    create table admin_users (
+      id uuid primary key,
+      login text not null unique,
+      email text not null unique,
+      password_hash text not null,
+      role text not null check (role in ('super_admin', 'operator')),
+      status text not null check (status in ('active', 'disabled')),
+      wifi_type text not null default 'WPA',
+      wifi_ssid text not null default '',
+      wifi_password text not null default '',
+      wifi_hidden boolean not null default false,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      last_login_at timestamptz null
+    );
+
+    create table managed_records (
+      id uuid primary key,
+      owner_id uuid references admin_users(id) on delete set null,
+      google_account text not null,
+      google_password_encrypted text not null,
+      google_password_search_hash text not null,
+      google_assist text not null,
+      google_expire_at timestamptz null,
+      uid_value text not null,
+      uid_created_at timestamptz null,
+      phone_number text not null default '',
+      phone_sms_url text not null default '',
+      phone_expire_at timestamptz null,
+      phone_connected text not null default '未连接',
+      phone_status text not null default '未绑定',
+      phone_model text not null default '12mini',
+      op_value text not null,
+      op_nickname text not null default '',
+      op_link text not null,
+      op_expire_at timestamptz null,
+      remark text null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+  `);
+}
+
 test(
   'Google password encryption round-trips and search hashes are deterministic',
   () => {
@@ -329,5 +374,237 @@ test('ensureManagedRecordUidUniqueness detects legacy duplicate UID data', async
   await assert.rejects(
     ensureManagedRecordUidUniqueness(pool),
     /managed_records 存在重复 UID.*legacy-uid/,
+  );
+});
+
+test('phone inventory schema enforces owner isolation, valid states, and one active reservation per record', async () => {
+  const db = newDb();
+  const { Pool } = db.adapters.createPg();
+  const pool = new Pool();
+  await ensureDatabaseSchema(pool);
+
+  await pool.query(`
+    insert into admin_users (id, login, email, password_hash, role, status)
+    values
+      ('00000000-0000-0000-0000-000000000201', 'owner-a', 'a@example.com', 'hash', 'operator', 'active'),
+      ('00000000-0000-0000-0000-000000000202', 'owner-b', 'b@example.com', 'hash', 'operator', 'active')
+  `);
+  await pool.query(`
+    insert into managed_records (
+      id, owner_id, google_account, google_password_encrypted,
+      google_password_search_hash, google_assist, uid_value, op_value, op_link
+    ) values (
+      '00000000-0000-0000-0000-000000000203',
+      '00000000-0000-0000-0000-000000000201',
+      'record@example.com', 'enc', 'hash', '', '', 'op', '/oplogin/op'
+    )
+  `);
+
+  const inventoryValues = (id, ownerId, status = 'available') => `(
+    '${id}', '${ownerId}', '13000000001', 'https://sms.example/1',
+    '12mini', '${status}',
+    ${status === 'reserved' ? "'00000000-0000-0000-0000-000000000203'" : 'null'}
+  )`;
+  await pool.query(`
+    insert into phone_inventory (
+      id, owner_id, phone_number, phone_sms_url, phone_model, status,
+      reserved_record_id
+    ) values ${inventoryValues(
+      '00000000-0000-0000-0000-000000000204',
+      '00000000-0000-0000-0000-000000000201',
+      'reserved',
+    )}
+  `);
+  await pool.query(`
+    insert into phone_inventory (
+      id, owner_id, phone_number, phone_sms_url, phone_model, status,
+      reserved_record_id
+    ) values ${inventoryValues(
+      '00000000-0000-0000-0000-000000000205',
+      '00000000-0000-0000-0000-000000000202',
+    )}
+  `);
+
+  await assert.rejects(
+    pool.query(`
+      insert into phone_inventory (
+        id, owner_id, phone_number, phone_model, status, reserved_record_id
+      ) values (
+        '00000000-0000-0000-0000-000000000206',
+        '00000000-0000-0000-0000-000000000201',
+        '13000000002', '12mini', 'reserved',
+        '00000000-0000-0000-0000-000000000203'
+      )
+    `),
+    /duplicate|unique/i,
+  );
+  await assert.rejects(
+    pool.query(`
+      insert into phone_inventory (id, owner_id, phone_number, phone_model, status)
+      values (
+        '00000000-0000-0000-0000-000000000207',
+        '00000000-0000-0000-0000-000000000201',
+        '13000000003', '13', 'available'
+      )
+    `),
+    /check|constraint/i,
+  );
+
+  await pool.query(`
+    update phone_inventory
+    set status = 'bound'
+    where id = '00000000-0000-0000-0000-000000000204'
+  `);
+  await pool.query(`
+    insert into public_user_batches (id, owner_id, status)
+    values (
+      '00000000-0000-0000-0000-000000000208',
+      '00000000-0000-0000-0000-000000000201',
+      'open'
+    );
+    insert into public_user_batch_slots (
+      id, batch_id, slot_number, record_id, status
+    ) values (
+      '00000000-0000-0000-0000-000000000209',
+      '00000000-0000-0000-0000-000000000208',
+      1,
+      '00000000-0000-0000-0000-000000000203',
+      'available'
+    );
+    update phone_inventory
+    set reserved_batch_slot_id = '00000000-0000-0000-0000-000000000209'
+    where id = '00000000-0000-0000-0000-000000000204';
+  `);
+  await pool.query(`
+    delete from managed_records
+    where id = '00000000-0000-0000-0000-000000000203'
+  `);
+  await pool.query(`
+    delete from public_user_batches
+    where id = '00000000-0000-0000-0000-000000000208'
+  `);
+  const retainedHistory = await pool.query(`
+    select status, reserved_batch_slot_id
+    from phone_inventory
+    where id = '00000000-0000-0000-0000-000000000204'
+  `);
+  assert.deepEqual(retainedHistory.rows, [{
+    status: 'bound',
+    reserved_batch_slot_id: null,
+  }]);
+});
+
+test('schema migrates pre-marker legacy phones atomically once and preserves duplicate history', async () => {
+  // pg-mem otherwise rejects CREATE TABLE IF NOT EXISTS when the legacy table
+  // predates the multi-statement schema batch, even though PostgreSQL accepts it.
+  const db = newDb({ noAstCoverageCheck: true });
+  const { Pool } = db.adapters.createPg();
+  const pool = new Pool();
+  await createLegacyPhoneSchema(pool);
+
+  const ownerId = '00000000-0000-0000-0000-000000000211';
+  const unboundId = '00000000-0000-0000-0000-000000000212';
+  const duplicateUnboundId = '00000000-0000-0000-0000-000000000213';
+  const boundId = '00000000-0000-0000-0000-000000000214';
+  const duplicateBoundId = '00000000-0000-0000-0000-000000000215';
+  const ownerlessId = '00000000-0000-0000-0000-000000000216';
+  await pool.query(
+    `insert into admin_users (id, login, email, password_hash, role, status)
+     values ($1, 'legacy-phone', 'legacy-phone@example.com', 'hash', 'operator', 'active')`,
+    [ownerId],
+  );
+  await pool.query(
+    `insert into managed_records (
+       id, owner_id, google_account, google_password_encrypted,
+       google_password_search_hash, google_assist, uid_value,
+       phone_number, phone_sms_url, phone_status, phone_model, op_value, op_link,
+       created_at
+     ) values
+       ($1, $6, 'unbound@example.com', 'enc', 'hash-1', '', '',
+        '13000000001', 'https://sms.example/unbound', '未绑定', '11', 'op-1', '/oplogin/op-1', '2026-01-01T00:00:00Z'),
+       ($2, $6, 'duplicate-unbound@example.com', 'enc', 'hash-2', '', '',
+        '13000000002', 'https://sms.example/unbound-duplicate', '未绑定', '14', 'op-2', '/oplogin/op-2', '2026-01-01T00:00:00Z'),
+       ($3, $6, 'bound@example.com', 'enc', 'hash-3', '', '',
+        '13000000002', 'https://sms.example/bound', '已绑定', 'x', 'op-3', '/oplogin/op-3', '2026-01-02T00:00:00Z'),
+       ($4, $6, 'duplicate-bound@example.com', 'enc', 'hash-4', '', '',
+        '13000000002', 'https://sms.example/bound-2', '已绑定', '12mini', 'op-4', '/oplogin/op-4', '2026-01-03T00:00:00Z'),
+       ($5, null, 'ownerless@example.com', 'enc', 'hash-5', '', '',
+        '13000000003', 'https://sms.example/ownerless', '未绑定', '12mini', 'op-5', '/oplogin/op-5', '2026-01-01T00:00:00Z')`,
+    [
+      unboundId,
+      duplicateUnboundId,
+      boundId,
+      duplicateBoundId,
+      ownerlessId,
+      ownerId,
+    ],
+  );
+
+  await ensureDatabaseSchema(pool);
+  const firstInventory = await pool.query(`
+    select id, phone_number, phone_sms_url, phone_model, status, reserved_record_id
+    from phone_inventory
+    order by phone_number
+  `);
+  assert.deepEqual(firstInventory.rows, [
+    {
+      id: firstInventory.rows[0].id,
+      phone_number: '13000000001',
+      phone_sms_url: 'https://sms.example/unbound',
+      phone_model: '11',
+      status: 'available',
+      reserved_record_id: null,
+    },
+    {
+      id: firstInventory.rows[1].id,
+      phone_number: '13000000002',
+      phone_sms_url: 'https://sms.example/bound',
+      phone_model: 'x',
+      status: 'bound',
+      reserved_record_id: boundId,
+    },
+  ]);
+  assert.notEqual(firstInventory.rows[0].id, unboundId);
+  assert.notEqual(firstInventory.rows[1].id, boundId);
+
+  const records = await pool.query(`
+    select id, phone_number, phone_sms_url, phone_expire_at, phone_status
+    from managed_records
+    order by id
+  `);
+  assert.deepEqual(
+    records.rows.filter((row) => [unboundId, duplicateUnboundId].includes(row.id)),
+    [
+      { id: unboundId, phone_number: '', phone_sms_url: '', phone_expire_at: null, phone_status: '未绑定' },
+      { id: duplicateUnboundId, phone_number: '', phone_sms_url: '', phone_expire_at: null, phone_status: '未绑定' },
+    ],
+  );
+  assert.equal(records.rows.find((row) => row.id === boundId).phone_number, '13000000002');
+  assert.equal(records.rows.find((row) => row.id === duplicateBoundId).phone_number, '13000000002');
+  assert.equal(records.rows.find((row) => row.id === ownerlessId).phone_number, '13000000003');
+
+  const archive = await pool.query(`
+    select source_record_id, phone_number, phone_sms_url, phone_status
+    from phone_inventory_legacy_archive
+    order by source_record_id
+  `);
+  assert.equal(archive.rowCount, 4);
+  assert.deepEqual(
+    archive.rows.find((row) => row.source_record_id === duplicateUnboundId),
+    {
+      source_record_id: duplicateUnboundId,
+      phone_number: '13000000002',
+      phone_sms_url: 'https://sms.example/unbound-duplicate',
+      phone_status: '未绑定',
+    },
+  );
+
+  await ensureDatabaseSchema(pool);
+  assert.equal((await pool.query('select * from phone_inventory')).rowCount, 2);
+  assert.equal((await pool.query('select * from phone_inventory_legacy_archive')).rowCount, 4);
+  assert.equal(
+    (await pool.query("select * from schema_migrations where name = 'phone_inventory_v1'"))
+      .rowCount,
+    1,
   );
 });
