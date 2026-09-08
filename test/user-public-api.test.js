@@ -228,6 +228,8 @@ test('public user batch API keeps fixed slots after partial submissions', async 
       await insertManagedRecord(pool, config, operator.id, {
         googleAccount: `batch-${index}@gmail.com`,
         opValue: `batch-${index}`,
+        phoneNumber: crypto.randomUUID(),
+        phoneStatus: '已绑定',
       }),
     );
   }
@@ -377,6 +379,8 @@ test('public user batch API carries abandoned remaining slots into the next batc
       await insertManagedRecord(pool, config, operator.id, {
         googleAccount: `next-${index}@gmail.com`,
         opValue: `next-${index}`,
+        phoneNumber: crypto.randomUUID(),
+        phoneStatus: '已绑定',
       }),
     );
   }
@@ -465,6 +469,8 @@ test('public user batch API advances past a consumed open batch with cleared slo
       await insertManagedRecord(pool, config, operator.id, {
         googleAccount: `consumed-${index}@gmail.com`,
         opValue: `consumed-${index}`,
+        phoneNumber: crypto.randomUUID(),
+        phoneStatus: '已绑定',
       }),
     );
   }
@@ -652,6 +658,8 @@ test('public user batch submit rejects duplicated uid values', async () => {
   await insertManagedRecord(pool, config, operator.id, {
     googleAccount: 'available-submit@gmail.com',
     opValue: 'submit-op',
+        phoneNumber: crypto.randomUUID(),
+        phoneStatus: '已绑定',
   });
 
   const batchResponse = await request(app).get('/api/public/user/lz/batch');
@@ -706,79 +714,7 @@ test('public user batch API returns wifi qr config for the user center', async (
   });
 });
 
-test('public user batch exposes phone fields and marks phone status bound', async () => {
-  const { app, pool, config } = await createAdminTestContext();
-  const operator = await createAdminUser(pool, {
-    login: 'phone-user',
-    email: 'phone-user@example.com',
-    password: 'change-me-now',
-    role: 'operator',
-  });
-  const record = await insertManagedRecord(pool, config, operator.id, {
-    googleAccount: 'phone-bind@gmail.com',
-    opValue: 'phone-bind-op',
-    phoneNumber: '+86 13037174892',
-    phoneSmsUrl: 'https://sms.example.test/read',
-    phoneExpireAt: '2026-10-04T00:00:00.000Z',
-    phoneStatus: '未绑定',
-    phoneModel: '12mini',
-  });
-
-  const batchResponse = await request(app).get('/api/public/user/phone-user/batch');
-  assert.equal(batchResponse.status, 200);
-  assert.deepEqual(
-    {
-      phoneNumber: batchResponse.body.batch.slots[0].record.phoneNumber,
-      phoneSmsUrl: batchResponse.body.batch.slots[0].record.phoneSmsUrl,
-      phoneExpireAt: batchResponse.body.batch.slots[0].record.phoneExpireAt,
-      phoneStatus: batchResponse.body.batch.slots[0].record.phoneStatus,
-      phoneModel: batchResponse.body.batch.slots[0].record.phoneModel,
-    },
-    {
-      phoneNumber: '+86 13037174892',
-      phoneSmsUrl: 'https://sms.example.test/read',
-      phoneExpireAt: '2026-10-04T00:00:00.000Z',
-      phoneStatus: '未绑定',
-      phoneModel: '12mini',
-    },
-  );
-
-  const bindResponse = await request(app)
-    .post('/api/public/user/phone-user/batch/slots/1/phone/bind')
-    .send({});
-  assert.equal(bindResponse.status, 200);
-  const boundRecord = bindResponse.body.batch.slots.find(
-    (slot) => slot.record && slot.record.id === record.id,
-  );
-  assert.equal(boundRecord.record.phoneStatus, '已绑定');
-  const boundResult = await pool.query(
-    'select phone_status from managed_records where id = $1',
-    [record.id],
-  );
-  assert.equal(boundResult.rows[0].phone_status, '已绑定');
-
-  const unbindResponse = await request(app)
-    .post('/api/public/user/phone-user/batch/slots/1/phone/bind')
-    .send({ phoneStatus: '未绑定' });
-  assert.equal(unbindResponse.status, 200);
-  const unboundResult = await pool.query(
-    'select phone_status from managed_records where id = $1',
-    [record.id],
-  );
-  assert.equal(unboundResult.rows[0].phone_status, '未绑定');
-
-  const modelResponse = await request(app)
-    .put('/api/public/user/phone-user/batch/slots/1/phone-model')
-    .send({ phoneModel: '14' });
-  assert.equal(modelResponse.status, 200);
-  const modelResult = await pool.query(
-    'select phone_model from managed_records where id = $1',
-    [record.id],
-  );
-  assert.equal(modelResult.rows[0].phone_model, '14');
-});
-
-test('public user phone bind rejects records without a phone number', async () => {
+test('public user phone bind rejects commands without exact phone identities', async () => {
   const { app, pool, config } = await createAdminTestContext();
   const operator = await createAdminUser(pool, {
     login: 'no-phone',
@@ -798,7 +734,7 @@ test('public user phone bind rejects records without a phone number', async () =
 
   assert.equal(response.status, 400);
   assert.deepEqual(response.body, {
-    error: '当前记录没有手机号，无法修改状态',
+    error: '缺少或无效的批次、记录或手机号标识，请刷新后重试',
   });
 });
 
@@ -859,6 +795,8 @@ test('public user record API supports submitting uid and remark', async () => {
   const record = await insertManagedRecord(pool, config, operator.id, {
     googleAccount: 'submit@gmail.com',
     opValue: 'op-submit',
+        phoneNumber: crypto.randomUUID(),
+        phoneStatus: '已绑定',
   });
 
   const submitResponse = await request(app)
@@ -889,6 +827,8 @@ test('public user record API rejects duplicated uid values on submit', async () 
   const record = await insertManagedRecord(pool, config, operator.id, {
     googleAccount: 'new-submit@gmail.com',
     opValue: 'new-submit-op',
+        phoneNumber: crypto.randomUUID(),
+        phoneStatus: '已绑定',
   });
 
   const submitResponse = await request(app)

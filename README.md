@@ -242,17 +242,24 @@ curl -X POST http://localhost:4399/api/submit \
 | `DELETE /api/admin/records/:id` | 删除单条记录 |
 | `DELETE /api/admin/records` | 按条件删除记录 |
 | `POST /api/admin/records/batch-delete` | 批量删除 |
+| `POST /api/admin/records/batch-clear-phone` | 按 `ids` 批量清空手机号、接码链接和手机到期时间，将手机状态和机型恢复为未绑定、12mini，保留其他字段 |
 | `POST /api/admin/records/import-text` | 文本批量导入 |
+| `POST /api/admin/records/phone-inventory/import-text` | 独立手机号库存导入，归属当前登录账号 |
+| `GET /api/admin/records/phone-inventory` | 查询当前账号手机号库存，支持手机号搜索、状态筛选和分页 |
 | `GET /api/admin/records/export.csv` | CSV 导出 |
 | `POST /api/admin/records/export.csv` | 按条件导出 CSV |
 
-手机号批量导入每行使用 `手机号----接码链接` 格式，例如：
+在后台侧边栏进入独立的“手机号管理”分页，再点击“批量导入手机号”；“数据管理”分页不再显示此导入入口。每行使用 `手机号----接码链接` 格式，例如：
 
 ```text
 95092681----http://206.119.186.15:30123/sm.asp?mtype=BytePlus&token=your-token
 ```
 
-导入后手机到期时间默认为 30 天后，绑定状态默认为“未绑定”，机型默认为“12mini”。
+手机号导入弹窗可选择有效期：30、60、90、120 或 150 天，默认 30 天，机型默认为“12mini”。号码进入当前账号的独立库存，确认绑定后才写入对应的数据管理记录。同一账号内重复导入未绑定号码会更新接码链接和到期时间；已绑定、老号售后号码保留历史并跳过。
+
+“手机号管理”下方显示库存列表，包括号码、三种状态、提取情况、接码链接、到期时间、机型及导入/更新时间。可按手机号搜索、按状态筛选，每页显示 20/50/100 条。导入成功后关闭弹窗、清除筛选并自动刷新第一页；重新进入分页或点击“刷新列表”可同步用户中心的提取和绑定结果。查询与导入一样按当前账号隔离，超级管理员也只查看自己的手机号库存。
+
+调用 `POST /api/admin/records/phone-inventory/import-text` 时，在 `rowsText` 之外可传入 `phoneDurationDays`（上述天数之一）；省略时使用 30 天。原 `import-text` 接口只接收谷歌号、OP 或综合数据，不再接收两段式手机号文本。
 
 ### 后台短 OP 接口
 
@@ -293,13 +300,20 @@ curl -X POST http://localhost:4399/api/submit \
 | 路径 | 说明 |
 | --- | --- |
 | `GET /api/public/user/:username/batch` | 获取当前批次及二维码配置 |
-| `POST /api/public/user/:username/batch/slots/:slot/uid` | 提交某个槽位的 UID |
-| `POST /api/public/user/:username/batch/slots/:slot/phone/bind` | 将当前槽位记录的手机号标记为已绑定 |
-| `PUT /api/public/user/:username/batch/slots/:slot/phone-model` | 保存当前槽位记录的默认机型 |
+| `POST /api/public/user/:username/batch/slots/:slot/uid` | 已绑定手机号后，提交槽位的 UID |
+| `POST /api/public/user/:username/batch/slots/:slot/phone/extract` | 从所属账号库存中提取手机号 |
+| `POST /api/public/user/:username/batch/slots/:slot/phone/status` | 确认已绑定或标记老号售后 |
+| `PUT /api/public/user/:username/batch/slots/:slot/phone-model` | 更新当前未绑定号码的机型 |
 | `POST /api/public/user/:username/batch/advance` | 推进到下一批次 |
 | `GET /api/public/user/:username/uid-availability` | 检查 UID 是否可用 |
 | `GET /api/public/user/:username/record` | 拉取当前用户可分发记录 |
 | `POST /api/public/user/:username/record/:id/uid` | 为指定记录回填 UID |
+
+用户中心仍使用六个固定卡槽：谷歌号、密码、OP 完整且 UID 为空的记录可以分配，即使没有手机号也正常显示。提取后的号码为“未绑定”，可打开接码链接并选择机型；点“老号售后”后可继续提取下一个号码，旧号码保留在历史中且不再分配。点“已绑定”才将号码资料写入数据管理，并锁定用户中心中的号码操作。保存 UID 是卡槽变绿的唯一条件，未绑定号码时不能保存 UID。
+
+手机号提取请求携带 `batchId`、`recordId`；状态和机型请求还需携带 `phoneInventoryId`。状态请求使用 `phoneStatus: "已绑定"` 或 `"老号售后"`，机型请求使用 `phoneModel`。页面过期时接口返回冲突错误，刷新后再操作。库存按运营账号隔离；超级管理员导入的号码也只属于该登录账号。
+
+升级会一次性归档已有手机号资料：有所属账号的未绑定号码迁入独立库存并清空原记录中的手机号字段，已绑定号码保留在原记录并登记绑定历史；无所属账号的记录保留原样。原谷歌号、OP、UID 和备注保留，迁移标记防止服务重启时重复处理。
 
 ## 测试
 
@@ -308,6 +322,14 @@ curl -X POST http://localhost:4399/api/submit \
 ```bash
 npm test
 ```
+
+手机号并发和事务回滚测试需要独立的 PostgreSQL 测试数据库：
+
+```bash
+PHONE_TEST_DATABASE_URL=postgresql://测试账号:密码@127.0.0.1:5432/测试库 npm test
+```
+
+未设置时跳过这两项真实数据库测试。测试会创建随机命名的独立 schema，并在结束后删除该测试 schema；不要使用生产数据库连接。
 
 ## 部署
 

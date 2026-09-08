@@ -12,7 +12,7 @@ function initializeAdminShell(user) {
   const navigationItems = Array.from(document.querySelectorAll('[data-section-target]'));
   const sections = Array.from(document.querySelectorAll('[data-admin-section]'));
   const isSuperAdmin = user && user.role === 'super_admin';
-  const allowedSectionIds = new Set(['recordsSection', 'shortOpsSection']);
+  const allowedSectionIds = new Set(['recordsSection', 'phoneInventorySection', 'shortOpsSection']);
 
   if (isSuperAdmin) {
     allowedSectionIds.add('opApplicationsSection');

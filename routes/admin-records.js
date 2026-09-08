@@ -9,11 +9,13 @@ const {
   clearManagedRecordOpFields,
   clearManagedRecordGoogleFieldsBatch,
   clearManagedRecordOpFieldsBatch,
+  clearManagedRecordPhoneFieldsBatch,
   deleteManagedRecord,
   deleteManagedRecords,
   exportManagedRecordsCsv,
   importManagedRecordText,
 } = require('../lib/managed-records');
+const { importPhoneInventoryText, listPhoneInventory } = require('../lib/phone-inventory');
 const { lookupOpNicknames } = require('../lib/op-nickname');
 
 function createAdminRecordsRouter({
@@ -52,6 +54,29 @@ function createAdminRecordsRouter({
         req.body.rowsText,
         req.adminUser,
         lookupOpNicknamesImpl,
+      );
+      return res.status(201).json(result);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get('/phone-inventory', async (req, res, next) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(200).json(await listPhoneInventory(pool, req.query, req.adminUser));
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/phone-inventory/import-text', async (req, res, next) => {
+    try {
+      const result = await importPhoneInventoryText(
+        pool,
+        req.body.rowsText,
+        req.adminUser,
+        { durationDays: req.body.phoneDurationDays },
       );
       return res.status(201).json(result);
     } catch (error) {
@@ -127,6 +152,19 @@ function createAdminRecordsRouter({
       const clearedCount = await clearManagedRecordOpFieldsBatch(
         pool,
         config,
+        req.body.ids,
+        req.adminUser,
+      );
+      return res.status(200).json({ clearedCount });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/batch-clear-phone', async (req, res, next) => {
+    try {
+      const clearedCount = await clearManagedRecordPhoneFieldsBatch(
+        pool,
         req.body.ids,
         req.adminUser,
       );

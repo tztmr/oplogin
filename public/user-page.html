@@ -349,6 +349,17 @@
             pointer-events: none;
         }
 
+        [hidden] { display: none !important; }
+
+        .phone-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 12px 0;
+        }
+
+        .phone-actions .btn-submit { flex: 1 1 140px; }
+
         .divider {
             height: 1px;
             background: rgba(0, 0, 0, 0.1);
@@ -573,6 +584,29 @@
                     <div class="label">接码链接</div>
                     <a class="value phone-sms-url-link" id="phoneSmsUrlLink" target="_blank" rel="noreferrer"></a>
                 </div>
+                <div class="info-row">
+                    <div class="label">手机到期时间</div>
+                    <div class="value" id="phoneExpireAtText">--</div>
+                </div>
+                <div class="info-row">
+                    <div class="label">手机号状态</div>
+                    <button type="button" class="phone-number-button" id="phoneStatusButton" disabled>待提取</button>
+                </div>
+                <div class="form-group">
+                    <label for="phoneModelSelect">默认机型</label>
+                    <select class="phone-model-select" id="phoneModelSelect" onchange="updateCurrentSlotPhoneModel()" disabled>
+                        <option value="11">11</option>
+                        <option value="12mini" selected>12mini</option>
+                        <option value="14">14</option>
+                        <option value="x">x</option>
+                    </select>
+                </div>
+                <div class="phone-actions">
+                    <button type="button" id="extractPhoneButton" class="btn-submit" onclick="extractCurrentSlotPhone()">提取手机号</button>
+                    <button type="button" id="markPhoneBoundButton" class="btn-submit btn-secondary" onclick="setCurrentSlotPhoneStatus('已绑定')" hidden>已绑定</button>
+                    <button type="button" id="markPhoneAfterSaleButton" class="btn-submit btn-danger" onclick="setCurrentSlotPhoneStatus('老号售后')" hidden>老号售后</button>
+                </div>
+                <p class="status-note" id="phoneWorkflowHint" role="status" aria-live="polite">先提取手机号，绑定成功后再保存 UID。</p>
                 <div class="status-note" id="batchSummaryText"></div>
 
                 <div class="divider"></div>
@@ -644,20 +678,7 @@
                     <label for="remark">备注 (选填)</label>
                     <input type="text" id="remark" placeholder="备注默认为空 可填可不填">
                 </div>
-                <div class="form-group">
-                    <label for="phoneModelSelect">默认机型</label>
-                    <select class="phone-model-select" id="phoneModelSelect" onchange="updateCurrentSlotPhoneModel()">
-                        <option value="11">11</option>
-                        <option value="12mini" selected>12mini</option>
-                        <option value="14">14</option>
-                        <option value="x">x</option>
-                    </select>
-                </div>
                 <button type="button" id="submitUidBtn" class="btn-submit btn-secondary" onclick="submitUid()">保存 UID</button>
-                <div class="info-row" style="margin-top: 16px;">
-                    <div class="label">手机号状态</div>
-                    <button type="button" class="phone-number-button" id="phoneStatusButton" onclick="toggleCurrentSlotPhoneStatus()">未绑定</button>
-                </div>
             </div>
 
             <div id="emptyContainer" class="empty-state" style="display: none;">
@@ -683,6 +704,19 @@
         const wakeUrlCache = window.createWakeUrlCache();
         let uidClipboardPollingTimer = null;
         let lastAutoFillClipboardText = '';
+        let phoneMutationPending = false;
+        let uidSavePending = false;
+        let batchRequestPending = false;
+
+        function setBatchRequestPending(pending) {
+            batchRequestPending = pending;
+            document.getElementById('refreshBatchBtn').disabled = pending;
+            document.getElementById('advanceBatchBtn').disabled = pending;
+            if (currentBatch) {
+                renderBatchSlots();
+                renderSelectedSlot({ preserveDraft: true });
+            }
+        }
 
         function getRemarkInput() {
             return document.getElementById('remark');
@@ -814,38 +848,22 @@
                 return 1;
             }
             const availableSlot = currentBatch.slots.find(
-                (slot) => slot.status === 'available' && slot.record && slot.record.phoneNumber,
+                (slot) => slot.status === 'available' && slot.record,
             );
             if (availableSlot) {
                 return availableSlot.slot;
             }
             const doneSlot = currentBatch.slots.find(
-                (slot) => slot.status === 'done' && slot.record && slot.record.phoneNumber,
+                (slot) => slot.status === 'done' && slot.record,
             );
             return doneSlot ? doneSlot.slot : null;
-        }
-
-        function buildPhoneVisibleBatch(batch) {
-            if (!batch || !Array.isArray(batch.slots)) {
-                return batch;
-            }
-
-            const slots = batch.slots.map((slot) => {
-                if (slot.record && !(slot.record.phoneNumber || '').trim()) {
-                    return { slot: slot.slot, status: 'empty', record: null };
-                }
-                return slot;
-            });
-
-            return { ...batch, slots };
         }
 
         function resolveSelectableSlot(preferredSlotNumber) {
             const preferredSlot = getSlot(preferredSlotNumber);
             if (
                 preferredSlot &&
-                preferredSlot.record &&
-                (preferredSlot.record.phoneNumber || '').trim()
+                preferredSlot.record
             ) {
                 return preferredSlotNumber;
             }
@@ -952,7 +970,7 @@
                     button.className = 'quick-slot-button slot-available';
                 }
                 button.classList.toggle('is-active', currentSlotNumber === slotNumber);
-                button.disabled = slot.status === 'empty';
+                button.disabled = slot.status === 'empty' || phoneMutationPending || uidSavePending || batchRequestPending;
                 if (slot.status === 'done') {
                     button.textContent = `${slotNumber} 已保存`;
                     return;
@@ -965,13 +983,14 @@
             });
         }
 
-        function renderSelectedSlot() {
+        function renderSelectedSlot({ preserveDraft = false } = {}) {
             const slot = getSlot(currentSlotNumber);
             const submitButton = document.getElementById('submitUidBtn');
             const opButton = document.getElementById('opLoginBtn');
             const enterOpButton = document.getElementById('enterOpBtn');
 
-            if (!slot || !slot.record || !(slot.record.phoneNumber || '').trim()) {
+            if (!slot || !slot.record) {
+                currentRecord = null;
                 showEmptyState();
                 return;
             }
@@ -982,15 +1001,34 @@
             document.getElementById('googleAccountText').textContent = slot.record.googleAccount;
             document.getElementById('googlePasswordText').textContent = slot.record.googlePassword;
             const phoneNumber = slot.record.phoneNumber || '';
-            const phoneStatus = slot.record.phoneStatus || '未绑定';
+            const phoneStatus = slot.record.phoneStatus || '';
+            const busy = phoneMutationPending || uidSavePending || batchRequestPending;
+            const isBound = phoneStatus === '已绑定';
+            const bindingLocked = isBound || Boolean(slot.record.phoneBindingLocked);
+            const isReserved = Boolean(phoneNumber && phoneStatus === '未绑定' && slot.record.phoneInventoryId && !bindingLocked);
             const phoneButton = document.getElementById('bindPhoneNumberButton');
-            phoneButton.textContent = phoneNumber || '--';
+            phoneButton.textContent = phoneNumber || '待提取';
             phoneButton.classList.toggle('is-bound', phoneStatus === '已绑定');
             phoneButton.disabled = true;
             const phoneStatusButton = document.getElementById('phoneStatusButton');
-            phoneStatusButton.textContent = phoneStatus;
+            phoneStatusButton.textContent = phoneStatus || (slot.record.lastPhoneAttempt ? '老号售后' : '待提取');
             phoneStatusButton.classList.toggle('is-bound', phoneStatus === '已绑定');
-            phoneStatusButton.disabled = !phoneNumber;
+            phoneStatusButton.disabled = true;
+            document.getElementById('phoneExpireAtText').textContent = formatDateTime(slot.record.phoneExpireAt) || '--';
+            document.getElementById('extractPhoneButton').hidden = Boolean(phoneNumber) || bindingLocked;
+            document.getElementById('markPhoneBoundButton').hidden = !isReserved;
+            document.getElementById('markPhoneAfterSaleButton').hidden = !isReserved;
+            for (const id of ['extractPhoneButton', 'markPhoneBoundButton', 'markPhoneAfterSaleButton']) {
+                document.getElementById(id).disabled = busy || slot.status !== 'available';
+            }
+            document.getElementById('refreshBatchBtn').disabled = busy;
+            document.getElementById('advanceBatchBtn').disabled = busy;
+            document.getElementById('phoneWorkflowHint').textContent = busy
+                ? '正在保存，请稍候…'
+                : bindingLocked ? (phoneNumber ? '已绑定并入库，号码已锁定。保存 UID 后卡槽变绿。' : '此记录已有绑定历史，号码操作已锁定，请联系管理员检查资料。')
+                : isReserved ? '绑定成功后点“已绑定”；如为老号，点“老号售后”再提取下一个号码。'
+                : slot.record.lastPhoneAttempt ? '上个号码已标记老号售后，可重新提取。'
+                : '先提取手机号，绑定成功后再保存 UID。';
             const phoneSmsUrlLink = document.getElementById('phoneSmsUrlLink');
             if (slot.record.phoneSmsUrl) {
                 phoneSmsUrlLink.textContent = '打开接码链接';
@@ -1000,12 +1038,14 @@
                 phoneSmsUrlLink.removeAttribute('href');
             }
             const phoneModelSelect = document.getElementById('phoneModelSelect');
-            phoneModelSelect.disabled = false;
+            phoneModelSelect.disabled = busy || !isReserved || slot.status !== 'available';
             phoneModelSelect.value = slot.record.phoneModel || '12mini';
-            document.getElementById('uid').value = '';
-            lastAutoFillClipboardText = '';
-            restoreRemarkDraft();
-            submitButton.disabled = slot.status !== 'available';
+            if (!preserveDraft) {
+                document.getElementById('uid').value = '';
+                lastAutoFillClipboardText = '';
+                restoreRemarkDraft();
+            }
+            submitButton.disabled = slot.status !== 'available' || phoneStatus !== '已绑定' || !phoneNumber || busy;
             opButton.disabled = !slot.record.opValue;
             enterOpButton.disabled = !slot.record.opValue;
             void prefetchCurrentWakeUrl();
@@ -1015,70 +1055,64 @@
             applyQrConfig(data.qrConfig);
             currentBatch = data.batch;
             renderBatchSlots();
-            renderSelectedSlot();
+            renderSelectedSlot({ preserveDraft: true });
             renderBatchSummary();
             document.getElementById('pageSubtitle').textContent = `当前批次 ${currentBatch.id.slice(0, 8)}，红色待处理，绿色已保存`;
             showToast(successMessage);
         }
 
-        async function toggleCurrentSlotPhoneStatus() {
-            const slot = getSlot(currentSlotNumber);
-            const record = currentRecord;
-            if (!slot || !record || !(record.phoneNumber || '').trim()) {
-                showToast('当前记录没有手机号', 'error');
-                return;
-            }
-
-            const nextStatus = record.phoneStatus === '已绑定' ? '未绑定' : '已绑定';
-
-            const button = document.getElementById('phoneStatusButton');
-            const originalText = button.textContent;
-            button.textContent = '标记中...';
-            button.disabled = true;
+        async function mutateCurrentSlotPhone(action, fields, successMessage, method = 'POST') {
+            if (phoneMutationPending || uidSavePending || batchRequestPending || !currentRecord || !currentBatch) return;
+            const payload = {
+                batchId: currentBatch.id,
+                recordId: currentRecord.id,
+                phoneInventoryId: currentRecord.phoneInventoryId,
+                ...fields,
+            };
+            phoneMutationPending = true;
+            renderBatchSlots();
+            renderSelectedSlot({ preserveDraft: true });
             try {
-                const response = await fetch(`/api/public/user/${encodeURIComponent(username)}/batch/slots/${currentSlotNumber}/phone/bind`, {
-                    method: 'POST',
+                const response = await fetch(`/api/public/user/${encodeURIComponent(username)}/batch/slots/${currentSlotNumber}/${action}`, {
+                    method,
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phoneStatus: nextStatus }),
+                    body: JSON.stringify(payload),
                 });
                 const data = await response.json();
                 if (!response.ok) {
-                    throw new Error(data.error || '标记失败');
+                    if (response.status === 409) {
+                        const fresh = await fetchBatch();
+                        applyQrConfig(fresh.qrConfig);
+                        applyBatch(fresh.batch, currentSlotNumber, { preserveDraft: true });
+                    }
+                    throw new Error(data.error || '操作失败');
                 }
-                applyPhoneMutationResponse(
-                    data,
-                    nextStatus === '已绑定' ? '手机号已标记为已绑定' : '手机号已标记为未绑定',
-                );
+                applyPhoneMutationResponse(data, successMessage);
             } catch (error) {
-                button.textContent = originalText;
-                button.disabled = false;
-                showToast(error.message || '网络异常，标记失败', 'error');
+                showToast(error.message || '网络异常，请重试', 'error');
+            } finally {
+                phoneMutationPending = false;
+                renderBatchSlots();
+                renderSelectedSlot({ preserveDraft: true });
             }
         }
 
-        async function updateCurrentSlotPhoneModel() {
-            if (!currentRecord) {
-                return;
-            }
+        async function extractCurrentSlotPhone() {
+            if (!currentRecord || currentRecord.phoneNumber || currentRecord.phoneStatus === '已绑定' || currentRecord.phoneBindingLocked) return;
+            await mutateCurrentSlotPhone('phone/extract', {}, '已提取手机号，请完成绑定或标记老号售后');
+        }
 
-            const select = document.getElementById('phoneModelSelect');
-            const originalModel = currentRecord.phoneModel || '12mini';
-            const selectedModel = select.value;
-            try {
-                const response = await fetch(`/api/public/user/${encodeURIComponent(username)}/batch/slots/${currentSlotNumber}/phone-model`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phoneModel: selectedModel }),
-                });
-                const data = await response.json();
-                if (!response.ok) {
-                    throw new Error(data.error || '机型保存失败');
-                }
-                applyPhoneMutationResponse(data, '默认机型已保存');
-            } catch (error) {
-                select.value = originalModel;
-                showToast(error.message || '网络异常，机型保存失败', 'error');
-            }
+        async function setCurrentSlotPhoneStatus(phoneStatus) {
+            if (!currentRecord || currentRecord.phoneStatus !== '未绑定') return;
+            await mutateCurrentSlotPhone('phone/status', { phoneStatus }, phoneStatus === '已绑定'
+                ? '手机号已绑定并写入数据管理，不能在用户中心更换'
+                : '已标记老号售后，可以重新提取号码');
+        }
+
+        async function updateCurrentSlotPhoneModel() {
+            if (!currentRecord || currentRecord.phoneStatus !== '未绑定') return;
+            const phoneModel = document.getElementById('phoneModelSelect').value;
+            await mutateCurrentSlotPhone('phone-model', { phoneModel }, '默认机型已保存', 'PUT');
         }
 
         async function prefetchCurrentWakeUrl() {
@@ -1110,13 +1144,22 @@
             document.getElementById('pageSubtitle').textContent = '当前没有可分配批次';
         }
 
-        function applyBatch(batch, preferredSlotNumber = null) {
-            currentBatch = buildPhoneVisibleBatch(batch);
+        function applyBatch(batch, preferredSlotNumber = null, { preserveDraft = false } = {}) {
+            const previousBatchId = currentBatch?.id;
+            const previousRecordId = currentRecord?.id;
+            currentBatch = batch;
             currentSlotNumber = resolveSelectableSlot(preferredSlotNumber);
+            const keepDraft = preserveDraft && previousBatchId === batch.id
+                && previousRecordId === getSlot(currentSlotNumber)?.record?.id;
 
             const hasRealRecord = currentBatch.slots.some((slot) => Boolean(slot.record));
             document.getElementById('mainCard').style.display = 'block';
             if (!hasRealRecord || currentSlotNumber === null) {
+                currentRecord = null;
+                if (preserveDraft) {
+                    getUidInput().value = '';
+                    getRemarkInput().value = '';
+                }
                 showEmptyState();
                 return;
             }
@@ -1125,7 +1168,11 @@
             document.getElementById('emptyContainer').style.display = 'none';
             document.getElementById('pageSubtitle').textContent = `当前批次 ${batch.id.slice(0, 8)}，红色待处理，绿色已保存`;
             renderBatchSlots();
-            renderSelectedSlot();
+            renderSelectedSlot({ preserveDraft: keepDraft });
+            if (preserveDraft && !keepDraft) {
+                getUidInput().value = '';
+                getRemarkInput().value = '';
+            }
             renderBatchSummary();
         }
 
@@ -1149,6 +1196,8 @@
         }
 
         async function loadBatch() {
+            if (phoneMutationPending || uidSavePending || batchRequestPending) return;
+            setBatchRequestPending(true);
             try {
                 const data = await fetchBatch();
                 applyQrConfig(data.qrConfig);
@@ -1156,10 +1205,13 @@
             } catch (error) {
                 showToast(error.message, 'error');
                 document.getElementById('pageSubtitle').textContent = '加载出错';
+            } finally {
+                setBatchRequestPending(false);
             }
         }
 
         function switchSlot(slotNumber) {
+            if (phoneMutationPending || uidSavePending || batchRequestPending) return;
             const slot = getSlot(slotNumber);
             if (!slot) {
                 return;
@@ -1174,19 +1226,25 @@
         }
 
         async function refreshBatch() {
+            if (phoneMutationPending || uidSavePending || batchRequestPending) return;
+            setBatchRequestPending(true);
             try {
                 const data = await fetchBatch();
                 applyQrConfig(data.qrConfig);
                 const batch = data.batch;
                 const preferredSlot = getSlot(currentSlotNumber) ? currentSlotNumber : null;
-                applyBatch(batch, preferredSlot || getFirstSelectableSlot());
+                applyBatch(batch, preferredSlot || getFirstSelectableSlot(), { preserveDraft: true });
                 showToast('本组状态已刷新');
             } catch (error) {
                 showToast(error.message, 'error');
+            } finally {
+                setBatchRequestPending(false);
             }
         }
 
         async function advanceBatchGroup() {
+            if (phoneMutationPending || uidSavePending || batchRequestPending) return;
+            setBatchRequestPending(true);
             const button = document.getElementById('advanceBatchBtn');
             const originalText = button.innerText;
             button.innerText = '换组中...';
@@ -1208,7 +1266,7 @@
                 showToast(error.message, 'error');
             } finally {
                 button.innerText = originalText;
-                button.disabled = false;
+                setBatchRequestPending(false);
             }
         }
 
@@ -1249,8 +1307,14 @@
         }
 
         async function submitUid() {
+            if (phoneMutationPending || uidSavePending || batchRequestPending) return;
             if (!currentRecord) {
                 showToast('请先选择有效槽位', 'error');
+                return;
+            }
+
+            if (currentRecord.phoneStatus !== '已绑定' || !currentRecord.phoneNumber) {
+                showToast('请先完成手机号绑定', 'error');
                 return;
             }
 
@@ -1265,15 +1329,23 @@
             const originalText = button.innerText;
             button.innerText = '保存中...';
             button.disabled = true;
+            uidSavePending = true;
+            renderBatchSlots();
+            renderSelectedSlot({ preserveDraft: true });
 
             try {
                 const response = await fetch(`/api/public/user/${encodeURIComponent(username)}/batch/slots/${currentSlotNumber}/uid`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ uid: uidInput, remark: remarkInput }),
+                    body: JSON.stringify({ uid: uidInput, remark: remarkInput, batchId: currentBatch.id, recordId: currentRecord.id }),
                 });
                 const data = await response.json();
                 if (!response.ok) {
+                    if (response.status === 409) {
+                        const fresh = await fetchBatch();
+                        applyQrConfig(fresh.qrConfig);
+                        applyBatch(fresh.batch, currentSlotNumber, { preserveDraft: true });
+                    }
                     throw new Error(data.error || '保存失败');
                 }
 
@@ -1288,8 +1360,10 @@
             } catch (error) {
                 showToast(error.message || '网络异常，保存失败', 'error');
             } finally {
+                uidSavePending = false;
                 button.innerText = originalText;
-                renderSelectedSlot();
+                renderBatchSlots();
+                renderSelectedSlot({ preserveDraft: true });
             }
         }
 

@@ -66,11 +66,13 @@ function loadAdminShellScript() {
     createElement('recordsNav', { sectionTarget: 'recordsSection' }),
     createElement('shortOpsNav', { sectionTarget: 'shortOpsSection' }),
     createElement('opApplicationsNav', { sectionTarget: 'opApplicationsSection', superAdminOnly: '' }),
+    createElement('phoneInventoryNav', { sectionTarget: 'phoneInventorySection' }),
   ];
   const sections = [
     createElement('recordsSection', { adminSection: '' }),
     createElement('shortOpsSection', { adminSection: '' }),
     createElement('opApplicationsSection', { adminSection: '' }),
+    createElement('phoneInventorySection', { adminSection: '' }),
   ];
   const elements = new Map([...buttons, ...sections].map((element) => [element.id, element]));
   const sandbox = {
@@ -329,6 +331,23 @@ test('GET /admin serves the record management shell', async () => {
   assert.match(response.text, /\/user-center-qr\.js/);
   assert.match(response.text, /id="openOwnUserPageButton"/);
   assert.match(response.text, /进入我的页面/);
+});
+
+test('phone inventory navigation is available to operators and super admins and survives reload', () => {
+  for (const role of ['operator', 'super_admin']) {
+    const { sandbox, buttons, sections, sessionStorage } = loadAdminShellScript();
+    sandbox.initializeAdminShell({ role });
+    buttons[3].click();
+    assert.equal(sections[3].hidden, false);
+    assert.ok(sections.slice(0, 3).every((section) => section.hidden));
+    assert.equal(buttons[3].classList.contains('is-active'), true);
+    assert.equal(sessionStorage.get('admin.activeSection'), 'phoneInventorySection');
+    sandbox.initializeAdminShell({ role });
+    assert.equal(sections[3].hidden, false);
+    buttons[0].click();
+    assert.equal(sections[0].hidden, false);
+    assert.equal(sections[3].hidden, true);
+  }
 });
 
 test('GET /admin serves sidebar navigation and independent management sections', async () => {

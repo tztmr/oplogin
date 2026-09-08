@@ -17,6 +17,89 @@ async function loginAsSuperAdmin(agent, config) {
   });
 }
 
+test('batch clear phone removes selected phone data while preserving other fields and unselected records', async () => {
+  const { agent, config } = await createAdminTestContext();
+  await loginAsSuperAdmin(agent, config);
+  const records = [];
+  for (let index = 0; index < 3; index += 1) {
+    const response = await agent.post('/api/admin/records').send({
+      phoneNumber: `1380000000${index}`,
+      phoneSmsUrl: `https://example.com/sms/${index}`,
+      phoneExpireAt: '2026-12-31T00:00:00.000Z',
+      phoneStatus: '已绑定',
+      phoneModel: '14',
+      ...(index === 1 ? {} : {
+        googleAccount: `phone-clear-${index}@example.com`,
+        googlePassword: 'keep-password',
+        googleAssist: 'keep-assist',
+        googleExpireAt: '2026-12-01T00:00:00.000Z',
+        opValue: `keep-op-${index}`,
+        opNickname: '保留昵称',
+        opLink: `https://example.com/op/${index}`,
+        opExpireAt: '2026-12-01T00:00:00.000Z',
+        uidValue: `keep-uid-${index}`,
+      }),
+      remark: '保留备注',
+    });
+    assert.equal(response.status, 201);
+    records.push(response.body.item);
+  }
+
+  const response = await agent.post('/api/admin/records/batch-clear-phone').send({
+    ids: [records[0].id, records[1].id, records[0].id, crypto.randomUUID()],
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.body.clearedCount, 2);
+
+  for (const [index, record] of records.entries()) {
+    const after = await agent.get(`/api/admin/records/${record.id}`);
+    assert.equal(after.status, 200);
+    const expected = index === 2 ? record : {
+      ...record,
+      phoneNumber: '', phoneSmsUrl: '', phoneExpireAt: null,
+      phoneStatus: '未绑定', phoneModel: '12mini',
+    };
+    const { updatedAt: beforeUpdatedAt, ...expectedFields } = expected;
+    const { updatedAt: afterUpdatedAt, ...actualFields } = after.body.item;
+    assert.deepEqual(actualFields, expectedFields);
+  }
+});
+
+test('batch clear phone requires authentication and a nonempty selection', async () => {
+  const { agent, config } = await createAdminTestContext();
+  const unauthenticated = await agent.post('/api/admin/records/batch-clear-phone').send({ ids: [] });
+  assert.equal(unauthenticated.status, 401);
+  await loginAsSuperAdmin(agent, config);
+  for (const payload of [{}, { ids: [] }, { ids: [' ', ''] }]) {
+    const response = await agent.post('/api/admin/records/batch-clear-phone').send(payload);
+    assert.equal(response.status, 400);
+  }
+});
+
+test('batch clear phone respects operator ownership', async () => {
+  const { agent, pool, config } = await createAdminTestContext();
+  await loginAsSuperAdmin(agent, config);
+  const otherRecord = await agent.post('/api/admin/records').send({ phoneNumber: '13800000001' });
+  const operatorId = crypto.randomUUID();
+  await pool.query(
+    `insert into admin_users (id, login, email, password_hash, role, status)
+     values ($1, 'phone-operator', 'phone-operator@example.com', $2, 'operator', 'active')`,
+    [operatorId, await hashAdminPassword('operator-pass')],
+  );
+  await agent.post('/api/admin/auth/login').send({ identifier: 'phone-operator', password: 'operator-pass' });
+  const ownRecord = await agent.post('/api/admin/records').send({ phoneNumber: '13800000002' });
+  const response = await agent.post('/api/admin/records/batch-clear-phone').send({
+    ids: [ownRecord.body.item.id, otherRecord.body.item.id],
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.body.clearedCount, 1);
+  const ownAfter = await agent.get(`/api/admin/records/${ownRecord.body.item.id}`);
+  assert.equal(ownAfter.body.item.phoneNumber, '');
+  await loginAsSuperAdmin(agent, config);
+  const otherAfter = await agent.get(`/api/admin/records/${otherRecord.body.item.id}`);
+  assert.equal(otherAfter.body.item.phoneNumber, '13800000001');
+});
+
 test('record CRUD decrypts Google password and preserves uidCreatedAt', async () => {
   const { agent, config } = await createAdminTestContext();
   await loginAsSuperAdmin(agent, config);
@@ -881,70 +964,19 @@ test('text import creates records and derives op link plus op expiry time', asyn
   assert.equal(response.body.items[0].opNickname, '');
 });
 
-test('text import accepts phone number and verification link with a default one-month expiry', async () => {
+test('managed-record text import directs two-field phone rows to the dedicated importer', async () => {
   const { agent, config } = await createAdminTestContext();
   await loginAsSuperAdmin(agent, config);
-  const beforeImport = Date.now();
   const phoneSmsUrl =
     'http://206.119.186.15:30123/sm.asp?mtype=BytePlus&token=test-sms-token';
 
   const response = await agent.post('/api/admin/records/import-text').send({
     rowsText: `95092681----${phoneSmsUrl}`,
   });
-  const afterImport = Date.now();
 
-  assert.equal(response.status, 201);
-  assert.equal(response.body.importedCount, 1);
-  assert.equal(response.body.items[0].phoneNumber, '95092681');
-  assert.equal(response.body.items[0].phoneSmsUrl, phoneSmsUrl);
-  assert.equal(response.body.items[0].phoneStatus, '未绑定');
-  assert.equal(response.body.items[0].phoneModel, '12mini');
-  const expireAt = new Date(response.body.items[0].phoneExpireAt).getTime();
-  const thirtyDays = 30 * 24 * 60 * 60 * 1000;
-  assert.ok(expireAt >= beforeImport + thirtyDays);
-  assert.ok(expireAt <= afterImport + thirtyDays);
-});
-
-test('phone text import fills the oldest record that is missing a phone number', async () => {
-  const { agent, config } = await createAdminTestContext();
-  await loginAsSuperAdmin(agent, config);
-  await agent.post('/api/admin/records/import-text').send({
-    rowsText: 'paired@gmail.com----paired-pass----paired-assist',
-  });
-
-  const phoneResponse = await agent.post('/api/admin/records/import-text').send({
-    rowsText: '95092681----https://sms.example.test/paired',
-  });
-  const listResponse = await agent.get('/api/admin/records');
-
-  assert.equal(phoneResponse.status, 201);
-  assert.equal(listResponse.body.total, 1);
-  assert.equal(listResponse.body.items[0].googleAccount, 'paired@gmail.com');
-  assert.equal(listResponse.body.items[0].phoneNumber, '95092681');
-  assert.equal(
-    listResponse.body.items[0].phoneSmsUrl,
-    'https://sms.example.test/paired',
-  );
-});
-
-test('phone text import updates an existing phone instead of creating a duplicate', async () => {
-  const { agent, config } = await createAdminTestContext();
-  await loginAsSuperAdmin(agent, config);
-
-  await agent.post('/api/admin/records/import-text').send({
-    rowsText: '95092681----https://sms.example.test/first',
-  });
-  const secondResponse = await agent.post('/api/admin/records/import-text').send({
-    rowsText: '95092681----https://sms.example.test/renewed',
-  });
-  const listResponse = await agent.get('/api/admin/records');
-
-  assert.equal(secondResponse.status, 201);
-  assert.equal(listResponse.body.total, 1);
-  assert.equal(
-    listResponse.body.items[0].phoneSmsUrl,
-    'https://sms.example.test/renewed',
-  );
+  assert.equal(response.status, 400);
+  assert.match(response.body.error, /手机号.*专用导入/);
+  assert.equal((await agent.get('/api/admin/records')).body.total, 0);
 });
 
 test('text import detects, persists, refreshes, and preserves OP nickname on lookup failure', async () => {

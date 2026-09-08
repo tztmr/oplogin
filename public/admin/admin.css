@@ -381,6 +381,21 @@ table {
   font-size: 14px;
 }
 
+#phoneInventoryTable th:first-child,
+#phoneInventoryTable td:first-child {
+  width: auto;
+  text-align: left;
+  white-space: nowrap;
+}
+
+#phoneInventoryTable td:nth-child(4) a {
+  display: block;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 th,
 td {
   padding: 16px;

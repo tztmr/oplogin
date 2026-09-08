@@ -126,6 +126,14 @@ function buildBatchClearOpConfirmMessage(count) {
   ].join('\n');
 }
 
+function buildBatchClearPhoneConfirmMessage(count) {
+  return [
+    `确认删除已勾选的 ${count} 条记录的手机号吗？`,
+    '将清空：手机号、接码链接、手机到期时间',
+    '手机状态重置为未绑定，机型重置为 12mini；保留谷歌号、OP、UID 和备注。',
+  ].join('\n');
+}
+
 function renderRows(data) {
   const items = data.items;
   const isAllPageSize = currentPageSize === 'all';
@@ -245,6 +253,7 @@ function syncBatchDeleteState() {
   syncBatchActionButton('batchDeleteButton', '批量删除', selectedCount);
   syncBatchActionButton('batchClearGoogleButton', '批量删除谷歌号', selectedCount);
   syncBatchActionButton('batchClearOpButton', '批量删除OP', selectedCount);
+  syncBatchActionButton('batchClearPhoneButton', '批量删除手机号', selectedCount);
 
   const totalVisible = currentPageRecordIds.length;
   const selectedVisible = currentPageRecordIds.filter((id) =>
@@ -466,6 +475,46 @@ async function submitBatchImportForm(event) {
     document.getElementById('batchImportSubmitButton').disabled = false;
     document.getElementById('batchImportSubmitButton').textContent = '重新导入';
     throw error;
+  }
+}
+
+async function submitPhoneImportForm(event) {
+  event.preventDefault();
+  const submit = document.getElementById('phoneImportSubmitButton');
+  if (submit.disabled) return;
+  const cancel = document.getElementById('phoneImportCancelButton');
+  const progress = document.getElementById('phoneImportProgressText');
+  const input = document.getElementById('phoneImportText');
+  const duration = document.getElementById('phoneImportDurationDays');
+  submit.disabled = true;
+  cancel.disabled = true;
+  input.disabled = true;
+  duration.disabled = true;
+  submit.textContent = '导入中…';
+  progress.textContent = '正在写入当前账号的手机号库存…';
+  try {
+    const data = await adminFetch('/api/admin/records/phone-inventory/import-text', {
+      method: 'POST',
+      body: JSON.stringify({
+        rowsText: input.value.trim(),
+        phoneDurationDays: Number(duration.value),
+      }),
+    });
+    const summary = `已导入 ${data.importedCount} 个手机号，更新 ${data.updatedCount} 个，跳过 ${data.skippedCount} 个`;
+    progress.textContent = summary;
+    input.value = '';
+    showToast(summary);
+    document.getElementById('phoneImportDialog').close();
+    await refreshPhoneInventoryAfterImport();
+  } catch (error) {
+    progress.textContent = error.message || '导入失败，请稍后重试';
+    showToast(progress.textContent);
+  } finally {
+    submit.disabled = false;
+    cancel.disabled = false;
+    input.disabled = false;
+    duration.disabled = false;
+    submit.textContent = '导入库存';
   }
 }
 
@@ -789,6 +838,61 @@ async function clearSelectedOpFields() {
   }
 }
 
+async function clearSelectedPhoneFields() {
+  const ids = getSelectedRecordIds();
+  if (!ids.length) {
+    showToast('请先勾选要删除手机号的记录');
+    return;
+  }
+
+  if (
+    !(await showConfirm(buildBatchClearPhoneConfirmMessage(ids.length), {
+      confirmText: '删除手机号',
+      tone: 'danger',
+    }))
+  ) {
+    return;
+  }
+
+  startBatchDeleteProgress({
+    buttonId: 'batchClearPhoneButton',
+    loadingButtonText: '删除手机号中...',
+    startText: '正在删除勾选记录的手机号...',
+    runningText: '正在同步手机号删除结果...',
+  });
+
+  try {
+    const data = await adminFetch('/api/admin/records/batch-clear-phone', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    });
+
+    stopBatchDeleteProgressTimer();
+    setBatchDeleteProgressState(100, '手机号删除完成');
+    if (data.clearedCount > 0) {
+      selectedRecordIds.clear();
+      await loadRecords();
+      window.setTimeout(() => {
+        resetBatchDeleteProgressState();
+        showToast(`已删除 ${data.clearedCount} 条记录的手机号、接码链接、手机到期时间，手机状态和机型已重置`);
+      }, 220);
+      return;
+    }
+
+    window.setTimeout(() => {
+      resetBatchDeleteProgressState();
+      showToast('未删除任何手机号，请重新勾选后再试');
+    }, 220);
+  } catch (error) {
+    stopBatchDeleteProgressTimer();
+    const errMsg = error.message || '请稍后重试';
+    setBatchDeleteProgressState(100, `删除手机号失败: ${errMsg}`);
+    document.getElementById('batchClearPhoneButton').disabled = false;
+    document.getElementById('batchClearPhoneButton').textContent = '重新删除手机号';
+    throw error;
+  }
+}
+
 async function exportSelectedRecords() {
   const ids = getSelectedRecordIds();
   if (!ids.length) {
@@ -927,6 +1031,18 @@ window.addEventListener('DOMContentLoaded', async () => {
   document
     .getElementById('backfillOpNicknamesButton')
     .addEventListener('click', backfillOpNicknames);
+  document.getElementById('phoneImportButton').addEventListener('click', () => {
+    document.getElementById('phoneImportForm').reset();
+    document.getElementById('phoneImportProgressText').textContent = '';
+    document.getElementById('phoneImportDialog').showModal();
+  });
+  document.getElementById('phoneImportForm').addEventListener('submit', submitPhoneImportForm);
+  document.getElementById('phoneImportCancelButton').addEventListener('click', () => {
+    document.getElementById('phoneImportDialog').close();
+  });
+  document.getElementById('phoneImportDialog').addEventListener('cancel', (event) => {
+    if (document.getElementById('phoneImportSubmitButton').disabled) event.preventDefault();
+  });
   document
     .getElementById('batchDeleteButton')
     .addEventListener('click', deleteSelectedRecords);
@@ -936,6 +1052,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   document
     .getElementById('batchClearOpButton')
     .addEventListener('click', clearSelectedOpFields);
+  document
+    .getElementById('batchClearPhoneButton')
+    .addEventListener('click', clearSelectedPhoneFields);
   document
     .getElementById('selectAllRecordsCheckbox')
     .addEventListener('change', (event) => {

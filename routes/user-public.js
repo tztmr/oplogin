@@ -1,9 +1,11 @@
 const express = require('express');
 const { findAdminByIdentifier } = require('../lib/admin-users');
 const { decryptGooglePassword } = require('../lib/google-password-crypto');
-const { isManagedRecordUidUniqueViolation } = require('../lib/uid-value');
 const {
   getCurrentBatch,
+  extractBatchSlotPhone,
+  setBatchSlotPhoneStatus,
+  submitRecordUid,
   markBatchSlotPhoneBound,
   submitBatchSlotUid,
   updateBatchSlotPhoneModel,
@@ -76,7 +78,7 @@ function createUserPublicRouter({ pool, config }) {
   router.post('/:username/batch/slots/:slot/uid', async (req, res, next) => {
     try {
       const user = await findActiveUser(req.params.username);
-      const slotNumber = Number.parseInt(String(req.params.slot || '').trim(), 10);
+      const slotNumber = (/^[1-6]$/.test(req.params.slot) ? Number(req.params.slot) : NaN);
       if (!Number.isInteger(slotNumber) || slotNumber < 1 || slotNumber > 6) {
         return res.status(400).json({ error: '槽位必须在 1 到 6 之间' });
       }
@@ -92,10 +94,27 @@ function createUserPublicRouter({ pool, config }) {
     }
   });
 
+  for (const action of ['extract', 'status']) {
+    router.post(`/:username/batch/slots/:slot/phone/${action}`, async (req, res, next) => {
+      try {
+        const user = await findActiveUser(req.params.username);
+        if (!/^[1-6]$/.test(req.params.slot)) return res.status(400).json({ error: '槽位必须在 1 到 6 之间' });
+        const payload = req.body || {};
+        const slotNumber = Number(req.params.slot);
+        const batch = action === 'extract'
+          ? await extractBatchSlotPhone(pool, config, user, slotNumber, payload)
+          : await setBatchSlotPhoneStatus(pool, config, user, slotNumber, payload.phoneStatus, payload);
+        return res.status(200).json({ status: 'success', batch, qrConfig: buildQrConfig(user) });
+      } catch (error) {
+        return next(error);
+      }
+    });
+  }
+
   router.post('/:username/batch/slots/:slot/phone/bind', async (req, res, next) => {
     try {
       const user = await findActiveUser(req.params.username);
-      const slotNumber = Number.parseInt(String(req.params.slot || '').trim(), 10);
+      const slotNumber = (/^[1-6]$/.test(req.params.slot) ? Number(req.params.slot) : NaN);
       if (!Number.isInteger(slotNumber) || slotNumber < 1 || slotNumber > 6) {
         return res.status(400).json({ error: '槽位必须在 1 到 6 之间' });
       }
@@ -106,6 +125,7 @@ function createUserPublicRouter({ pool, config }) {
         user,
         slotNumber,
         req.body && req.body.phoneStatus,
+        req.body || {},
       );
       return res.status(200).json({
         status: 'success',
@@ -120,7 +140,7 @@ function createUserPublicRouter({ pool, config }) {
   router.put('/:username/batch/slots/:slot/phone-model', async (req, res, next) => {
     try {
       const user = await findActiveUser(req.params.username);
-      const slotNumber = Number.parseInt(String(req.params.slot || '').trim(), 10);
+      const slotNumber = (/^[1-6]$/.test(req.params.slot) ? Number(req.params.slot) : NaN);
       if (!Number.isInteger(slotNumber) || slotNumber < 1 || slotNumber > 6) {
         return res.status(400).json({ error: '槽位必须在 1 到 6 之间' });
       }
@@ -131,6 +151,7 @@ function createUserPublicRouter({ pool, config }) {
         user,
         slotNumber,
         req.body && req.body.phoneModel,
+        req.body || {},
       );
       return res.status(200).json({
         status: 'success',
@@ -264,54 +285,10 @@ function createUserPublicRouter({ pool, config }) {
 
   router.post('/:username/record/:id/uid', async (req, res, next) => {
     try {
-      const { username, id } = req.params;
-      const { uid, remark } = req.body;
-      const normalizedUid = String(uid || '').trim();
-      const normalizedRemark = String(remark || '').trim();
-
-      if (!normalizedUid) {
-        return res.status(400).json({ error: 'UID 不能为空' });
-      }
-
-      const user = await findActiveUser(username);
-
-      const duplicateUidResult = await pool.query(
-        `
-          select 1
-          from managed_records
-          where uid_value = $1
-            and id != $2
-          limit 1
-        `,
-        [normalizedUid, id],
-      );
-
-      if (duplicateUidResult.rows.length > 0) {
-        return res.status(400).json({ error: 'UID 已存在，请勿重复提交' });
-      }
-
-      let query = `update managed_records 
-         set uid_value = $1, uid_created_at = now(), updated_at = now()`;
-      const queryParams = [normalizedUid, id, user.id];
-
-      if (normalizedRemark) {
-        query += `, remark = $4`;
-        queryParams.push(normalizedRemark);
-      }
-
-      query += ` where id = $2 and owner_id = $3 and (uid_value = '' or uid_value is null) returning id`;
-
-      const result = await pool.query(query, queryParams);
-
-      if (result.rows.length === 0) {
-        return res.status(400).json({ error: '记录不存在或已被其他用户提取' });
-      }
-
-      return res.status(200).json({ status: 'success' });
+      const user = await findActiveUser(req.params.username);
+      const result = await submitRecordUid(pool, user, req.params.id, req.body || {});
+      return res.status(200).json(result);
     } catch (error) {
-      if (isManagedRecordUidUniqueViolation(error)) {
-        return res.status(400).json({ error: 'UID 已存在，请勿重复提交' });
-      }
       return next(error);
     }
   });

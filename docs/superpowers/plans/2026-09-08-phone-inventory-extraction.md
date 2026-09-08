@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-08-phone-inventory-extraction-design.md`
 
+**Completion note:** Implementation and verification completed on 2026-09-08. Final verification: 225/225 tests passed with isolated real PostgreSQL enabled. Browser checks covered phone lifecycle, the independent Phone Management page, inventory listing, pagination, filtering, and automatic refresh after import. Schema commits are separate; remaining implementation units and preserved pre-existing phone changes are grouped into the final integration commit for the user's requested GitHub upload. No deployment or main-branch merge is included.
+
 ## Global Constraints
 
 - Preserve the six-slot public batch model and the existing Google, OP, and UID import behavior.
@@ -34,7 +36,7 @@
 - Produces: unique key `(owner_id, phone_number)` and a partial unique active reservation per `reserved_record_id`.
 - Consumes: existing `admin_users`, `managed_records`, and `public_user_batch_slots` tables.
 
-- [ ] **Step 1: Write failing schema and migration tests**
+- [x] **Step 1: Write failing schema and migration tests**
 
 Add tests that create the legacy rows before rerunning `ensureDatabaseSchema(pool)`:
 
@@ -86,13 +88,13 @@ test('schema migrates owned legacy phones into inventory without duplicating rer
 
 Also assert that an ownerless legacy row remains unchanged.
 
-- [ ] **Step 2: Run the focused schema test and verify RED**
+- [x] **Step 2: Run the focused schema test and verify RED**
 
 Run: `node --test test/schema-and-crypto.test.js`
 
 Expected: FAIL because `phone_inventory` does not exist.
 
-- [ ] **Step 3: Add the table, indexes, and idempotent migration**
+- [x] **Step 3: Add the table, indexes, and idempotent migration**
 
 Add to `ensureDatabaseSchema`:
 
@@ -125,13 +127,13 @@ create unique index if not exists idx_phone_inventory_active_record
 
 After table creation, migrate owned rows with `id = managed_records.id`, use `on conflict (owner_id, phone_number) do nothing`, mark `已绑定` rows as `bound`, mark all other rows as `available`, then clear the phone projection only for the non-bound owned rows.
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+- [x] **Step 4: Run focused tests and verify GREEN**
 
 Run: `node --test test/schema-and-crypto.test.js`
 
 Expected: all tests PASS, including two schema runs against the same database.
 
-- [ ] **Step 5: Commit the schema unit**
+- [x] **Step 5: Commit the schema unit**
 
 ```bash
 git add lib/schema.js test/schema-and-crypto.test.js docs/superpowers/specs/2026-09-08-phone-inventory-extraction-design.md
@@ -155,7 +157,7 @@ git commit -m "feat: add isolated phone inventory schema"
 - Produces: authenticated `POST /api/admin/records/phone-inventory/import-text` with `{ rowsText, phoneDurationDays }`.
 - Changes: `parseManagedRecordImportText(rowsText)` rejects two-part phone lines.
 
-- [ ] **Step 1: Rewrite duration tests against the dedicated parser and add API isolation tests**
+- [x] **Step 1: Rewrite duration tests against the dedicated parser and add API isolation tests**
 
 Move the existing duration expectations to `parsePhoneInventoryImportText` and change the API path. Add assertions that inventory import does not create a managed record:
 
@@ -177,13 +179,13 @@ assert.equal(inventory.rows[0].status, 'available');
 
 Add operator A/operator B tests proving the same phone may exist once per owner and each import writes the authenticated user's `owner_id`. Add a test that `/import-text` returns 400 for `number----url` with an error directing the user to the dedicated phone importer.
 
-- [ ] **Step 2: Run import tests and verify RED**
+- [x] **Step 2: Run import tests and verify RED**
 
 Run: `node --test test/phone-import-duration.test.js test/admin-records-api.test.js`
 
 Expected: FAIL because the new module and endpoint do not exist and the old parser still accepts phone lines.
 
-- [ ] **Step 3: Implement `lib/phone-inventory.js`**
+- [x] **Step 3: Implement `lib/phone-inventory.js`**
 
 Use these constants and signatures:
 
@@ -284,7 +286,7 @@ async function importPhoneInventoryText(pool, rowsText, adminUser, options = {})
 
 Normalize SMS URLs with the existing `normalizePhoneSmsUrl` behavior, moving/exporting the helper without creating a cyclic dependency. Return 400 for missing owner identity because inventory must never be global.
 
-- [ ] **Step 4: Route the dedicated importer and remove phone parsing from managed records**
+- [x] **Step 4: Route the dedicated importer and remove phone parsing from managed records**
 
 In `routes/admin-records.js` add the specific route before `/:id` routes:
 
@@ -306,7 +308,7 @@ router.post('/phone-inventory/import-text', async (req, res, next) => {
 
 Delete the two-part branch and phone duration option from `parseManagedRecordImportText`/`importManagedRecordText`. Preserve Google, OP, and four-part combined behavior.
 
-- [ ] **Step 5: Run focused tests and verify GREEN**
+- [x] **Step 5: Run focused tests and verify GREEN**
 
 Run: `node --test test/phone-import-duration.test.js test/admin-records-api.test.js`
 
@@ -335,7 +337,7 @@ git commit -m "feat: import phones into operator inventory"
 - Produces: `POST /:username/batch/slots/:slot/phone/extract` and `POST /:username/batch/slots/:slot/phone/status`.
 - Changes: slot DTO includes `phoneInventoryId`, `phoneNumber`, `phoneSmsUrl`, `phoneExpireAt`, `phoneStatus`, and `phoneModel` from either the reserved item or final managed-record projection.
 
-- [ ] **Step 1: Add failing lifecycle tests**
+- [x] **Step 1: Add failing lifecycle tests**
 
 Add tests that import inventory directly or through the new admin endpoint, then assert this sequence:
 
@@ -369,13 +371,13 @@ Also test FIFO selection, inventory exhaustion, owner isolation, repeated extrac
 
 Add a UID test that gets 400 before binding and succeeds after binding; confirm slot status changes to `done` only after UID save.
 
-- [ ] **Step 2: Run the public API tests and verify RED**
+- [x] **Step 2: Run the public API tests and verify RED**
 
 Run: `node --test test/user-public-api.test.js`
 
 Expected: FAIL on missing extract/status routes and because UID currently saves without a bound phone.
 
-- [ ] **Step 3: Extend batch loading with the active reservation**
+- [x] **Step 3: Extend batch loading with the active reservation**
 
 In `loadBatch`, left join at most one reserved inventory item by record ID and owner. Build phone DTO precedence as:
 
@@ -400,7 +402,7 @@ const activePhone = hasFinalPhone
     };
 ```
 
-- [ ] **Step 4: Implement transactional extraction**
+- [x] **Step 4: Implement transactional extraction**
 
 Validate the open batch slot and owner, reject a final bound phone, and return the existing reservation for a repeated request on the same slot. Otherwise select FIFO inventory with a PostgreSQL locking query equivalent to:
 
@@ -415,13 +417,13 @@ limit 1
 
 Update it to `reserved` with both `reserved_record_id` and `reserved_batch_slot_id`. If no row is available, throw a 400 error with `手机号库存不足`.
 
-- [ ] **Step 5: Implement terminal status transitions and model changes**
+- [x] **Step 5: Implement terminal status transitions and model changes**
 
 For `老号售后`, update only the current `reserved` item to `after_sale` and set `after_sale_at`; retain record and slot IDs for history. For `已绑定`, update the reserved row to `bound`, set `bound_at`, and in the same transaction copy its phone fields plus `phone_status = '已绑定'` into the owned managed record. Do not expose any transition out of `bound`.
 
 Make model changes target the current `reserved` inventory row. A final bound phone remains read-only in the public API.
 
-- [ ] **Step 6: Enforce the UID precondition and add routes**
+- [x] **Step 6: Enforce the UID precondition and add routes**
 
 Before the managed-record UID update, add `m.phone_number` and `m.phone_status` to the locked slot query and reject unless the record has a phone and status is `已绑定`:
 
@@ -433,7 +435,7 @@ if (!String(slot.phone_number || '').trim() || slot.phone_status !== '已绑定'
 
 Wire the extract/status routes in `routes/user-public.js`, retaining the 1-to-6 slot validation. Remove the old reversible `/phone/bind` behavior.
 
-- [ ] **Step 7: Run focused tests and verify GREEN**
+- [x] **Step 7: Run focused tests and verify GREEN**
 
 Run: `node --test test/user-public-api.test.js`
 
@@ -462,7 +464,7 @@ git commit -m "feat: reserve and bind phones from user center"
 - Consumes: public extract/status/model endpoints from Task 3.
 - Produces: dedicated admin phone-import dialog and user-center phone lifecycle controls.
 
-- [ ] **Step 1: Add failing page contract tests**
+- [x] **Step 1: Add failing page contract tests**
 
 Assert the admin HTML contains separate `phoneImportButton`, `phoneImportDialog`, `phoneImportForm`, `phoneImportDurationDays`, and `phoneImportText` elements. Assert the general import help does not describe two-part phone import.
 
@@ -477,13 +479,13 @@ assert.doesNotMatch(response.text, /function buildPhoneVisibleBatch\(/);
 assert.match(response.text, /submitButton\.disabled\s*=\s*slot\.status !== 'available' \|\| phoneStatus !== '已绑定'/);
 ```
 
-- [ ] **Step 2: Run page tests and verify RED**
+- [x] **Step 2: Run page tests and verify RED**
 
 Run: `node --test test/admin-pages.test.js test/user-public-api.test.js`
 
 Expected: FAIL because the admin controls are combined and the public page still hides phone-less records.
 
-- [ ] **Step 3: Split the admin dialogs and submission functions**
+- [x] **Step 3: Split the admin dialogs and submission functions**
 
 Keep `batchImportDialog` for Google/OP/combined text only. Add a second dialog containing the phone format help, duration select, textarea, progress section, cancel, and submit controls. Post:
 
@@ -499,7 +501,7 @@ await adminFetch('/api/admin/records/phone-inventory/import-text', {
 
 Show `已导入 X 个手机号，更新 Y 个，跳过 Z 个` and do not call `loadRecords()` merely to make available phones appear, because inventory is intentionally absent from Data Management.
 
-- [ ] **Step 4: Render all real batch slots and add phone controls**
+- [x] **Step 4: Render all real batch slots and add phone controls**
 
 Delete `buildPhoneVisibleBatch` and all phone-number requirements from `getFirstSelectableSlot`, `resolveSelectableSlot`, and `renderSelectedSlot`. A real server slot must remain selectable with no phone.
 
@@ -518,7 +520,7 @@ Implement `extractCurrentSlotPhone()` and `setCurrentSlotPhoneStatus(phoneStatus
 
 Keep card colors based solely on `slot.status`: red `available`, green `done`, gray `empty`. Change explanatory copy so phone progress is not represented by the color legend.
 
-- [ ] **Step 5: Run page tests and verify GREEN**
+- [x] **Step 5: Run page tests and verify GREEN**
 
 Run: `node --test test/admin-pages.test.js test/user-public-api.test.js`
 
@@ -543,7 +545,7 @@ git commit -m "feat: add phone extraction controls to user center"
 - Documents: admin import endpoint, public extract/status endpoints, status rules, migration behavior, and UID precondition.
 - Verifies: the complete application test suite.
 
-- [ ] **Step 1: Update README behavior and endpoint tables**
+- [x] **Step 1: Update README behavior and endpoint tables**
 
 Replace the current statement that `/api/admin/records/import-text` accepts `phoneDurationDays`. Document:
 
@@ -556,7 +558,7 @@ PUT  /api/public/user/:username/batch/slots/:slot/phone-model
 
 Explain that phone import creates per-owner inventory, `老号售后` allows another extraction, `已绑定` projects the phone into Data Management and locks it, and saving UID requires binding.
 
-- [ ] **Step 2: Run targeted feature tests**
+- [x] **Step 2: Run targeted feature tests**
 
 Run:
 
@@ -571,13 +573,13 @@ node --test \
 
 Expected: all targeted tests PASS without warnings or unhandled rejections.
 
-- [ ] **Step 3: Run the full regression suite**
+- [x] **Step 3: Run the full regression suite**
 
 Run: `npm test`
 
 Expected: all tests PASS.
 
-- [ ] **Step 4: Inspect the final diff and verify scope**
+- [x] **Step 4: Inspect the final diff and verify scope**
 
 Run:
 
