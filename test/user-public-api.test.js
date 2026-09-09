@@ -12,6 +12,33 @@ const {
 
 let managedRecordInsertOffset = 0;
 
+test('merged batch refill preserves done and phone-less slots while filling only genuine vacancies', async () => {
+  const { app, pool, config } = await createAdminTestContext();
+  const operator = await createAdminUser(pool, { login: 'merge-fill', email: 'merge-fill@example.test', password: 'test-password', role: 'operator' });
+  const bound = await insertManagedRecord(pool, config, operator.id, { opValue: 'bound-op', phoneNumber: '13000009901', phoneStatus: '已绑定' });
+  const phoneLess = await insertManagedRecord(pool, config, operator.id, { opValue: 'phone-less-op' });
+  const initial = await request(app).get('/api/public/user/merge-fill/batch');
+  assert.deepEqual(initial.body.batch.slots.map((slot) => slot.record?.id || null), [bound.id, phoneLess.id, null, null, null, null]);
+  const saved = await request(app).post('/api/public/user/merge-fill/batch/slots/1/uid').send({ uid: 'merge-saved-uid' });
+  assert.equal(saved.status, 200);
+  const extra = await insertManagedRecord(pool, config, operator.id, { opValue: 'new-phone-less-op' });
+  const refilled = await request(app).get('/api/public/user/merge-fill/batch');
+  assert.equal(refilled.body.batch.id, initial.body.batch.id);
+  assert.deepEqual(refilled.body.batch.slots.map((slot) => slot.record?.id || null), [bound.id, phoneLess.id, extra.id, null, null, null]);
+  assert.equal(refilled.body.batch.slots[0].status, 'done');
+});
+
+test('merged batch advance retains phone-less records instead of dropping their slots', async () => {
+  const { app, pool, config } = await createAdminTestContext();
+  const operator = await createAdminUser(pool, { login: 'merge-advance', email: 'merge-advance@example.test', password: 'test-password', role: 'operator' });
+  const records = [];
+  for (let i = 0; i < 3; i++) records.push(await insertManagedRecord(pool, config, operator.id, { opValue: `merge-op-${i}` }));
+  await request(app).get('/api/public/user/merge-advance/batch');
+  const advanced = await request(app).post('/api/public/user/merge-advance/batch/advance').send({});
+  assert.equal(advanced.status, 200);
+  assert.deepEqual(advanced.body.batch.slots.map((slot) => slot.record?.id || null), [...records.map((row) => row.id), null, null, null]);
+});
+
 async function insertManagedRecord(pool, config, ownerId, overrides = {}) {
   const googlePassword = Object.prototype.hasOwnProperty.call(overrides, 'googlePassword')
     ? overrides.googlePassword

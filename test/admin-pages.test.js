@@ -293,6 +293,9 @@ test('GET /admin serves the record management shell', async () => {
   assert.match(response.text, /id="recordPhoneExpireAt"/);
   assert.match(response.text, /id="recordPhoneSmsUrl"/);
   assert.match(response.text, /手机号----接码链接/);
+  assert.match(response.text, /id="phoneImportDurationDays"/);
+  assert.match(response.text, /<option value="30" selected>30 天<\/option>/);
+  assert.match(response.text, /<option value="150">150 天<\/option>/);
   assert.match(response.text, /<th>接码链接<\/th>/);
   assert.match(response.text, /<th>手机状态<\/th>/);
   assert.match(response.text, /<th>机型<\/th>/);
@@ -320,6 +323,8 @@ test('GET /admin serves the record management shell', async () => {
   assert.match(response.text, /批量删除谷歌号/);
   assert.match(response.text, /id="batchClearOpButton"/);
   assert.match(response.text, /批量删除OP/);
+  assert.match(response.text, /id="batchClearPhoneButton"/);
+  assert.match(response.text, /批量删除手机号/);
   assert.match(response.text, /id="publicBatchEligibilityCard"/);
   assert.match(response.text, /id="publicBatchEligibilitySummary"/);
   assert.match(response.text, /id="changeOwnWifiButton"/);
@@ -1095,6 +1100,8 @@ test('admin common UI exposes custom feedback dialogs for export confirmation an
   assert.match(pageResponse.text, /setBatchDeleteProgressState\(100,\s*'删除完成'\)/);
   assert.match(pageResponse.text, /\/api\/admin\/records\/batch-clear-google/);
   assert.match(pageResponse.text, /\/api\/admin\/records\/batch-clear-op/);
+  assert.match(pageResponse.text, /\/api\/admin\/records\/batch-clear-phone/);
+  assert.match(pageResponse.text, /phoneDurationDays:/);
   assert.match(pageResponse.text, /function renderPublicBatchEligibility\(/);
   assert.match(pageResponse.text, /publicBatchEligibilitySummary/);
   assert.match(commonResponse.text, /function showConfirm\(/);
