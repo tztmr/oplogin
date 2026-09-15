@@ -143,6 +143,7 @@ function renderOpApplications(items) {
     return row;
   });
   body.replaceChildren(...rows);
+  window.AdminTableColumns?.refresh('opApplicationTable');
 }
 
 async function loadOpApplications(allowPageClamp = true) {

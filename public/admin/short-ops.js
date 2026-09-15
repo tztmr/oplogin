@@ -133,8 +133,10 @@ function ensureShortOpsRole() {
   if (!shortOpsRolePromise) {
     shortOpsRolePromise = requireAdminSession().then((user) => {
       shortOpsShowOwner = Boolean(user && user.role === 'super_admin');
-      document.getElementById('shortOpsOwnerColumn').hidden = !shortOpsShowOwner;
-      document.getElementById('shortOpsOwnerHeader').hidden = !shortOpsShowOwner;
+      ['shortOpsOwnerColumn', 'shortOpsOwnerHeader'].forEach((id) => {
+        const element = document.getElementById(id);
+        if (element) element.hidden = !shortOpsShowOwner;
+      });
     });
   }
   return shortOpsRolePromise;
@@ -275,6 +277,7 @@ function renderShortOps(items) {
     return row;
   });
   body.replaceChildren(...rows);
+  window.AdminTableColumns?.refresh('shortOpTable');
 }
 
 async function loadShortOps(allowPageClamp = true) {

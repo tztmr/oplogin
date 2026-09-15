@@ -17,9 +17,9 @@ function renderUsers(users) {
         <tr>
           <td>${user.login}</td>
           <td>${user.email}</td>
-          <td>${user.role}</td>
-          <td>${user.status}</td>
-          <td>${formatDateTime(user.lastLoginAt)}</td>
+          <td>${user.role === 'super_admin' ? '超级管理员' : '运营'}</td>
+          <td><span class="status-label ${user.status === 'active' ? '' : 'is-disabled'}">${user.status === 'active' ? '启用' : '禁用'}</span></td>
+          <td>${formatDateTime(user.lastLoginAt) || '尚未登录'}</td>
           <td>
             <div class="row-actions">
               <button type="button" onclick="window.openEditUser('${user.id}')">编辑</button>
@@ -31,6 +31,8 @@ function renderUsers(users) {
       `,
     )
     .join('');
+  if (!users.length) tbody.innerHTML = '<tr><td colspan="6" class="empty-table-cell">暂无运营账号，点击上方按钮新增。</td></tr>';
+  window.AdminTableColumns?.refresh('userTable');
 }
 
 async function loadUsers() {
@@ -138,6 +140,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     window.location.href = '/admin';
     return;
   }
+  window.AdminTableColumns?.initializeAll(user);
 
   document
     .getElementById('createUserButton')

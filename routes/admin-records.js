@@ -92,6 +92,7 @@ function createAdminRecordsRouter({
         req.query,
         req.adminUser,
         req.query.ids,
+        req.query.columns,
       );
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader(
@@ -112,6 +113,7 @@ function createAdminRecordsRouter({
         req.body.filters || {},
         req.adminUser,
         req.body.ids,
+        req.body.columns,
       );
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader(

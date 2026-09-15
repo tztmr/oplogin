@@ -8,12 +8,11 @@
 </head>
 <body>
   <header class="admin-header">
-    <div>
-      <h1>数据管理后台</h1>
-      <p id="currentAdminText"></p>
+    <div class="admin-brand">
+      <span class="brand-mark" aria-hidden="true">OP</span>
+      <div><h1>数据管理后台</h1><p>运营工作台 <span class="brand-divider">/</span> <span id="currentAdminText"></span></p></div>
     </div>
     <div class="header-actions">
-      <a id="userManageLink" href="/admin/users" hidden>账号管理</a>
       <button id="changeOwnPasswordButton" type="button">修改密码</button>
       <button id="openOwnUserPageButton" type="button">进入我的页面</button>
       <button id="changeOwnWifiButton" type="button">设置Wi-Fi</button>
@@ -23,32 +22,46 @@
 
   <div class="admin-layout">
     <nav id="adminSidebar" class="admin-sidebar" aria-label="后台功能导航">
-      <button type="button" class="admin-nav-item is-active" data-section-target="recordsSection">数据管理</button>
-      <button type="button" class="admin-nav-item" data-section-target="phoneInventorySection">手机号管理</button>
-      <button type="button" class="admin-nav-item" data-section-target="shortOpsSection">短 OP 管理</button>
-      <button type="button" class="admin-nav-item" data-section-target="opApplicationsSection" data-super-admin-only>应用管理</button>
+      <p class="nav-caption">工作空间</p>
+      <button type="button" class="admin-nav-item is-active" data-section-target="recordsSection"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/></svg>数据管理</button>
+      <button type="button" class="admin-nav-item" data-section-target="phoneInventorySection"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/></svg>手机号管理</button>
+      <button type="button" class="admin-nav-item" data-section-target="shortOpsSection"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2"/></svg>短 OP 管理</button>
+      <button type="button" class="admin-nav-item" data-section-target="opApplicationsSection" data-super-admin-only><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>应用管理</button>
+      <a id="userManageLink" class="admin-nav-item" href="/admin/users" hidden><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg>账号管理</a>
+      <div class="sidebar-note"><span class="sidebar-dot"></span> OP 运营管理<span>数据 · 号码 · 应用</span></div>
     </nav>
 
     <div class="admin-content">
       <main id="recordsSection" class="admin-section" data-admin-section>
+  <div class="section-heading">
+    <div><p class="eyebrow">WORKSPACE / RECORDS</p><h2>数据管理 <span id="recordTotalText" class="count-badge">加载中</span></h2><p>集中管理谷歌账号、手机号与 OP 数据。</p></div>
+    <div class="section-heading-actions">
+      <button id="batchImportButton" type="button" class="btn-cancel">批量导入</button>
+      <button id="createRecordButton" type="button" class="btn-primary">＋ 新增记录</button>
+    </div>
+  </div>
   <section class="action-bar">
     <div class="action-bar-left">
-      <button id="toggleFiltersButton" type="button" class="btn-cancel">
+      <button id="toggleFiltersButton" type="button" class="btn-cancel" aria-expanded="false" aria-controls="filterSection">
         <span id="filterToggleIcon">▼</span> 高级筛选
       </button>
+      <button id="backfillOpNicknamesButton" type="button" class="btn-cancel">批量补全OP昵称</button>
     </div>
     <div class="action-bar-right">
-      <button id="batchImportButton" type="button" class="btn-primary">批量导入</button>
-      <button id="backfillOpNicknamesButton" type="button" class="btn-cancel">批量补全OP昵称</button>
-      <button id="createRecordButton" type="button" class="btn-primary">新增记录</button>
-      <button id="batchDeleteButton" type="button" class="btn-cancel" disabled>批量删除</button>
-      <button id="batchClearGoogleButton" type="button" class="btn-cancel" disabled>批量删除谷歌号</button>
-      <button id="batchClearOpButton" type="button" class="btn-cancel" disabled>批量删除OP</button>
-      <button id="batchClearPhoneButton" type="button" class="btn-cancel" disabled>批量删除手机号</button>
       <button id="exportCsvButton" type="button" class="btn-primary">导出勾选</button>
       <button id="exportFilteredCsvButton" type="button" class="btn-cancel">按筛选导出全部</button>
     </div>
   </section>
+  <div class="batch-selection-bar">
+    <span id="recordSelectionText" class="selection-count" aria-live="polite">已选 0 条</span>
+    <span class="selection-hint">勾选记录后批量操作</span>
+    <div class="batch-selection-actions">
+      <button id="batchClearGoogleButton" type="button" class="btn-cancel" disabled>批量删除谷歌号</button>
+      <button id="batchClearOpButton" type="button" class="btn-cancel" disabled>批量删除OP</button>
+      <button id="batchClearPhoneButton" type="button" class="btn-cancel" disabled>批量删除手机号</button>
+      <button id="batchDeleteButton" type="button" class="btn-danger-quiet" disabled>批量删除</button>
+    </div>
+  </div>
 
   <div id="batchDeleteProgressSection" class="batch-action-progress hidden" aria-live="polite">
     <div class="batch-action-progress-head">
@@ -206,6 +219,16 @@
         <button type="submit">保存</button>
       </menu>
     </form>
+  </dialog>
+
+  <dialog id="recordActionsDialog" aria-labelledby="recordActionsTitle">
+    <div class="dialog-heading"><h3 id="recordActionsTitle">记录操作</h3><p id="recordActionsSummary" class="dialog-subtitle"></p></div>
+    <div class="record-action-options">
+      <button type="button" data-record-action="google">删除谷歌号<span>清空账号、密码、辅助与到期时间</span></button>
+      <button type="button" data-record-action="op">删除OP<span>清空 OP、链接与到期时间</span></button>
+      <button type="button" data-record-action="delete" class="btn-danger-quiet">删除整条记录<span>永久删除当前记录</span></button>
+    </div>
+    <div class="dialog-menu"><button type="button" id="recordActionsCloseButton">关闭</button></div>
   </dialog>
 
   <dialog id="batchImportDialog">
@@ -555,6 +578,8 @@
 
   <script src="/user-center-qr.js"></script>
   <script src="/admin/common.js"></script>
+  <script src="/admin/record-columns.js"></script>
+  <script src="/admin/table-columns.js"></script>
   <script src="/admin/admin-shell.js"></script>
   <script src="/admin/records.js"></script>
   <script src="/admin/phone-inventory.js"></script>

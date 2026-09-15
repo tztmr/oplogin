@@ -81,7 +81,8 @@ function renderTruncatedLink(value) {
   }
 
   const safeValue = escapeHtmlAttribute(normalizedValue);
-  return `<a class="cell-truncate cell-truncate-link" href="${normalizedValue}" target="_blank" rel="noreferrer" title="${safeValue}">${normalizedValue}</a>`;
+  if (!/^(https?:\/\/|\/[^/])/i.test(normalizedValue)) return renderTruncatedText(value, 'cell-truncate-link');
+  return `<a class="cell-truncate cell-truncate-link" href="${safeValue}" target="_blank" rel="noopener noreferrer" title="${safeValue}">${safeValue}</a>`;
 }
 
 function formatDeleteConfirmField(value) {
@@ -161,17 +162,17 @@ function renderRows(data) {
           <td>
             <input
               type="checkbox"
-              aria-label="选择 ${item.googleAccount}"
+              aria-label="选择 ${escapeHtmlAttribute(item.googleAccount)}"
               ${selectedRecordIds.has(item.id) ? 'checked' : ''}
               onchange="window.toggleRecordSelection('${item.id}', this.checked)"
             />
           </td>
           <td>${item.distributionOrder || (startIndex + index + 1)}</td>
-          <td>${item.googleAccount}</td>
-          <td>${item.googlePassword}</td>
-          <td>${item.googleAssist}</td>
+          <td>${renderTruncatedText(item.googleAccount, '')}</td>
+          <td>${renderTruncatedText(item.googlePassword, '')}</td>
+          <td>${renderTruncatedText(item.googleAssist, '')}</td>
           <td>${formatDateTime(item.googleExpireAt)}</td>
-          <td>${item.uidValue}</td>
+          <td>${renderTruncatedText(item.uidValue, '')}</td>
           <td>${formatDateTime(item.uidCreatedAt)}</td>
           <td>${escapeHtmlAttribute(item.phoneNumber)}</td>
           <td>${formatDateTime(item.phoneExpireAt)}</td>
@@ -182,19 +183,21 @@ function renderRows(data) {
           <td>${renderTruncatedText(item.opNickname, 'cell-truncate-op-nickname')}</td>
           <td>${renderTruncatedLink(item.opLink)}</td>
           <td>${formatDateTime(item.opExpireAt)}</td>
-          <td>${item.remark || ''}</td>
+          <td>${renderTruncatedText(item.remark, '')}</td>
           <td>
             <div class="row-actions">
               <button type="button" onclick="window.openEditRecord('${item.id}')">编辑</button>
-              <button type="button" onclick="window.clearRecordGoogleFields('${item.id}')">删除谷歌号</button>
-              <button type="button" onclick="window.clearRecordOpFields('${item.id}')">删除OP</button>
-              <button type="button" onclick="window.deleteRecord('${item.id}')">删除</button>
+              <button type="button" aria-label="更多记录操作" onclick="window.openRecordActions('${item.id}')">···</button>
             </div>
           </td>
         </tr>
       `,
     )
     .join('');
+  if (!items.length) tbody.innerHTML = '<tr><td colspan="19" class="empty-table-cell">暂无符合条件的记录，可新增记录、批量导入或调整筛选条件。</td></tr>';
+  window.AdminTableColumns?.refresh('recordTable');
+  const totalText = document.getElementById('recordTotalText');
+  if (totalText) totalText.textContent = `${data.total} 条记录`;
   syncBatchDeleteState();
 }
 
@@ -250,6 +253,8 @@ async function loadRecords() {
 function syncBatchDeleteState() {
   const selectAllCheckbox = document.getElementById('selectAllRecordsCheckbox');
   const selectedCount = selectedRecordIds.size;
+  const selectionText = document.getElementById('recordSelectionText');
+  if (selectionText) selectionText.textContent = `已选 ${selectedCount} 条`;
   syncBatchActionButton('batchDeleteButton', '批量删除', selectedCount);
   syncBatchActionButton('batchClearGoogleButton', '批量删除谷歌号', selectedCount);
   syncBatchActionButton('batchClearOpButton', '批量删除OP', selectedCount);
@@ -906,7 +911,7 @@ async function exportSelectedRecords() {
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ ids }),
+    body: JSON.stringify({ ids, columns: window.AdminTableColumns.getOrder('recordTable') }),
   });
 
   if (!response.ok) {
@@ -943,6 +948,7 @@ async function exportSelectedRecords() {
 
 function exportFilteredRecords() {
   const exportFilters = { ...collectRecordFilters() };
+  exportFilters.columns = window.AdminTableColumns.getOrder('recordTable').join(',');
   delete exportFilters.page;
   delete exportFilters.pageSize;
   const queryString = toQueryString(exportFilters);
@@ -951,6 +957,14 @@ function exportFilteredRecords() {
   }`;
 }
 
+window.openRecordActions = function openRecordActions(id) {
+  const dialog = document.getElementById('recordActionsDialog');
+  dialog.dataset.recordId = id;
+  document.getElementById('recordActionsSummary').textContent =
+    currentRecordSummariesById.get(id)?.googleAccount || '当前记录';
+  dialog.showModal();
+};
+
 window.addEventListener('DOMContentLoaded', async () => {
   let user = await requireAdminSession();
   if (!user) return;
@@ -958,10 +972,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   initializeOwnUserPageButton(user);
   initializeSelfWifiConfig(user, (updatedUser) => {
     user = updatedUser;
-    document.getElementById('currentAdminText').textContent = `${user.login} / ${user.role}`;
+    document.getElementById('currentAdminText').textContent = `${user.login} · ${user.role === 'super_admin' ? '超级管理员' : '运营'}`;
   });
 
-  document.getElementById('currentAdminText').textContent = `${user.login} / ${user.role}`;
+  document.getElementById('currentAdminText').textContent = `${user.login} · ${user.role === 'super_admin' ? '超级管理员' : '运营'}`;
   document.getElementById('userManageLink').hidden = user.role !== 'super_admin';
   document.getElementById('applyFiltersButton').addEventListener('click', () => {
     currentPage = 1;
@@ -973,6 +987,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   
   document.getElementById('toggleFiltersButton').addEventListener('click', () => {
     const isHidden = filterSection.classList.contains('hidden');
+    document.getElementById('toggleFiltersButton').setAttribute('aria-expanded', String(isHidden));
     if (isHidden) {
       filterSection.classList.remove('hidden');
       toggleIcon.textContent = '▲';
@@ -1072,13 +1087,30 @@ window.addEventListener('DOMContentLoaded', async () => {
     });
   document
     .getElementById('exportCsvButton')
-    .addEventListener('click', exportSelectedRecords);
+    .addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      try { await exportSelectedRecords(); } catch (error) { showToast(error.message); }
+      finally { button.disabled = false; }
+    });
   document
     .getElementById('exportFilteredCsvButton')
     .addEventListener('click', exportFilteredRecords);
   document
     .getElementById('recordForm')
     .addEventListener('submit', submitRecordForm);
+  document.getElementById('recordActionsCloseButton').addEventListener('click', () => {
+    document.getElementById('recordActionsDialog').close();
+  });
+  document.querySelectorAll('[data-record-action]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const dialog = document.getElementById('recordActionsDialog');
+      const id = dialog.dataset.recordId;
+      dialog.close();
+      const actions = { google: window.clearRecordGoogleFields, op: window.clearRecordOpFields, delete: window.deleteRecord };
+      actions[button.dataset.recordAction](id).catch((error) => showToast(error.message));
+    });
+  });
   document
     .getElementById('batchImportForm')
     .addEventListener('submit', submitBatchImportForm);

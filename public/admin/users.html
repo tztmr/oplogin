@@ -8,9 +8,9 @@
 </head>
 <body>
   <header class="admin-header">
-    <div>
-      <h1>账号管理</h1>
-      <p>仅超级管理员可用</p>
+    <div class="admin-brand">
+      <span class="brand-mark" aria-hidden="true">OP</span>
+      <div><h1>数据管理后台</h1><p>运营工作台 <span class="brand-divider">/</span> 账号与权限</p></div>
     </div>
     <div class="header-actions">
       <a href="/admin">返回数据管理</a>
@@ -20,10 +20,18 @@
     </div>
   </header>
 
-  <section class="header-actions admin-section">
-    <button id="createUserButton" type="button">新增运营账号</button>
-  </section>
-
+  <div class="admin-layout">
+    <nav class="admin-sidebar" aria-label="后台功能导航">
+      <p class="nav-caption">工作空间</p>
+      <a class="admin-nav-item" href="/admin"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/></svg>数据管理</a>
+      <a class="admin-nav-item is-active" href="/admin/users" aria-current="page"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg>账号管理</a>
+      <div class="sidebar-note"><span class="sidebar-dot"></span> OP 运营管理<span>数据 · 号码 · 应用</span></div>
+    </nav>
+    <main class="admin-content">
+      <div class="section-heading">
+        <div><p class="eyebrow">WORKSPACE / ACCOUNTS</p><h2>账号管理</h2><p>管理运营账号、角色权限与登录信息。</p></div>
+        <button id="createUserButton" type="button" class="btn-primary">＋ 新增运营账号</button>
+      </div>
   <div class="table-wrap">
     <table id="userTable">
       <thead>
@@ -39,7 +47,8 @@
       <tbody id="userTableBody"></tbody>
     </table>
   </div>
-
+    </main>
+  </div>
   <dialog id="userDialog">
     <form id="userForm" method="dialog" class="stack-form">
       <div class="dialog-heading">
@@ -140,6 +149,8 @@
 
   <script src="/user-center-qr.js"></script>
   <script src="/admin/common.js"></script>
+  <script src="/admin/record-columns.js"></script>
+  <script src="/admin/table-columns.js"></script>
   <script src="/admin/users.js"></script>
 </body>
 </html>

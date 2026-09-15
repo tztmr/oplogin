@@ -21,6 +21,7 @@ function initializeAdminShell(user) {
   document.querySelectorAll('[data-super-admin-only]').forEach((element) => {
     element.hidden = !isSuperAdmin;
   });
+  window.AdminTableColumns?.initializeAll(user);
 
   const showSection = (sectionId) => {
     const nextSectionId = allowedSectionIds.has(sectionId) ? sectionId : 'recordsSection';
@@ -29,8 +30,9 @@ function initializeAdminShell(user) {
     });
     navigationItems.forEach((item) => {
       item.classList.toggle('is-active', item.dataset.sectionTarget === nextSectionId);
+      item.setAttribute?.('aria-current', item.dataset.sectionTarget === nextSectionId ? 'page' : 'false');
     });
-    window.sessionStorage.setItem('admin.activeSection', nextSectionId);
+    try { window.sessionStorage.setItem('admin.activeSection', nextSectionId); } catch { /* Navigation also works without storage. */ }
     window.dispatchEvent(new CustomEvent('admin-section-shown', {
       detail: { sectionId: nextSectionId },
     }));
@@ -40,7 +42,9 @@ function initializeAdminShell(user) {
     item.addEventListener('click', () => showSection(item.dataset.sectionTarget));
   });
 
-  showSection(window.sessionStorage.getItem('admin.activeSection'));
+  let savedSection;
+  try { savedSection = window.sessionStorage.getItem('admin.activeSection'); } catch { /* Use the default section. */ }
+  showSection(savedSection);
 }
 
 window.addEventListener('DOMContentLoaded', async () => {

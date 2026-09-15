@@ -8,14 +8,16 @@
 </head>
 <body class="admin-auth-page">
   <main class="auth-card">
+    <span class="brand-mark" aria-hidden="true">OP</span>
+    <p class="eyebrow">运营工作台</p>
     <h1>管理员登录</h1>
     <p class="auth-subtitle">使用用户名或邮箱进入后台</p>
     <form id="loginForm" class="stack-form">
       <label for="identifier">用户名 / 邮箱</label>
-      <input id="identifier" name="identifier" type="text" required />
+      <input id="identifier" name="identifier" type="text" autocomplete="username" placeholder="输入用户名或邮箱" required />
 
       <label for="password">密码</label>
-      <input id="password" name="password" type="password" required />
+      <input id="password" name="password" type="password" autocomplete="current-password" placeholder="输入登录密码" required />
 
       <p id="loginError" class="form-error" hidden></p>
       <button id="loginSubmit" type="submit">登录后台</button>

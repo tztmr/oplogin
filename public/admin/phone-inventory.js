@@ -45,6 +45,7 @@ function renderPhoneInventory(items) {
     rows.push(row);
   }
   body.replaceChildren(...rows);
+  window.AdminTableColumns?.refresh('phoneInventoryTable');
 }
 
 async function loadPhoneInventory() {
