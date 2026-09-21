@@ -31,7 +31,6 @@ test('authenticated operators can list active applications but cannot create the
   await loginAsRoot(agent, config);
   await createOperator(agent, 'operator-apps');
   await agent.post('/api/admin/auth/logout');
-  await agent.post('/api/access/login').send({ password: config.accessPassword }).expect(200);
   await login(agent, 'operator-apps', 'operator-pass');
 
   const listResponse = await agent.get('/api/admin/op-applications?page=1&pageSize=20');

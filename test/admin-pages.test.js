@@ -21,7 +21,6 @@ async function createTestAgent() {
     buildWakeUrlImpl: () => 'tencent1105602870://qzapp/mqzone/0?pasteboard=test',
   });
   const agent = request.agent(app);
-  await agent.post('/api/access/login').send({ password: config.accessPassword }).expect(200);
   return agent;
 }
 
@@ -318,6 +317,9 @@ test('GET /admin serves the record management shell', async () => {
   assert.match(response.text, /<th>机型<\/th>/);
   assert.match(response.text, /<option value="12mini" selected>12mini<\/option>/);
   assert.match(response.text, /id="recordTable"/);
+  assert.match(response.text, /id="recordsAccessPasswordForm"/);
+  assert.match(response.text, /id="recordsAccessPassword"/);
+  assert.match(response.text, /<label for="recordsAccessPassword">密码<\/label>/);
   assert.match(response.text, /批量导入/);
   assert.match(response.text, /导出勾选/);
   assert.match(response.text, /按筛选导出全部/);

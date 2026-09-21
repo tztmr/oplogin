@@ -14,7 +14,6 @@ const { createUserPublicRouter } = require('./routes/user-public');
 const { createOpSubmitRouter } = require('./routes/op-submit');
 const { createOpPagesRouter } = require('./routes/op-pages');
 const { findAdminByIdentifier } = require('./lib/admin-users');
-const { createAccessPassword } = require('./lib/access-password');
 
 function createApp({
   config,
@@ -39,13 +38,9 @@ function createApp({
     app.use(sessionMiddleware);
   }
 
-  const access = createAccessPassword({ config, publicDir });
-  app.use(access.router);
-  app.use(access.protectPaths);
-
   if (pool && sessionMiddleware) {
     const requireAdminAuth = createRequireAdminAuth(pool);
-    app.use('/api/admin/auth', createAdminAuthRouter({ pool, requireAdminAuth }));
+    app.use('/api/admin/auth', createAdminAuthRouter({ pool, requireAdminAuth, config }));
     app.use(
       '/api/admin/records',
       createAdminRecordsRouter({
@@ -92,13 +87,11 @@ function createApp({
     try {
       const user = await findAdminByIdentifier(pool, username);
       if (user && user.status === 'active') {
-        return access.requireAccess(req, res, () => {
-          res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-          res.set('Pragma', 'no-cache');
-          res.set('Expires', '0');
-          res.set('Surrogate-Control', 'no-store');
-          return res.sendFile(path.join(publicDir, 'user-page.html'));
-        });
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
+        res.set('Surrogate-Control', 'no-store');
+        return res.sendFile(path.join(publicDir, 'user-page.html'));
       }
     } catch (e) {
       console.error(e);

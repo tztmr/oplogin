@@ -55,16 +55,9 @@ test('secure admin session cookie is issued correctly behind https reverse proxy
     SESSION_COOKIE_SECURE: 'true',
   });
 
-  const accessResponse = await require('supertest')(app)
-    .post('/api/access/login')
-    .set('X-Forwarded-Proto', 'https')
-    .send({ password: config.accessPassword })
-    .expect(200);
-  const accessCookies = accessResponse.headers['set-cookie'].map((cookie) => cookie.split(';')[0]);
   const loginResponse = await require('supertest')(app)
     .post('/api/admin/auth/login')
     .set('X-Forwarded-Proto', 'https')
-    .set('Cookie', accessCookies)
     .send({
       identifier: config.initialSuperAdminLogin,
       password: config.initialSuperAdminPassword,
@@ -90,7 +83,6 @@ test('logged-in admin can change own password with the current password', async 
     newPassword: 'new-secret-pass',
   });
   await agent.post('/api/admin/auth/logout').send();
-  await agent.post('/api/access/login').send({ password: config.accessPassword }).expect(200);
   const reloginResponse = await agent.post('/api/admin/auth/login').send({
     identifier: config.initialSuperAdminLogin,
     password: 'new-secret-pass',

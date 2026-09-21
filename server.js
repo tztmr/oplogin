@@ -6,6 +6,7 @@ const { createDbPool } = require('./lib/db');
 const { ensureDatabaseSchema } = require('./lib/schema');
 const { ensureInitialSuperAdmin } = require('./lib/bootstrap-admin');
 const { createSessionMiddleware } = require('./lib/session');
+const { loadAccessPassword } = require('./lib/access-password-settings');
 
 const PORT = process.env.PORT || 4399;
 
@@ -15,6 +16,7 @@ async function start() {
 
   await ensureDatabaseSchema(pool);
   await ensureInitialSuperAdmin({ pool, config });
+  await loadAccessPassword({ pool, config });
 
   const sessionMiddleware = createSessionMiddleware({ config, pool });
   const app = createApp({ config, pool, sessionMiddleware });

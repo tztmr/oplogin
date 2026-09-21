@@ -298,13 +298,11 @@ test('operators only access their records while super admins access every record
   await createOperator(rootAgent, 'operator-a');
   await createOperator(rootAgent, 'operator-b');
   await rootAgent.post('/api/admin/auth/logout');
-  await rootAgent.post('/api/access/login').send({ password: config.accessPassword }).expect(200);
   await login(rootAgent, 'operator-a', 'operator-pass');
   const operatorARecord = await createShortOp(rootAgent, {
     opValue: op('owner-a'), applicationId: application.id,
   });
   await rootAgent.post('/api/admin/auth/logout');
-  await rootAgent.post('/api/access/login').send({ password: config.accessPassword }).expect(200);
   await login(rootAgent, 'operator-b', 'operator-pass');
   const operatorBRecord = await createShortOp(rootAgent, {
     opValue: op('owner-b'), applicationId: application.id,
@@ -324,7 +322,6 @@ test('operators only access their records while super admins access every record
   assert.equal(forbiddenDelete.status, 404);
 
   const superAgent = require('supertest').agent(app);
-  await superAgent.post('/api/access/login').send({ password: config.accessPassword }).expect(200);
   await loginAsRoot(superAgent, config);
   const superList = await superAgent.get('/api/admin/short-ops?page=1&pageSize=20');
   assert.equal(superList.status, 200);

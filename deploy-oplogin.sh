@@ -175,6 +175,7 @@ configure_env() {
     current_db_mode="$(read_env_value "$env_file" "DATABASE_MODE")"
     current_session="$(read_env_value "$env_file" "SESSION_SECRET")"
     current_access_password="$(read_env_value "$env_file" "ACCESS_PASSWORD")"
+    current_access_password="${current_access_password:-qq123456}"
     current_crypto="$(read_env_value "$env_file" "GOOGLE_PASSWORD_ENCRYPTION_KEY")"
     current_admin_user="$(read_env_value "$env_file" "INITIAL_SUPER_ADMIN_LOGIN")"
     current_admin_email="$(read_env_value "$env_file" "INITIAL_SUPER_ADMIN_EMAIL")"
@@ -196,7 +197,7 @@ configure_env() {
 
   local new_session new_access_password new_crypto new_admin_user new_admin_email new_admin_pass new_cookie_secure
   new_session="$(prompt_secret_default "会话密钥 (SESSION_SECRET)" "${current_session}")"
-  new_access_password="$(prompt_secret_default "后台与用户中心访问密码 (ACCESS_PASSWORD)" "${current_access_password}")"
+  new_access_password="$(prompt_secret_default "数据管理表单初始密码 (ACCESS_PASSWORD)" "${current_access_password}")"
   new_crypto="$(prompt_secret_default "谷歌密码加密密钥 (GOOGLE_PASSWORD_ENCRYPTION_KEY)" "${current_crypto}")"
   new_admin_user="$(prompt_default "默认超管账号 (INITIAL_SUPER_ADMIN_LOGIN)" "${current_admin_user:-admin}")"
   new_admin_email="$(prompt_default "默认超管邮箱 (INITIAL_SUPER_ADMIN_EMAIL)" "${current_admin_email:-admin@example.com}")"

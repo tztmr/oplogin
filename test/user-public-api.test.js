@@ -729,6 +729,7 @@ test('public user batch API returns wifi qr config for the user center', async (
     response.headers['cache-control'],
     'no-store, no-cache, must-revalidate, proxy-revalidate',
   );
+  assert.equal(response.body.accessPassword, config.accessPassword);
   assert.deepEqual(response.body.qrConfig, {
     login: 'mxw',
     wifiQrConfig: {
@@ -776,6 +777,12 @@ test('public user page renders left and right qr card placeholders', async () =>
   const response = await agent.get('/mxw');
 
   assert.equal(response.status, 200);
+  assert.match(response.text, /id="accessPasswordText"/);
+  assert.match(response.text, /copyText\('accessPasswordText'\)/);
+  assert.ok(
+    response.text.indexOf('id="bindPhoneNumberButton"')
+      < response.text.indexOf('id="accessPasswordText"'),
+  );
   assert.match(response.text, /id="userCenterQrImage"/);
   assert.match(response.text, /id="wifiQrImage"/);
   assert.match(response.text, /id="bindPhoneNumberButton"/);

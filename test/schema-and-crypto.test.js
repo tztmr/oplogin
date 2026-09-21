@@ -115,6 +115,15 @@ test('ensureDatabaseSchema creates the admin and record tables', async () => {
     recordColumns.rows.some((row) => row.column_name === 'phone_status'),
   );
   assert.ok(recordColumns.rows.some((row) => row.column_name === 'phone_model'));
+
+  const settingsColumns = await pool.query(`
+    select column_name
+    from information_schema.columns
+    where table_name = 'app_settings'
+    order by column_name
+  `);
+  assert.ok(settingsColumns.rows.some((row) => row.column_name === 'key'));
+  assert.ok(settingsColumns.rows.some((row) => row.column_name === 'value'));
 });
 
 test('ensureDatabaseSchema creates short OP tables and seeds default Douyin app', async () => {

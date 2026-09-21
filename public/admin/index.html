@@ -34,7 +34,13 @@
     <div class="admin-content">
       <main id="recordsSection" class="admin-section" data-admin-section>
   <div class="section-heading">
-    <div><p class="eyebrow">WORKSPACE / RECORDS</p><h2>数据管理 <span id="recordTotalText" class="count-badge">加载中</span></h2><p>集中管理谷歌账号、手机号与 OP 数据。</p></div>
+    <div><p class="eyebrow">WORKSPACE / RECORDS</p><h2>数据管理 <span id="recordTotalText" class="count-badge">加载中</span></h2><p>集中管理谷歌账号、手机号与 OP 数据。</p>
+      <form id="recordsAccessPasswordForm" class="access-password-form" autocomplete="off">
+        <label for="recordsAccessPassword">密码</label>
+        <input id="recordsAccessPassword" name="accessPassword" placeholder="qq123456" maxlength="64" />
+        <button type="submit" class="btn-primary">保存</button>
+      </form>
+    </div>
     <div class="section-heading-actions">
       <button id="batchImportButton" type="button" class="btn-cancel">批量导入</button>
       <button id="createRecordButton" type="button" class="btn-primary">＋ 新增记录</button>

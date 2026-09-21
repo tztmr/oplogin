@@ -29,7 +29,6 @@ test('super admin can create and update an operator account', async () => {
     password: 'operator-pass-2',
   });
   await agent.post('/api/admin/auth/logout');
-  await agent.post('/api/access/login').send({ password: config.accessPassword }).expect(200);
   const reloginResponse = await login(agent, 'operator01', 'operator-pass-2');
 
   assert.equal(createResponse.status, 201);
@@ -50,7 +49,6 @@ test('operator cannot access super-admin-only user routes', async () => {
     role: 'operator',
   });
   await agent.post('/api/admin/auth/logout');
-  await agent.post('/api/access/login').send({ password: config.accessPassword }).expect(200);
   await login(agent, 'operator02', 'operator-pass');
 
   const response = await agent.get('/api/admin/users');
@@ -75,7 +73,6 @@ test('super admin can reset an active operator password and the new password wor
   });
 
   await agent.post('/api/admin/auth/logout');
-  await agent.post('/api/access/login').send({ password: config.accessPassword }).expect(200);
   const reloginResponse = await login(agent, 'operator03', 'new-password');
 
   assert.equal(resetResponse.status, 204);

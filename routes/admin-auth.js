@@ -6,8 +6,12 @@ const {
   updateAdminUserQrConfig,
 } = require('../lib/admin-users');
 const { verifyAdminPassword } = require('../lib/admin-password');
+const {
+  loadAccessPassword,
+  saveAccessPassword,
+} = require('../lib/access-password-settings');
 
-function createAdminAuthRouter({ pool, requireAdminAuth }) {
+function createAdminAuthRouter({ pool, requireAdminAuth, config }) {
   const router = express.Router();
 
   router.post('/login', async (req, res, next) => {
@@ -39,8 +43,29 @@ function createAdminAuthRouter({ pool, requireAdminAuth }) {
     }
   });
 
-  router.get('/me', requireAdminAuth, (req, res) => {
-    res.status(200).json({ user: req.adminUser });
+  router.get('/me', requireAdminAuth, async (req, res, next) => {
+    try {
+      const accessPassword = await loadAccessPassword({ pool, config });
+      return res.status(200).json({
+        user: req.adminUser,
+        accessPassword,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.put('/access-password', requireAdminAuth, async (req, res, next) => {
+    try {
+      const accessPassword = await saveAccessPassword({
+        pool,
+        config,
+        accessPassword: req.body && req.body.accessPassword,
+      });
+      return res.status(200).json({ accessPassword });
+    } catch (error) {
+      return next(error);
+    }
   });
 
   router.post('/change-password', requireAdminAuth, async (req, res, next) => {

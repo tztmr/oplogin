@@ -7,6 +7,7 @@ const { loadConfig } = require('../../lib/config');
 const { ensureDatabaseSchema } = require('../../lib/schema');
 const { ensureInitialSuperAdmin } = require('../../lib/bootstrap-admin');
 const { createSessionMiddleware } = require('../../lib/session');
+const { loadAccessPassword } = require('../../lib/access-password-settings');
 
 async function createAdminTestContext(envOverrides = {}, appOverrides = {}) {
   const db = newDb();
@@ -25,6 +26,7 @@ async function createAdminTestContext(envOverrides = {}, appOverrides = {}) {
 
   await ensureDatabaseSchema(pool);
   await ensureInitialSuperAdmin({ pool, config });
+  await loadAccessPassword({ pool, config });
 
   const sessionMiddleware = createSessionMiddleware({
     config,
@@ -46,9 +48,6 @@ async function createAdminTestContext(envOverrides = {}, appOverrides = {}) {
     ...appOverrides,
   });
   const agent = request.agent(app);
-  if (!config.sessionCookieSecure) {
-    await agent.post('/api/access/login').send({ password: config.accessPassword }).expect(200);
-  }
 
   return {
     app,

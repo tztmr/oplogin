@@ -16,13 +16,6 @@ async function adminFetch(url, options = {}) {
   const data = contentType.includes('application/json')
     ? await response.json()
     : { error: await response.text() };
-  if (response.status === 401 && data.code === 'ACCESS_PASSWORD_REQUIRED') {
-    const next = window.location.pathname + window.location.search;
-    window.location.replace(`/access?next=${encodeURIComponent(next)}`);
-    const error = new Error(data.error || '请重新输入访问密码');
-    error.code = data.code;
-    throw error;
-  }
   if (!response.ok) {
     throw new Error(data.error || 'Request failed');
   }
@@ -30,14 +23,54 @@ async function adminFetch(url, options = {}) {
   return data;
 }
 
+function renderRecordsAccessPassword(password) {
+  const node = document.getElementById('recordsAccessPassword');
+  if (node) {
+    node.value = password || '';
+  }
+}
+
+function initializeRecordsAccessPasswordForm() {
+  const form = document.getElementById('recordsAccessPasswordForm');
+  if (!form || form.dataset.bound === 'true') {
+    return;
+  }
+
+  form.dataset.bound = 'true';
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const input = document.getElementById('recordsAccessPassword');
+    const saveButton = form.querySelector('button[type="submit"]');
+    try {
+      if (saveButton) {
+        saveButton.disabled = true;
+      }
+      const data = await adminFetch('/api/admin/auth/access-password', {
+        method: 'PUT',
+        body: JSON.stringify({
+          accessPassword: ((input && input.value) || '').trim(),
+        }),
+      });
+      renderRecordsAccessPassword(data.accessPassword);
+      showToast('密码已保存');
+    } catch (error) {
+      showToast(error.message || '保存失败');
+    } finally {
+      if (saveButton) {
+        saveButton.disabled = false;
+      }
+    }
+  });
+}
+
 async function requireAdminSession() {
   try {
     const data = await adminFetch('/api/admin/auth/me', { method: 'GET' });
+    initializeRecordsAccessPasswordForm();
+    renderRecordsAccessPassword(data.accessPassword);
     return data.user;
   } catch (error) {
-    if (error.code !== 'ACCESS_PASSWORD_REQUIRED') {
-      window.location.href = '/admin/login';
-    }
+    window.location.href = '/admin/login';
     return null;
   }
 }

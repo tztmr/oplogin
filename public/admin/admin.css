@@ -276,6 +276,31 @@ textarea {
   color: var(--text-muted);
 }
 
+.access-password-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.access-password-form label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.access-password-form input {
+  width: 180px;
+  min-width: 140px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.04em;
+}
+
+.access-password-form button {
+  width: auto;
+}
+
 .action-bar {
   display: flex;
   justify-content: space-between;

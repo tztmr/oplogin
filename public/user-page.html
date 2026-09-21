@@ -581,6 +581,11 @@
                     <button type="button" class="btn-copy" onclick="copyText('bindPhoneNumberButton')">复制</button>
                 </div>
                 <div class="info-row">
+                    <div class="label">密码</div>
+                    <div class="value" id="accessPasswordText"></div>
+                    <button class="btn-copy" onclick="copyText('accessPasswordText')">复制</button>
+                </div>
+                <div class="info-row">
                     <div class="label">接码链接</div>
                     <a class="value phone-sms-url-link" id="phoneSmsUrlLink" target="_blank" rel="noreferrer"></a>
                 </div>
@@ -709,16 +714,7 @@
         let batchRequestPending = false;
 
         async function userPageFetch(url, options = {}) {
-            const response = await fetch(url, options);
-            if (response.status === 401) {
-                const data = await response.clone().json().catch(() => null);
-                if (data?.code === 'ACCESS_PASSWORD_REQUIRED') {
-                    const next = window.location.pathname + window.location.search;
-                    window.location.replace(`/access?next=${encodeURIComponent(next)}`);
-                    throw new Error(data.error || '请重新输入访问密码');
-                }
-            }
-            return response;
+            return fetch(url, options);
         }
 
         function setBatchRequestPending(pending) {
@@ -830,6 +826,23 @@
             wifiQrImage.src = window.buildQrImageUrl(wifiPayload, 180);
             const wifiInfo = currentQrConfig.wifiQrConfig;
             wifiQrText.textContent = `SSID: ${wifiInfo.ssid} | 加密: ${wifiInfo.type}`;
+        }
+
+        function applyAccessPassword(password) {
+            const node = document.getElementById('accessPasswordText');
+            if (node) {
+                node.textContent = password || '';
+            }
+        }
+
+        function applyUserPagePayload(data) {
+            if (!data) {
+                return;
+            }
+            applyQrConfig(data.qrConfig);
+            if (Object.prototype.hasOwnProperty.call(data, 'accessPassword')) {
+                applyAccessPassword(data.accessPassword);
+            }
         }
 
         function applyQrConfig(qrConfig) {
@@ -1065,7 +1078,7 @@
         }
 
         function applyPhoneMutationResponse(data, successMessage) {
-            applyQrConfig(data.qrConfig);
+            applyUserPagePayload(data);
             currentBatch = data.batch;
             renderBatchSlots();
             renderSelectedSlot({ preserveDraft: true });
@@ -1095,7 +1108,7 @@
                 if (!response.ok) {
                     if (response.status === 409) {
                         const fresh = await fetchBatch();
-                        applyQrConfig(fresh.qrConfig);
+                        applyUserPagePayload(fresh);
                         applyBatch(fresh.batch, currentSlotNumber, { preserveDraft: true });
                     }
                     throw new Error(data.error || '操作失败');
@@ -1213,7 +1226,7 @@
             setBatchRequestPending(true);
             try {
                 const data = await fetchBatch();
-                applyQrConfig(data.qrConfig);
+                applyUserPagePayload(data);
                 applyBatch(data.batch);
             } catch (error) {
                 showToast(error.message, 'error');
@@ -1243,7 +1256,7 @@
             setBatchRequestPending(true);
             try {
                 const data = await fetchBatch();
-                applyQrConfig(data.qrConfig);
+                applyUserPagePayload(data);
                 const batch = data.batch;
                 const preferredSlot = getSlot(currentSlotNumber) ? currentSlotNumber : null;
                 applyBatch(batch, preferredSlot || getFirstSelectableSlot(), { preserveDraft: true });
@@ -1272,7 +1285,7 @@
                 if (!response.ok) {
                     throw new Error(data.error || '换组失败');
                 }
-                applyQrConfig(data.qrConfig);
+                applyUserPagePayload(data);
                 applyBatch(data.batch);
                 showToast('已放弃剩余槽位并切换到下一组');
             } catch (error) {
@@ -1356,14 +1369,14 @@
                 if (!response.ok) {
                     if (response.status === 409) {
                         const fresh = await fetchBatch();
-                        applyQrConfig(fresh.qrConfig);
+                        applyUserPagePayload(fresh);
                         applyBatch(fresh.batch, currentSlotNumber, { preserveDraft: true });
                     }
                     throw new Error(data.error || '保存失败');
                 }
 
                 getRemarkInput().value = '';
-                applyQrConfig(data.qrConfig);
+                applyUserPagePayload(data);
                 currentBatch = data.batch;
                 renderBatchSlots();
                 renderSelectedSlot();

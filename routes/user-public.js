@@ -11,9 +11,12 @@ const {
   updateBatchSlotPhoneModel,
   advanceBatch,
 } = require('../lib/public-user-batches');
+const { DEFAULT_ACCESS_PASSWORD } = require('../lib/config');
 
 function createUserPublicRouter({ pool, config }) {
   const router = express.Router();
+  const sharedPassword = () => (config && config.accessPassword) || DEFAULT_ACCESS_PASSWORD;
+  const withSharedPassword = (payload) => ({ ...payload, accessPassword: sharedPassword() });
 
   router.use((req, res, next) => {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -69,7 +72,7 @@ function createUserPublicRouter({ pool, config }) {
     try {
       const user = await findActiveUser(req.params.username);
       const batch = await getCurrentBatch(pool, config, user);
-      return res.status(200).json({ batch, qrConfig: buildQrConfig(user) });
+      return res.status(200).json(withSharedPassword({ batch, qrConfig: buildQrConfig(user) }));
     } catch (error) {
       return next(error);
     }
@@ -84,11 +87,11 @@ function createUserPublicRouter({ pool, config }) {
       }
 
       const batch = await submitBatchSlotUid(pool, config, user, slotNumber, req.body || {});
-      return res.status(200).json({
+      return res.status(200).json(withSharedPassword({
         status: 'success',
         batch,
         qrConfig: buildQrConfig(user),
-      });
+      }));
     } catch (error) {
       return next(error);
     }
@@ -104,7 +107,7 @@ function createUserPublicRouter({ pool, config }) {
         const batch = action === 'extract'
           ? await extractBatchSlotPhone(pool, config, user, slotNumber, payload)
           : await setBatchSlotPhoneStatus(pool, config, user, slotNumber, payload.phoneStatus, payload);
-        return res.status(200).json({ status: 'success', batch, qrConfig: buildQrConfig(user) });
+        return res.status(200).json(withSharedPassword({ status: 'success', batch, qrConfig: buildQrConfig(user) }));
       } catch (error) {
         return next(error);
       }
@@ -127,11 +130,11 @@ function createUserPublicRouter({ pool, config }) {
         req.body && req.body.phoneStatus,
         req.body || {},
       );
-      return res.status(200).json({
+      return res.status(200).json(withSharedPassword({
         status: 'success',
         batch,
         qrConfig: buildQrConfig(user),
-      });
+      }));
     } catch (error) {
       return next(error);
     }
@@ -153,11 +156,11 @@ function createUserPublicRouter({ pool, config }) {
         req.body && req.body.phoneModel,
         req.body || {},
       );
-      return res.status(200).json({
+      return res.status(200).json(withSharedPassword({
         status: 'success',
         batch,
         qrConfig: buildQrConfig(user),
-      });
+      }));
     } catch (error) {
       return next(error);
     }
@@ -167,11 +170,11 @@ function createUserPublicRouter({ pool, config }) {
     try {
       const user = await findActiveUser(req.params.username);
       const batch = await advanceBatch(pool, config, user);
-      return res.status(200).json({
+      return res.status(200).json(withSharedPassword({
         status: 'success',
         batch,
         qrConfig: buildQrConfig(user),
-      });
+      }));
     } catch (error) {
       return next(error);
     }
