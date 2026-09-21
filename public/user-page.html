@@ -701,12 +701,25 @@
         let currentSlotNumber = 1;
         let currentRecord = null;
         let currentQrConfig = null;
-        const wakeUrlCache = window.createWakeUrlCache();
+        const wakeUrlCache = window.createWakeUrlCache({ fetchImpl: userPageFetch });
         let uidClipboardPollingTimer = null;
         let lastAutoFillClipboardText = '';
         let phoneMutationPending = false;
         let uidSavePending = false;
         let batchRequestPending = false;
+
+        async function userPageFetch(url, options = {}) {
+            const response = await fetch(url, options);
+            if (response.status === 401) {
+                const data = await response.clone().json().catch(() => null);
+                if (data?.code === 'ACCESS_PASSWORD_REQUIRED') {
+                    const next = window.location.pathname + window.location.search;
+                    window.location.replace(`/access?next=${encodeURIComponent(next)}`);
+                    throw new Error(data.error || '请重新输入访问密码');
+                }
+            }
+            return response;
+        }
 
         function setBatchRequestPending(pending) {
             batchRequestPending = pending;
@@ -894,7 +907,7 @@
         }
 
         async function checkUidAvailability(uidValue) {
-            const response = await fetch(
+            const response = await userPageFetch(
                 `/api/public/user/${encodeURIComponent(username)}/uid-availability?uid=${encodeURIComponent(uidValue)}`,
                 { cache: 'no-store' },
             );
@@ -1073,7 +1086,7 @@
             renderBatchSlots();
             renderSelectedSlot({ preserveDraft: true });
             try {
-                const response = await fetch(`/api/public/user/${encodeURIComponent(username)}/batch/slots/${currentSlotNumber}/${action}`, {
+                const response = await userPageFetch(`/api/public/user/${encodeURIComponent(username)}/batch/slots/${currentSlotNumber}/${action}`, {
                     method,
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload),
@@ -1186,7 +1199,7 @@
             document.getElementById('pageTitle').textContent = `${username} 的数据中心`;
             document.getElementById('pageSubtitle').textContent = '正在加载批次...';
 
-            const response = await fetch(`/api/public/user/${encodeURIComponent(username)}/batch`, {
+            const response = await userPageFetch(`/api/public/user/${encodeURIComponent(username)}/batch`, {
                 cache: 'no-store',
             });
             if (!response.ok) {
@@ -1250,7 +1263,7 @@
             button.innerText = '换组中...';
             button.disabled = true;
             try {
-                const response = await fetch(`/api/public/user/${encodeURIComponent(username)}/batch/advance`, {
+                const response = await userPageFetch(`/api/public/user/${encodeURIComponent(username)}/batch/advance`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({}),
@@ -1334,7 +1347,7 @@
             renderSelectedSlot({ preserveDraft: true });
 
             try {
-                const response = await fetch(`/api/public/user/${encodeURIComponent(username)}/batch/slots/${currentSlotNumber}/uid`, {
+                const response = await userPageFetch(`/api/public/user/${encodeURIComponent(username)}/batch/slots/${currentSlotNumber}/uid`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ uid: uidInput, remark: remarkInput, batchId: currentBatch.id, recordId: currentRecord.id }),

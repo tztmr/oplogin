@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>访问验证</title>
+  <link rel="stylesheet" href="/admin/admin.css" />
+</head>
+<body class="admin-auth-page">
+  <main class="auth-card">
+    <span class="brand-mark" aria-hidden="true">OP</span>
+    <p class="eyebrow">运营工作台</p>
+    <h1>访问验证</h1>
+    <p class="auth-subtitle">请输入访问密码，继续进入后台管理或用户数据中心。</p>
+    <form id="accessForm" class="stack-form">
+      <label for="accessPassword">访问密码</label>
+      <input id="accessPassword" name="password" type="password" autocomplete="current-password" placeholder="输入访问密码" required autofocus />
+      <p id="accessError" class="form-error" role="alert" hidden></p>
+      <button id="accessSubmit" type="submit">验证并进入</button>
+    </form>
+  </main>
+  <script src="/access.js"></script>
+</body>
+</html>

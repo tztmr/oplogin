@@ -80,7 +80,7 @@ test('user public page uses the same game options as the main oplogin page', asy
     role: 'operator',
   });
 
-  const response = await request(app).get('/lz');
+  const response = await agent.get('/lz');
 
   assert.equal(response.status, 200);
   assert.match(response.text, /专属数据中心/);

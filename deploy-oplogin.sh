@@ -163,6 +163,7 @@ configure_env() {
   local current_db=""
   local current_db_mode=""
   local current_session=""
+  local current_access_password="qq123456"
   local current_crypto=""
   local current_admin_user="admin"
   local current_admin_email="admin@example.com"
@@ -173,6 +174,7 @@ configure_env() {
     current_db="$(read_env_value "$env_file" "DATABASE_URL")"
     current_db_mode="$(read_env_value "$env_file" "DATABASE_MODE")"
     current_session="$(read_env_value "$env_file" "SESSION_SECRET")"
+    current_access_password="$(read_env_value "$env_file" "ACCESS_PASSWORD")"
     current_crypto="$(read_env_value "$env_file" "GOOGLE_PASSWORD_ENCRYPTION_KEY")"
     current_admin_user="$(read_env_value "$env_file" "INITIAL_SUPER_ADMIN_LOGIN")"
     current_admin_email="$(read_env_value "$env_file" "INITIAL_SUPER_ADMIN_EMAIL")"
@@ -185,14 +187,16 @@ configure_env() {
   [[ -z "$current_crypto" ]] && current_crypto=$(LC_ALL=C tr -dc 'a-f0-9' < /dev/urandom | head -c 64 || true)
   [[ -z "$current_admin_email" ]] && current_admin_email="admin@example.com"
   [[ -z "$current_cookie_secure" ]] && current_cookie_secure="false"
+  [[ -z "$current_access_password" ]] && current_access_password="qq123456"
   [[ -n "$current_db" ]] || { error "DATABASE_URL 不能为空，请先选择并配置数据库"; return 1; }
   case "$current_db_mode" in
     local|cloud) ;;
     *) current_db_mode="$(infer_database_mode "$current_db")" ;;
   esac
 
-  local new_session new_crypto new_admin_user new_admin_email new_admin_pass new_cookie_secure
+  local new_session new_access_password new_crypto new_admin_user new_admin_email new_admin_pass new_cookie_secure
   new_session="$(prompt_secret_default "会话密钥 (SESSION_SECRET)" "${current_session}")"
+  new_access_password="$(prompt_secret_default "后台与用户中心访问密码 (ACCESS_PASSWORD)" "${current_access_password}")"
   new_crypto="$(prompt_secret_default "谷歌密码加密密钥 (GOOGLE_PASSWORD_ENCRYPTION_KEY)" "${current_crypto}")"
   new_admin_user="$(prompt_default "默认超管账号 (INITIAL_SUPER_ADMIN_LOGIN)" "${current_admin_user:-admin}")"
   new_admin_email="$(prompt_default "默认超管邮箱 (INITIAL_SUPER_ADMIN_EMAIL)" "${current_admin_email:-admin@example.com}")"
@@ -208,6 +212,7 @@ PORT=${APP_PORT}
 DATABASE_MODE=${current_db_mode}
 DATABASE_URL=${current_db}
 SESSION_SECRET=${new_session}
+ACCESS_PASSWORD=${new_access_password}
 GOOGLE_PASSWORD_ENCRYPTION_KEY=${new_crypto}
 INITIAL_SUPER_ADMIN_LOGIN=${new_admin_user}
 INITIAL_SUPER_ADMIN_EMAIL=${new_admin_email}

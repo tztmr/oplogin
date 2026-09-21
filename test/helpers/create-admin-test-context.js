@@ -45,10 +45,14 @@ async function createAdminTestContext(envOverrides = {}, appOverrides = {}) {
     lookupOpNicknamesImpl,
     ...appOverrides,
   });
+  const agent = request.agent(app);
+  if (!config.sessionCookieSecure) {
+    await agent.post('/api/access/login').send({ password: config.accessPassword }).expect(200);
+  }
 
   return {
     app,
-    agent: request.agent(app),
+    agent,
     pool,
     config,
   };

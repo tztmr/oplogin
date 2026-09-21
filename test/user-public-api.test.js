@@ -1,7 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
-const request = require('supertest');
 
 const { createAdminTestContext } = require('./helpers/create-admin-test-context');
 const { createAdminUser } = require('../lib/admin-users');
@@ -13,28 +12,28 @@ const {
 let managedRecordInsertOffset = 0;
 
 test('merged batch refill preserves done and phone-less slots while filling only genuine vacancies', async () => {
-  const { app, pool, config } = await createAdminTestContext();
+  const { agent, pool, config } = await createAdminTestContext();
   const operator = await createAdminUser(pool, { login: 'merge-fill', email: 'merge-fill@example.test', password: 'test-password', role: 'operator' });
   const bound = await insertManagedRecord(pool, config, operator.id, { opValue: 'bound-op', phoneNumber: '13000009901', phoneStatus: '已绑定' });
   const phoneLess = await insertManagedRecord(pool, config, operator.id, { opValue: 'phone-less-op' });
-  const initial = await request(app).get('/api/public/user/merge-fill/batch');
+  const initial = await agent.get('/api/public/user/merge-fill/batch');
   assert.deepEqual(initial.body.batch.slots.map((slot) => slot.record?.id || null), [bound.id, phoneLess.id, null, null, null, null]);
-  const saved = await request(app).post('/api/public/user/merge-fill/batch/slots/1/uid').send({ uid: 'merge-saved-uid' });
+  const saved = await agent.post('/api/public/user/merge-fill/batch/slots/1/uid').send({ uid: 'merge-saved-uid' });
   assert.equal(saved.status, 200);
   const extra = await insertManagedRecord(pool, config, operator.id, { opValue: 'new-phone-less-op' });
-  const refilled = await request(app).get('/api/public/user/merge-fill/batch');
+  const refilled = await agent.get('/api/public/user/merge-fill/batch');
   assert.equal(refilled.body.batch.id, initial.body.batch.id);
   assert.deepEqual(refilled.body.batch.slots.map((slot) => slot.record?.id || null), [bound.id, phoneLess.id, extra.id, null, null, null]);
   assert.equal(refilled.body.batch.slots[0].status, 'done');
 });
 
 test('merged batch advance retains phone-less records instead of dropping their slots', async () => {
-  const { app, pool, config } = await createAdminTestContext();
+  const { agent, pool, config } = await createAdminTestContext();
   const operator = await createAdminUser(pool, { login: 'merge-advance', email: 'merge-advance@example.test', password: 'test-password', role: 'operator' });
   const records = [];
   for (let i = 0; i < 3; i++) records.push(await insertManagedRecord(pool, config, operator.id, { opValue: `merge-op-${i}` }));
-  await request(app).get('/api/public/user/merge-advance/batch');
-  const advanced = await request(app).post('/api/public/user/merge-advance/batch/advance').send({});
+  await agent.get('/api/public/user/merge-advance/batch');
+  const advanced = await agent.post('/api/public/user/merge-advance/batch/advance').send({});
   assert.equal(advanced.status, 200);
   assert.deepEqual(advanced.body.batch.slots.map((slot) => slot.record?.id || null), [...records.map((row) => row.id), null, null, null]);
 });
@@ -141,7 +140,7 @@ async function insertManagedRecord(pool, config, ownerId, overrides = {}) {
 }
 
 test('public user record API supports previous and next available records', async () => {
-  const { app, pool, config } = await createAdminTestContext();
+  const { agent, pool, config } = await createAdminTestContext();
   const operator = await createAdminUser(pool, {
     login: 'lz',
     email: 'lz@example.com',
@@ -162,14 +161,14 @@ test('public user record API supports previous and next available records', asyn
     opValue: 'op-third',
   });
 
-  const firstResponse = await request(app).get('/api/public/user/lz/record');
-  const nextResponse = await request(app)
+  const firstResponse = await agent.get('/api/public/user/lz/record');
+  const nextResponse = await agent
     .get('/api/public/user/lz/record')
     .query({ currentRecordId: first.id, direction: 'next' });
-  const previousResponse = await request(app)
+  const previousResponse = await agent
     .get('/api/public/user/lz/record')
     .query({ currentRecordId: second.id, direction: 'prev' });
-  const lastResponse = await request(app)
+  const lastResponse = await agent
     .get('/api/public/user/lz/record')
     .query({ currentRecordId: second.id, direction: 'next' });
 
@@ -196,7 +195,7 @@ test('public user record API supports previous and next available records', asyn
 });
 
 test('public user record API supports fixed quick slot jumps for the first available records', async () => {
-  const { app, pool, config } = await createAdminTestContext();
+  const { agent, pool, config } = await createAdminTestContext();
   const operator = await createAdminUser(pool, {
     login: 'lz',
     email: 'lz@example.com',
@@ -225,8 +224,8 @@ test('public user record API supports fixed quick slot jumps for the first avail
     opValue: 'op-10',
   });
 
-  const firstResponse = await request(app).get('/api/public/user/lz/record');
-  const secondSlotResponse = await request(app)
+  const firstResponse = await agent.get('/api/public/user/lz/record');
+  const secondSlotResponse = await agent
     .get('/api/public/user/lz/record')
     .query({ jumpSlot: 2 });
 
@@ -241,7 +240,7 @@ test('public user record API supports fixed quick slot jumps for the first avail
 });
 
 test('public user batch API keeps fixed slots after partial submissions', async () => {
-  const { app, pool, config } = await createAdminTestContext();
+  const { agent, pool, config } = await createAdminTestContext();
   const operator = await createAdminUser(pool, {
     login: 'lz',
     email: 'lz@example.com',
@@ -261,7 +260,7 @@ test('public user batch API keeps fixed slots after partial submissions', async 
     );
   }
 
-  const firstBatchResponse = await request(app).get('/api/public/user/lz/batch');
+  const firstBatchResponse = await agent.get('/api/public/user/lz/batch');
   assert.equal(firstBatchResponse.status, 200);
   assert.equal(firstBatchResponse.body.batch.slots.length, 6);
   assert.deepEqual(
@@ -273,17 +272,17 @@ test('public user batch API keeps fixed slots after partial submissions', async 
     ['available', 'available', 'available', 'available', 'available', 'available'],
   );
 
-  const saveThirdResponse = await request(app)
+  const saveThirdResponse = await agent
     .post('/api/public/user/lz/batch/slots/3/uid')
     .send({ uid: 'slot-3-uid', remark: 'done third' });
-  const saveSixthResponse = await request(app)
+  const saveSixthResponse = await agent
     .post('/api/public/user/lz/batch/slots/6/uid')
     .send({ uid: 'slot-6-uid', remark: 'done sixth' });
 
   assert.equal(saveThirdResponse.status, 200);
   assert.equal(saveSixthResponse.status, 200);
 
-  const refreshedBatchResponse = await request(app).get('/api/public/user/lz/batch');
+  const refreshedBatchResponse = await agent.get('/api/public/user/lz/batch');
   assert.equal(refreshedBatchResponse.status, 200);
   assert.equal(
     refreshedBatchResponse.body.batch.id,
@@ -313,7 +312,7 @@ test('public user batch API keeps fixed slots after partial submissions', async 
 });
 
 test('public user batch API preserves distribution order for microsecond timestamps', async () => {
-  const { app, pool, config } = await createAdminTestContext();
+  const { agent, pool, config } = await createAdminTestContext();
   const operator = await createAdminUser(pool, {
     login: 'lz',
     email: 'lz@example.com',
@@ -332,7 +331,7 @@ test('public user batch API preserves distribution order for microsecond timesta
     createdAt: '2024-01-01T00:00:00.123789Z',
   });
 
-  const batchResponse = await request(app).get('/api/public/user/lz/batch');
+  const batchResponse = await agent.get('/api/public/user/lz/batch');
 
   assert.equal(batchResponse.status, 200);
   assert.equal(batchResponse.body.batch.slots[0].record.distributionOrder, 1);
@@ -342,7 +341,7 @@ test('public user batch API preserves distribution order for microsecond timesta
 });
 
 test('public user batch API only includes records with google account, password, op, and blank uid', async () => {
-  const { app, pool, config } = await createAdminTestContext();
+  const { agent, pool, config } = await createAdminTestContext();
   const operator = await createAdminUser(pool, {
     login: 'lz',
     email: 'lz@example.com',
@@ -381,7 +380,7 @@ test('public user batch API only includes records with google account, password,
     uidValue: 'already-used',
   });
 
-  const batchResponse = await request(app).get('/api/public/user/lz/batch');
+  const batchResponse = await agent.get('/api/public/user/lz/batch');
 
   assert.equal(batchResponse.status, 200);
   assert.equal(batchResponse.body.batch.slots[0].record.id, eligible.id);
@@ -392,7 +391,7 @@ test('public user batch API only includes records with google account, password,
 });
 
 test('public user batch API carries abandoned remaining slots into the next batch before filling new stock', async () => {
-  const { app, pool, config } = await createAdminTestContext();
+  const { agent, pool, config } = await createAdminTestContext();
   const operator = await createAdminUser(pool, {
     login: 'lz',
     email: 'lz@example.com',
@@ -412,20 +411,20 @@ test('public user batch API carries abandoned remaining slots into the next batc
     );
   }
 
-  const firstBatchResponse = await request(app).get('/api/public/user/lz/batch');
+  const firstBatchResponse = await agent.get('/api/public/user/lz/batch');
   assert.equal(firstBatchResponse.status, 200);
 
-  const saveFirstResponse = await request(app)
+  const saveFirstResponse = await agent
     .post('/api/public/user/lz/batch/slots/1/uid')
     .send({ uid: 'slot-1-uid' });
-  const saveSecondResponse = await request(app)
+  const saveSecondResponse = await agent
     .post('/api/public/user/lz/batch/slots/2/uid')
     .send({ uid: 'slot-2-uid' });
 
   assert.equal(saveFirstResponse.status, 200);
   assert.equal(saveSecondResponse.status, 200);
 
-  const nextBatchResponse = await request(app)
+  const nextBatchResponse = await agent
     .post('/api/public/user/lz/batch/advance')
     .send({});
 
@@ -449,7 +448,7 @@ test('public user batch API carries abandoned remaining slots into the next batc
 });
 
 test('public user batch API rebuilds an empty open batch when new eligible records appear', async () => {
-  const { app, pool, config } = await createAdminTestContext();
+  const { agent, pool, config } = await createAdminTestContext();
   const operator = await createAdminUser(pool, {
     login: 'lz',
     email: 'lz@example.com',
@@ -457,7 +456,7 @@ test('public user batch API rebuilds an empty open batch when new eligible recor
     role: 'operator',
   });
 
-  const emptyBatchResponse = await request(app).get('/api/public/user/lz/batch');
+  const emptyBatchResponse = await agent.get('/api/public/user/lz/batch');
 
   assert.equal(emptyBatchResponse.status, 200);
   assert.deepEqual(
@@ -470,7 +469,7 @@ test('public user batch API rebuilds an empty open batch when new eligible recor
     opValue: 'fresh-op',
   });
 
-  const refreshedBatchResponse = await request(app).get('/api/public/user/lz/batch');
+  const refreshedBatchResponse = await agent.get('/api/public/user/lz/batch');
 
   assert.equal(refreshedBatchResponse.status, 200);
   assert.notEqual(refreshedBatchResponse.body.batch.id, emptyBatchResponse.body.batch.id);
@@ -482,7 +481,7 @@ test('public user batch API rebuilds an empty open batch when new eligible recor
 });
 
 test('public user batch API advances past a consumed open batch with cleared slot records when new stock exists', async () => {
-  const { app, pool, config } = await createAdminTestContext();
+  const { agent, pool, config } = await createAdminTestContext();
   const operator = await createAdminUser(pool, {
     login: 'lz',
     email: 'lz@example.com',
@@ -502,11 +501,11 @@ test('public user batch API advances past a consumed open batch with cleared slo
     );
   }
 
-  const firstBatchResponse = await request(app).get('/api/public/user/lz/batch');
+  const firstBatchResponse = await agent.get('/api/public/user/lz/batch');
   assert.equal(firstBatchResponse.status, 200);
 
   for (let slotNumber = 1; slotNumber <= 6; slotNumber += 1) {
-    const saveResponse = await request(app)
+    const saveResponse = await agent
       .post(`/api/public/user/lz/batch/slots/${slotNumber}/uid`)
       .send({ uid: `done-${slotNumber}` });
     assert.equal(saveResponse.status, 200);
@@ -522,7 +521,7 @@ test('public user batch API advances past a consumed open batch with cleared slo
     opValue: 'next-batch-op',
   });
 
-  const refreshedBatchResponse = await request(app).get('/api/public/user/lz/batch');
+  const refreshedBatchResponse = await agent.get('/api/public/user/lz/batch');
   assert.equal(refreshedBatchResponse.status, 200);
   assert.notEqual(refreshedBatchResponse.body.batch.id, firstBatchResponse.body.batch.id);
   assert.equal(refreshedBatchResponse.body.batch.slots[0].record.id, nextRecord.id);
@@ -533,7 +532,7 @@ test('public user batch API advances past a consumed open batch with cleared slo
 });
 
 test('public user page renders fixed batch slot actions', async () => {
-  const { app, pool } = await createAdminTestContext();
+  const { agent, pool } = await createAdminTestContext();
   await createAdminUser(pool, {
     login: 'lz',
     email: 'lz@example.com',
@@ -541,7 +540,7 @@ test('public user page renders fixed batch slot actions', async () => {
     role: 'operator',
   });
 
-  const response = await request(app).get('/lz');
+  const response = await agent.get('/lz');
 
   assert.equal(response.status, 200);
   assert.match(response.text, /id="quickSlotButtons"/);
@@ -559,7 +558,7 @@ test('public user page renders fixed batch slot actions', async () => {
 });
 
 test('public user page disables browser caching and batch fetch uses no-store', async () => {
-  const { app, pool } = await createAdminTestContext();
+  const { agent, pool } = await createAdminTestContext();
   await createAdminUser(pool, {
     login: 'lz',
     email: 'lz@example.com',
@@ -567,7 +566,7 @@ test('public user page disables browser caching and batch fetch uses no-store', 
     role: 'operator',
   });
 
-  const response = await request(app).get('/lz');
+  const response = await agent.get('/lz');
 
   assert.equal(response.status, 200);
   assert.equal(
@@ -579,12 +578,12 @@ test('public user page disables browser caching and batch fetch uses no-store', 
   assert.equal(response.headers['surrogate-control'], 'no-store');
   assert.match(
     response.text,
-    /fetch\(`\/api\/public\/user\/\$\{encodeURIComponent\(username\)\}\/batch`,\s*\{\s*cache: 'no-store',/s,
+    /userPageFetch\(`\/api\/public\/user\/\$\{encodeURIComponent\(username\)\}\/batch`,\s*\{\s*cache: 'no-store',/s,
   );
 });
 
 test('public user page caches remark input locally', async () => {
-  const { app, pool } = await createAdminTestContext();
+  const { agent, pool } = await createAdminTestContext();
   await createAdminUser(pool, {
     login: 'lz',
     email: 'lz@example.com',
@@ -592,7 +591,7 @@ test('public user page caches remark input locally', async () => {
     role: 'operator',
   });
 
-  const response = await request(app).get('/lz');
+  const response = await agent.get('/lz');
 
   assert.equal(response.status, 200);
   assert.match(response.text, /function getRemarkDraftStorageKey\(\)/);
@@ -604,7 +603,7 @@ test('public user page caches remark input locally', async () => {
 });
 
 test('public user page keeps the current slot selected after saving uid', async () => {
-  const { app, pool } = await createAdminTestContext();
+  const { agent, pool } = await createAdminTestContext();
   await createAdminUser(pool, {
     login: 'lz',
     email: 'lz@example.com',
@@ -612,7 +611,7 @@ test('public user page keeps the current slot selected after saving uid', async 
     role: 'operator',
   });
 
-  const response = await request(app).get('/lz');
+  const response = await agent.get('/lz');
 
   assert.equal(response.status, 200);
   assert.match(response.text, /currentBatch = data\.batch;/);
@@ -621,7 +620,7 @@ test('public user page keeps the current slot selected after saving uid', async 
 });
 
 test('public user page auto-fills uid from numeric clipboard content when uid is unused', async () => {
-  const { app, pool } = await createAdminTestContext();
+  const { agent, pool } = await createAdminTestContext();
   await createAdminUser(pool, {
     login: 'lz',
     email: 'lz@example.com',
@@ -629,7 +628,7 @@ test('public user page auto-fills uid from numeric clipboard content when uid is
     role: 'operator',
   });
 
-  const response = await request(app).get('/lz');
+  const response = await agent.get('/lz');
 
   assert.equal(response.status, 200);
   assert.match(response.text, /navigator\.clipboard\.readText\(\)/);
@@ -639,7 +638,7 @@ test('public user page auto-fills uid from numeric clipboard content when uid is
 });
 
 test('public user uid availability API rejects existing numeric uid values', async () => {
-  const { app, pool, config } = await createAdminTestContext();
+  const { agent, pool, config } = await createAdminTestContext();
   const operator = await createAdminUser(pool, {
     login: 'lz',
     email: 'lz@example.com',
@@ -652,10 +651,10 @@ test('public user uid availability API rejects existing numeric uid values', asy
     opValue: 'used-op',
   });
 
-  const existingResponse = await request(app)
+  const existingResponse = await agent
     .get('/api/public/user/lz/uid-availability')
     .query({ uid: '123456' });
-  const availableResponse = await request(app)
+  const availableResponse = await agent
     .get('/api/public/user/lz/uid-availability')
     .query({ uid: '987654' });
 
@@ -670,7 +669,7 @@ test('public user uid availability API rejects existing numeric uid values', asy
 });
 
 test('public user batch submit rejects duplicated uid values', async () => {
-  const { app, pool, config } = await createAdminTestContext();
+  const { agent, pool, config } = await createAdminTestContext();
   const operator = await createAdminUser(pool, {
     login: 'lz',
     email: 'lz@example.com',
@@ -689,8 +688,8 @@ test('public user batch submit rejects duplicated uid values', async () => {
         phoneStatus: '已绑定',
   });
 
-  const batchResponse = await request(app).get('/api/public/user/lz/batch');
-  const submitResponse = await request(app)
+  const batchResponse = await agent.get('/api/public/user/lz/batch');
+  const submitResponse = await agent
     .post('/api/public/user/lz/batch/slots/1/uid')
     .send({ uid: 'dup-uid-001' });
 
@@ -700,7 +699,7 @@ test('public user batch submit rejects duplicated uid values', async () => {
 });
 
 test('public user batch API returns wifi qr config for the user center', async () => {
-  const { app, pool, config } = await createAdminTestContext();
+  const { agent, pool, config } = await createAdminTestContext();
   const operator = await createAdminUser(pool, {
     login: 'mxw',
     email: 'mxw@example.com',
@@ -723,7 +722,7 @@ test('public user batch API returns wifi qr config for the user center', async (
     opValue: 'qr-op',
   });
 
-  const response = await request(app).get('/api/public/user/mxw/batch');
+  const response = await agent.get('/api/public/user/mxw/batch');
 
   assert.equal(response.status, 200);
   assert.equal(
@@ -742,7 +741,7 @@ test('public user batch API returns wifi qr config for the user center', async (
 });
 
 test('public user phone bind rejects commands without exact phone identities', async () => {
-  const { app, pool, config } = await createAdminTestContext();
+  const { agent, pool, config } = await createAdminTestContext();
   const operator = await createAdminUser(pool, {
     login: 'no-phone',
     email: 'no-phone@example.com',
@@ -754,8 +753,8 @@ test('public user phone bind rejects commands without exact phone identities', a
     opValue: 'no-phone-op',
   });
 
-  await request(app).get('/api/public/user/no-phone/batch');
-  const response = await request(app)
+  await agent.get('/api/public/user/no-phone/batch');
+  const response = await agent
     .post('/api/public/user/no-phone/batch/slots/1/phone/bind')
     .send({});
 
@@ -766,7 +765,7 @@ test('public user phone bind rejects commands without exact phone identities', a
 });
 
 test('public user page renders left and right qr card placeholders', async () => {
-  const { app, pool } = await createAdminTestContext();
+  const { agent, pool } = await createAdminTestContext();
   await createAdminUser(pool, {
     login: 'mxw',
     email: 'mxw@example.com',
@@ -774,7 +773,7 @@ test('public user page renders left and right qr card placeholders', async () =>
     role: 'operator',
   });
 
-  const response = await request(app).get('/mxw');
+  const response = await agent.get('/mxw');
 
   assert.equal(response.status, 200);
   assert.match(response.text, /id="userCenterQrImage"/);
@@ -792,7 +791,7 @@ test('public user page renders left and right qr card placeholders', async () =>
 });
 
 test('public user page hides qr cards on mobile and highlights selected slot in blue', async () => {
-  const { app, pool } = await createAdminTestContext();
+  const { agent, pool } = await createAdminTestContext();
   await createAdminUser(pool, {
     login: 'mxw',
     email: 'mxw@example.com',
@@ -800,7 +799,7 @@ test('public user page hides qr cards on mobile and highlights selected slot in 
     role: 'operator',
   });
 
-  const response = await request(app).get('/mxw');
+  const response = await agent.get('/mxw');
 
   assert.equal(response.status, 200);
   assert.match(
@@ -811,7 +810,7 @@ test('public user page hides qr cards on mobile and highlights selected slot in 
 });
 
 test('public user record API supports submitting uid and remark', async () => {
-  const { app, pool, config } = await createAdminTestContext();
+  const { agent, pool, config } = await createAdminTestContext();
   const operator = await createAdminUser(pool, {
     login: 'lz',
     email: 'lz@example.com',
@@ -826,7 +825,7 @@ test('public user record API supports submitting uid and remark', async () => {
         phoneStatus: '已绑定',
   });
 
-  const submitResponse = await request(app)
+  const submitResponse = await agent
     .post(`/api/public/user/lz/record/${record.id}/uid`)
     .send({ uid: 'user-uid-123', remark: 'test remark' });
 
@@ -839,7 +838,7 @@ test('public user record API supports submitting uid and remark', async () => {
 });
 
 test('public user record API rejects duplicated uid values on submit', async () => {
-  const { app, pool, config } = await createAdminTestContext();
+  const { agent, pool, config } = await createAdminTestContext();
   const operator = await createAdminUser(pool, {
     login: 'lz',
     email: 'lz@example.com',
@@ -858,7 +857,7 @@ test('public user record API rejects duplicated uid values on submit', async () 
         phoneStatus: '已绑定',
   });
 
-  const submitResponse = await request(app)
+  const submitResponse = await agent
     .post(`/api/public/user/lz/record/${record.id}/uid`)
     .send({ uid: 'dup-record-uid', remark: 'test remark' });
 

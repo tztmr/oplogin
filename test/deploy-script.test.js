@@ -189,6 +189,7 @@ test('configure_env preserves database settings without prompting for them', (t)
     'DATABASE_MODE=cloud',
     `DATABASE_URL=${databaseUrl}`,
     'SESSION_SECRET=session-secret',
+    'ACCESS_PASSWORD=custom-access-password',
     'GOOGLE_PASSWORD_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
     'INITIAL_SUPER_ADMIN_LOGIN=admin',
     'INITIAL_SUPER_ADMIN_EMAIL=admin@example.com',
@@ -211,6 +212,7 @@ test('configure_env preserves database settings without prompting for them', (t)
   assert.doesNotMatch(result.stdout, /DATABASE_PROMPT_CALLED/);
   const env = fs.readFileSync(envPath, 'utf8');
   assert.match(env, /^DATABASE_MODE=cloud$/m);
+  assert.match(env, /^ACCESS_PASSWORD=custom-access-password$/m);
   assert.match(env, new RegExp(`^DATABASE_URL=${databaseUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm'));
 });
 

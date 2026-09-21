@@ -16,6 +16,13 @@ async function adminFetch(url, options = {}) {
   const data = contentType.includes('application/json')
     ? await response.json()
     : { error: await response.text() };
+  if (response.status === 401 && data.code === 'ACCESS_PASSWORD_REQUIRED') {
+    const next = window.location.pathname + window.location.search;
+    window.location.replace(`/access?next=${encodeURIComponent(next)}`);
+    const error = new Error(data.error || '请重新输入访问密码');
+    error.code = data.code;
+    throw error;
+  }
   if (!response.ok) {
     throw new Error(data.error || 'Request failed');
   }
@@ -28,7 +35,9 @@ async function requireAdminSession() {
     const data = await adminFetch('/api/admin/auth/me', { method: 'GET' });
     return data.user;
   } catch (error) {
-    window.location.href = '/admin/login';
+    if (error.code !== 'ACCESS_PASSWORD_REQUIRED') {
+      window.location.href = '/admin/login';
+    }
     return null;
   }
 }

@@ -14,6 +14,7 @@ const { createUserPublicRouter } = require('./routes/user-public');
 const { createOpSubmitRouter } = require('./routes/op-submit');
 const { createOpPagesRouter } = require('./routes/op-pages');
 const { findAdminByIdentifier } = require('./lib/admin-users');
+const { createAccessPassword } = require('./lib/access-password');
 
 function createApp({
   config,
@@ -37,6 +38,10 @@ function createApp({
   if (sessionMiddleware) {
     app.use(sessionMiddleware);
   }
+
+  const access = createAccessPassword({ config, publicDir });
+  app.use(access.router);
+  app.use(access.protectPaths);
 
   if (pool && sessionMiddleware) {
     const requireAdminAuth = createRequireAdminAuth(pool);
@@ -81,17 +86,19 @@ function createApp({
   app.use('/:username', async (req, res, next) => {
     const username = req.params.username;
     // 排除特定路径
-    if (['admin', 'api', 'favicon.ico', 'oplogin', 'op'].includes(username)) {
+    if (['admin', 'api', 'access', 'favicon.ico', 'oplogin', 'op'].includes(username.toLowerCase())) {
       return next();
     }
     try {
       const user = await findAdminByIdentifier(pool, username);
       if (user && user.status === 'active') {
-        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-        res.set('Pragma', 'no-cache');
-        res.set('Expires', '0');
-        res.set('Surrogate-Control', 'no-store');
-        return res.sendFile(path.join(publicDir, 'user-page.html'));
+        return access.requireAccess(req, res, () => {
+          res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+          res.set('Pragma', 'no-cache');
+          res.set('Expires', '0');
+          res.set('Surrogate-Control', 'no-store');
+          return res.sendFile(path.join(publicDir, 'user-page.html'));
+        });
       }
     } catch (e) {
       console.error(e);

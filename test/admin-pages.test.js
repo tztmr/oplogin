@@ -4,13 +4,25 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const request = require('supertest');
+const session = require('express-session');
 
 const { createApp } = require('../app');
+const { createSessionMiddleware } = require('../lib/session');
 
-function createTestApp() {
-  return createApp({
+async function createTestAgent() {
+  const config = {
+    accessPassword: 'test-access-pass',
+    sessionSecret: 's'.repeat(32),
+    sessionCookieSecure: false,
+  };
+  const app = createApp({
+    config,
+    sessionMiddleware: createSessionMiddleware({ config, store: new session.MemoryStore() }),
     buildWakeUrlImpl: () => 'tencent1105602870://qzapp/mqzone/0?pasteboard=test',
   });
+  const agent = request.agent(app);
+  await agent.post('/api/access/login').send({ password: config.accessPassword }).expect(200);
+  return agent;
 }
 
 function loadAdminRecordsScript() {
@@ -274,7 +286,7 @@ function createDeferred() {
 }
 
 test('GET /admin/login serves the admin login shell', async () => {
-  const response = await request(createTestApp()).get('/admin/login');
+  const response = await (await createTestAgent()).get('/admin/login');
 
   assert.equal(response.status, 200);
   assert.match(response.text, /管理员登录/);
@@ -283,7 +295,7 @@ test('GET /admin/login serves the admin login shell', async () => {
 });
 
 test('GET /admin serves the record management shell', async () => {
-  const response = await request(createTestApp()).get('/admin');
+  const response = await (await createTestAgent()).get('/admin');
 
   assert.equal(response.status, 200);
   assert.match(response.text, /谷歌号/);
@@ -361,7 +373,7 @@ test('phone inventory navigation is available to operators and super admins and 
 });
 
 test('GET /admin serves sidebar navigation and independent management sections', async () => {
-  const response = await request(createTestApp()).get('/admin');
+  const response = await (await createTestAgent()).get('/admin');
 
   assert.equal(response.status, 200);
   assert.match(response.text, /id="adminSidebar"/);
@@ -382,7 +394,7 @@ test('GET /admin serves sidebar navigation and independent management sections',
 });
 
 test('GET /admin exposes complete short OP and application management controls', async () => {
-  const response = await request(createTestApp()).get('/admin');
+  const response = await (await createTestAgent()).get('/admin');
 
   assert.equal(response.status, 200);
   [
@@ -429,10 +441,10 @@ test('GET /admin exposes complete short OP and application management controls',
 });
 
 test('short OP and application scripts use independent pagination and required APIs', async () => {
-  const app = createTestApp();
+  const agent = await createTestAgent();
   const [shortOpsScript, applicationsScript] = await Promise.all([
-    request(app).get('/admin/short-ops.js'),
-    request(app).get('/admin/op-applications.js'),
+    agent.get('/admin/short-ops.js'),
+    agent.get('/admin/op-applications.js'),
   ]);
 
   assert.equal(shortOpsScript.status, 200);
@@ -478,7 +490,7 @@ test('management scripts create user-controlled cells with textContent', () => {
 });
 
 test('management table CSS fixes short OP widths and truncates long values', async () => {
-  const response = await request(createTestApp()).get('/admin/admin.css');
+  const response = await (await createTestAgent()).get('/admin/admin.css');
 
   assert.equal(response.status, 200);
   assert.match(response.text, /#shortOpTable\s*\{[^}]*table-layout:\s*fixed/s);
@@ -925,10 +937,10 @@ test('admin shell limits operator navigation and restores an authorized saved se
 });
 
 test('admin records UI truncates long OP fields in the table', async () => {
-  const app = createTestApp();
-  const shellResponse = await request(app).get('/admin');
-  const pageResponse = await request(app).get('/admin/records.js');
-  const styleResponse = await request(app).get('/admin/admin.css');
+  const agent = await createTestAgent();
+  const shellResponse = await agent.get('/admin');
+  const pageResponse = await agent.get('/admin/records.js');
+  const styleResponse = await agent.get('/admin/admin.css');
 
   assert.equal(shellResponse.status, 200);
   assert.equal(pageResponse.status, 200);
@@ -1061,8 +1073,8 @@ test('OP nickname backfill requires selected records', async () => {
 });
 
 test('admin record row actions expose separate Google and OP delete buttons', async () => {
-  const app = createTestApp();
-  const pageResponse = await request(app).get('/admin/records.js');
+  const agent = await createTestAgent();
+  const pageResponse = await agent.get('/admin/records.js');
 
   assert.equal(pageResponse.status, 200);
   assert.match(pageResponse.text, /删除谷歌号/);
@@ -1089,9 +1101,9 @@ test('admin record delete confirmation names the google account and OP value', (
 });
 
 test('admin common UI exposes custom feedback dialogs for export confirmation and toast', async () => {
-  const app = createTestApp();
-  const pageResponse = await request(app).get('/admin/records.js');
-  const commonResponse = await request(app).get('/admin/common.js');
+  const agent = await createTestAgent();
+  const pageResponse = await agent.get('/admin/records.js');
+  const commonResponse = await agent.get('/admin/common.js');
 
   assert.equal(pageResponse.status, 200);
   assert.equal(commonResponse.status, 200);
@@ -1114,7 +1126,7 @@ test('admin common UI exposes custom feedback dialogs for export confirmation an
 });
 
 test('GET /admin/users serves the super admin user management shell', async () => {
-  const response = await request(createTestApp()).get('/admin/users');
+  const response = await (await createTestAgent()).get('/admin/users');
 
   assert.equal(response.status, 200);
   assert.match(response.text, /账号管理/);
@@ -1132,7 +1144,7 @@ test('GET /admin/users serves the super admin user management shell', async () =
 });
 
 test('admin common UI exposes wifi qr preview helpers', async () => {
-  const response = await request(createTestApp()).get('/admin/common.js');
+  const response = await (await createTestAgent()).get('/admin/common.js');
 
   assert.equal(response.status, 200);
   assert.match(response.text, /function initializeWifiQrPreview\(/);
@@ -1141,7 +1153,7 @@ test('admin common UI exposes wifi qr preview helpers', async () => {
 });
 
 test('admin common UI exposes navigation to the current admin user page', async () => {
-  const response = await request(createTestApp()).get('/admin/common.js');
+  const response = await (await createTestAgent()).get('/admin/common.js');
 
   assert.equal(response.status, 200);
   assert.match(response.text, /function initializeOwnUserPageButton\(/);
@@ -1150,7 +1162,7 @@ test('admin common UI exposes navigation to the current admin user page', async 
 });
 
 test('admin common UI hides own user page button for admin login', async () => {
-  const response = await request(createTestApp()).get('/admin/common.js');
+  const response = await (await createTestAgent()).get('/admin/common.js');
 
   assert.equal(response.status, 200);
   assert.match(response.text, /const normalizedLogin = String\(user\.login \|\| ''\)\.trim\(\)\.toLowerCase\(\);/);
