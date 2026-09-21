@@ -298,10 +298,19 @@
           <button type="submit" class="btn-primary">查询</button>
           <button id="phoneInventoryResetButton" type="button" class="btn-cancel">重置</button>
         </form>
+        <div class="batch-selection-bar">
+          <span id="phoneInventorySelectionText" class="selection-count" aria-live="polite">已选 0 条</span>
+          <span class="selection-hint">勾选手机号后批量操作</span>
+          <div class="batch-selection-actions">
+            <button id="phoneInventoryBatchStatusButton" type="button" class="btn-cancel" disabled>批量更改手机号状态</button>
+            <button id="phoneInventoryBatchDeleteButton" type="button" class="btn-danger-quiet" disabled>批量删除手机号</button>
+          </div>
+        </div>
         <p id="phoneInventoryLoadStatus" role="status" aria-live="polite"></p>
         <div class="table-wrap">
           <table id="phoneInventoryTable" aria-label="手机号库存">
             <thead><tr>
+              <th><input id="selectAllPhoneInventoryCheckbox" type="checkbox" aria-label="全选当前页" /></th>
               <th>手机号</th><th>状态</th><th>提取情况</th><th>接码链接</th>
               <th>到期时间</th><th>机型</th><th>导入时间</th><th>更新时间</th>
             </tr></thead>
@@ -318,6 +327,25 @@
           <span id="phoneInventoryPageStatus"></span>
           <button id="phoneInventoryNextButton" type="button" disabled>下一页</button>
         </div>
+
+  <dialog id="phoneInventoryStatusDialog">
+    <form id="phoneInventoryStatusForm" class="stack-form">
+      <div class="dialog-heading">
+        <h3>批量更改手机号状态</h3>
+        <p class="dialog-subtitle">未绑定会回到可提取库存；已绑定会写入当前占用的数据记录；老号售后不再分配。</p>
+      </div>
+      <label for="phoneInventoryStatusSelect">目标状态</label>
+      <select id="phoneInventoryStatusSelect" required>
+        <option value="unbound">未绑定</option>
+        <option value="bound">已绑定</option>
+        <option value="after_sale">老号售后</option>
+      </select>
+      <menu class="dialog-menu">
+        <button type="button" id="phoneInventoryStatusCancelButton" class="btn-cancel">取消</button>
+        <button type="submit" class="btn-primary">确认更改</button>
+      </menu>
+    </form>
+  </dialog>
 
   <dialog id="phoneImportDialog">
     <form id="phoneImportForm" class="stack-form">

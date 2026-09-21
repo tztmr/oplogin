@@ -248,6 +248,8 @@ curl -X POST http://localhost:4399/api/submit \
 | `POST /api/admin/records/import-text` | 文本批量导入 |
 | `POST /api/admin/records/phone-inventory/import-text` | 独立手机号库存导入，归属当前登录账号 |
 | `GET /api/admin/records/phone-inventory` | 查询当前账号手机号库存，支持手机号搜索、状态筛选和分页 |
+| `POST /api/admin/records/phone-inventory/batch-delete` | 按 `ids` 批量删除当前账号手机号库存；已绑定号码会同步清空对应数据记录中的手机号字段 |
+| `POST /api/admin/records/phone-inventory/batch-status` | 按 `ids` 将当前账号库存改为 `unbound`/`bound`/`after_sale`；未绑定会释放占用，已绑定会写入对应卡槽记录 |
 | `GET /api/admin/records/export.csv` | CSV 导出 |
 | `POST /api/admin/records/export.csv` | 按条件导出 CSV |
 
@@ -259,7 +261,7 @@ curl -X POST http://localhost:4399/api/submit \
 
 手机号导入弹窗可选择有效期：30、60、90、120 或 150 天，默认 30 天，机型默认为“12mini”。号码进入当前账号的独立库存，确认绑定后才写入对应的数据管理记录。同一账号内重复导入未绑定号码会更新接码链接和到期时间；已绑定、老号售后号码保留历史并跳过。
 
-“手机号管理”下方显示库存列表，包括号码、三种状态、提取情况、接码链接、到期时间、机型及导入/更新时间。可按手机号搜索、按状态筛选，每页显示 20/50/100 条。导入成功后关闭弹窗、清除筛选并自动刷新第一页；重新进入分页或点击“刷新列表”可同步用户中心的提取和绑定结果。查询与导入一样按当前账号隔离，超级管理员也只查看自己的手机号库存。
+“手机号管理”下方显示库存列表，包括号码、三种状态、提取情况、接码链接、到期时间、机型及导入/更新时间。可按手机号搜索、按状态筛选，每页显示 20/50/100 条。勾选后可批量删除库存，或批量改为未绑定、已绑定、老号售后。导入成功后关闭弹窗、清除筛选并自动刷新第一页；重新进入分页或点击“刷新列表”可同步用户中心的提取和绑定结果。查询、导入与批量操作一样按当前账号隔离，超级管理员也只处理自己的手机号库存。
 
 调用 `POST /api/admin/records/phone-inventory/import-text` 时，在 `rowsText` 之外可传入 `phoneDurationDays`（上述天数之一）；省略时使用 30 天。原 `import-text` 接口只接收谷歌号、OP 或综合数据，不再接收两段式手机号文本。
 

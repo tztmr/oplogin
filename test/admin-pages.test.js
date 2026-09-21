@@ -296,6 +296,11 @@ test('GET /admin serves the record management shell', async () => {
   assert.match(response.text, /id="phoneImportDurationDays"/);
   assert.match(response.text, /<option value="30" selected>30 天<\/option>/);
   assert.match(response.text, /<option value="150">150 天<\/option>/);
+  assert.match(response.text, /id="phoneInventoryBatchDeleteButton"/);
+  assert.match(response.text, /id="phoneInventoryBatchStatusButton"/);
+  assert.match(response.text, /id="selectAllPhoneInventoryCheckbox"/);
+  assert.match(response.text, /id="phoneInventoryStatusDialog"/);
+  assert.match(response.text, /id="phoneInventoryStatusSelect"/);
   assert.match(response.text, /<th>接码链接<\/th>/);
   assert.match(response.text, /<th>手机状态<\/th>/);
   assert.match(response.text, /<th>机型<\/th>/);

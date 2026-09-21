@@ -2,7 +2,7 @@
   const tables = new Map();
   const definitions = {
     recordTable: ['select', ...window.AdminRecordColumns.map((column) => column.key), 'actions'],
-    phoneInventoryTable: ['phoneNumber', 'status', 'extraction', 'phoneSmsUrl', 'phoneExpireAt', 'phoneModel', 'createdAt', 'updatedAt'],
+    phoneInventoryTable: ['select', 'phoneNumber', 'status', 'extraction', 'phoneSmsUrl', 'phoneExpireAt', 'phoneModel', 'createdAt', 'updatedAt'],
     shortOpTable: ['code', 'shortLink', 'appName', 'appId', 'opValue', 'opExpireAt', 'status', 'owner', 'remark', 'actions'],
     opApplicationTable: ['name', 'appId', 'isDefault', 'status', 'createdAt', 'updatedAt', 'actions'],
     userTable: ['login', 'email', 'role', 'status', 'lastLoginAt', 'actions'],

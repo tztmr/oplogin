@@ -15,7 +15,7 @@ const {
   exportManagedRecordsCsv,
   importManagedRecordText,
 } = require('../lib/managed-records');
-const { importPhoneInventoryText, listPhoneInventory } = require('../lib/phone-inventory');
+const { deletePhoneInventory, importPhoneInventoryText, listPhoneInventory, updatePhoneInventoryStatus } = require('../lib/phone-inventory');
 const { lookupOpNicknames } = require('../lib/op-nickname');
 
 function createAdminRecordsRouter({
@@ -79,6 +79,29 @@ function createAdminRecordsRouter({
         { durationDays: req.body.phoneDurationDays },
       );
       return res.status(201).json(result);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/phone-inventory/batch-delete', async (req, res, next) => {
+    try {
+      const deletedCount = await deletePhoneInventory(pool, req.body.ids, req.adminUser);
+      return res.status(200).json({ deletedCount });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/phone-inventory/batch-status', async (req, res, next) => {
+    try {
+      const updatedCount = await updatePhoneInventoryStatus(
+        pool,
+        req.body.ids,
+        req.body.status,
+        req.adminUser,
+      );
+      return res.status(200).json({ updatedCount });
     } catch (error) {
       return next(error);
     }

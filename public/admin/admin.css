@@ -410,9 +410,14 @@ table {
 
 #phoneInventoryTable th:first-child,
 #phoneInventoryTable td:first-child {
-  width: auto;
-  text-align: left;
+  width: 44px;
+  text-align: center;
   white-space: nowrap;
+}
+
+#phoneInventorySection .batch-selection-bar {
+  border-top: 1px solid var(--border-color);
+  border-radius: 10px;
 }
 
 #phoneInventoryTable td[data-column-key="phoneSmsUrl"] a {
