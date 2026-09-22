@@ -691,7 +691,7 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
                 </svg>
                 <h3>暂无库存</h3>
-                <p>当前没有可用的谷歌号数据，请联系管理员新增库存。</p>
+                <p>当前没有符合队列条件的数据，请联系运营检查队列设置或新增库存。</p>
             </div>
         </div>
     </div>
@@ -1067,7 +1067,7 @@
             phoneModelSelect.disabled = busy || !isReserved || slot.status !== 'available';
             phoneModelSelect.value = slot.record.phoneModel || '12mini';
             if (!preserveDraft) {
-                document.getElementById('uid').value = '';
+                document.getElementById('uid').value = slot.record.uidValue || '';
                 lastAutoFillClipboardText = '';
                 restoreRemarkDraft();
             }

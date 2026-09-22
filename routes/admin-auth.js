@@ -1,3 +1,4 @@
+const { saveOwnQueueSettings } = require('../lib/public-queue-settings');
 const express = require('express');
 const {
   changeOwnAdminPassword,
@@ -50,6 +51,15 @@ function createAdminAuthRouter({ pool, requireAdminAuth, config }) {
         user: req.adminUser,
         accessPassword,
       });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.put('/queue-settings', requireAdminAuth, async (req, res, next) => {
+    try {
+      const queueSettings = await saveOwnQueueSettings(pool, req.adminUser.id, req.body);
+      return res.status(200).json({ queueSettings });
     } catch (error) {
       return next(error);
     }

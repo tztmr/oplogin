@@ -237,7 +237,7 @@ function renderPublicBatchEligibility(data) {
   card.classList.toggle('has-warning', stats.blockedTotalCount > 0);
   summary.textContent = `可进入公开批次 ${stats.eligibleCount} 条，受阻 ${stats.blockedTotalCount} 条`;
   details.textContent =
-    `缺谷歌号 ${stats.missingGoogleAccountCount} 条，缺谷歌密码 ${stats.missingGooglePasswordCount} 条，缺 OP ${stats.missingOpCount} 条，已有 UID ${stats.filledUidCount} 条。`;
+    `按各账号队列条件统计：缺谷歌号 ${stats.missingGoogleAccountCount} 条，缺谷歌密码 ${stats.missingGooglePasswordCount} 条，缺 OP ${stats.missingOpCount} 条，已有 UID ${stats.filledUidCount} 条。`;
 }
 
 async function loadRecords() {
@@ -965,9 +965,48 @@ window.openRecordActions = function openRecordActions(id) {
   dialog.showModal();
 };
 
+function initializeQueueSettings(user) {
+  const fields = [
+    ['requireGoogleAccount', 'queueRequireGoogleAccount', true],
+    ['requireGooglePassword', 'queueRequireGooglePassword', true],
+    ['requireOp', 'queueRequireOp', false],
+    ['requireEmptyUid', 'queueRequireEmptyUid', true],
+  ].map(([key, id, defaultValue]) => {
+    const checkbox = document.getElementById(id);
+    checkbox.checked = user.queueSettings?.[key] ?? defaultValue;
+    return { key, checkbox };
+  });
+  const button = document.getElementById('saveQueueSettingsButton');
+  document.getElementById('queueSettingsForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (button.disabled) return;
+    button.disabled = true;
+    fields.forEach(({ checkbox }) => { checkbox.disabled = true; });
+    try {
+      const data = await adminFetch('/api/admin/auth/queue-settings', {
+        method: 'PUT',
+        body: JSON.stringify(Object.fromEntries(fields.map(({ key, checkbox }) => [key, checkbox.checked]))),
+      });
+      fields.forEach(({ key, checkbox }) => { checkbox.checked = data.queueSettings[key]; });
+      showToast('队列设置已保存，新分配及补位时生效');
+      try {
+        await loadRecords();
+      } catch (error) {
+        showToast(`设置已保存，库存统计刷新失败：${error.message}`);
+      }
+    } catch (error) {
+      showToast(error.message || '队列设置保存失败');
+    } finally {
+      button.disabled = false;
+      fields.forEach(({ checkbox }) => { checkbox.disabled = false; });
+    }
+  });
+}
+
 window.addEventListener('DOMContentLoaded', async () => {
   let user = await requireAdminSession();
   if (!user) return;
+  initializeQueueSettings(user);
   initializeSelfPasswordChange();
   initializeOwnUserPageButton(user);
   initializeSelfWifiConfig(user, (updatedUser) => {

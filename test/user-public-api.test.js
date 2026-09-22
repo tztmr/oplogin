@@ -340,7 +340,7 @@ test('public user batch API preserves distribution order for microsecond timesta
   assert.equal(batchResponse.body.batch.slots[1].record.total, 2);
 });
 
-test('public user batch API only includes records with google account, password, op, and blank uid', async () => {
+test('public user batch API can require google account, password, op, and blank uid', async () => {
   const { agent, pool, config } = await createAdminTestContext();
   const operator = await createAdminUser(pool, {
     login: 'lz',
@@ -348,6 +348,8 @@ test('public user batch API only includes records with google account, password,
     password: 'change-me-now',
     role: 'operator',
   });
+
+  await pool.query('update admin_users set queue_require_op = true where id = $1', [operator.id]);
 
   const eligible = await insertManagedRecord(pool, config, operator.id, {
     googleAccount: 'eligible@gmail.com',
@@ -870,4 +872,150 @@ test('public user record API rejects duplicated uid values on submit', async () 
 
   assert.equal(submitResponse.status, 400);
   assert.deepEqual(submitResponse.body, { error: 'UID 已存在，请勿重复提交' });
+});
+
+
+test('operator OP condition controls own new batches, refill, advance, legacy records and stats', async () => {
+  const { agent, pool, config } = await createAdminTestContext();
+  const operator = await createAdminUser(pool, {
+    login: 'optional-op', email: 'optional-op@example.test', password: 'operator-pass', role: 'operator',
+  });
+  const other = await createAdminUser(pool, {
+    login: 'strict-op', email: 'strict-op@example.test', password: 'operator-pass', role: 'operator',
+  });
+  await pool.query('update admin_users set queue_require_op = true where id = $1', [other.id]);
+  const first = await insertManagedRecord(pool, config, operator.id, { opValue: '' });
+  await insertManagedRecord(pool, config, other.id, { opValue: '' });
+  await agent.post('/api/admin/auth/login').send({ identifier: operator.login, password: 'operator-pass' }).expect(200);
+  const initial = await agent.get('/api/public/user/optional-op/batch').expect(200);
+  assert.equal(initial.body.batch.slots[0].record.id, first.id);
+  const strict = await agent.get('/api/public/user/strict-op/batch').expect(200);
+  assert.ok(strict.body.batch.slots.every((slot) => !slot.record));
+  const legacy = await agent.get('/api/public/user/optional-op/record').expect(200);
+  assert.equal(legacy.body.record.id, first.id);
+  await agent.put('/api/admin/auth/queue-settings').send({ requireOp: true, ownerId: other.id }).expect(200);
+  assert.equal((await agent.get('/api/admin/auth/me').expect(200)).body.user.queueSettings.requireOp, true);
+  const second = await insertManagedRecord(pool, config, operator.id, { opValue: '' });
+  const kept = await agent.get('/api/public/user/optional-op/batch').expect(200);
+  assert.equal(kept.body.batch.id, initial.body.batch.id);
+  assert.equal(kept.body.batch.slots[0].record.id, first.id);
+  assert.equal(kept.body.batch.slots[1].record, null);
+  assert.equal((await agent.get('/api/public/user/optional-op/record').expect(200)).body.record, null);
+  let stats = (await agent.get('/api/admin/records').expect(200)).body.publicBatchEligibility;
+  assert.equal(stats.eligibleCount, 0);
+  assert.equal(stats.missingOpCount, 2);
+  await agent.put('/api/admin/auth/queue-settings').send({ requireOp: false, ownerId: other.id }).expect(200);
+  const refilled = await agent.get('/api/public/user/optional-op/batch').expect(200);
+  assert.equal(refilled.body.batch.slots[1].record.id, second.id);
+  const advanced = await agent.post('/api/public/user/optional-op/batch/advance').send({}).expect(200);
+  assert.deepEqual(advanced.body.batch.slots.slice(0, 2).map((slot) => slot.record.id), [first.id, second.id]);
+  stats = (await agent.get('/api/admin/records').expect(200)).body.publicBatchEligibility;
+  assert.equal(stats.eligibleCount, 2);
+  assert.equal(stats.missingOpCount, 0);
+  assert.equal((await pool.query('select queue_require_op from admin_users where id = $1', [other.id])).rows[0].queue_require_op, true);
+  await agent.put('/api/admin/auth/queue-settings').send({ requireOp: true }).expect(200);
+  const empty = await agent.post('/api/public/user/optional-op/batch/advance').send({}).expect(200);
+  assert.ok(empty.body.batch.slots.every((slot) => !slot.record));
+  await agent.put('/api/admin/auth/queue-settings').send({ requireOp: false }).expect(200);
+  const reopened = await agent.get('/api/public/user/optional-op/batch').expect(200);
+  assert.equal(reopened.body.batch.slots[0].record.id, first.id);
+  await agent.post('/api/admin/auth/logout').send({}).expect(204);
+  await agent.post('/api/admin/auth/login').send({ identifier: operator.login, password: 'operator-pass' }).expect(200);
+  assert.equal((await agent.get('/api/admin/auth/me').expect(200)).body.user.queueSettings.requireOp, false);
+});
+
+test('queue settings require authentication and a boolean value', async () => {
+  const { agent, config } = await createAdminTestContext();
+  await agent.put('/api/admin/auth/queue-settings').send({ requireOp: true }).expect(401);
+  await agent.post('/api/admin/auth/login').send({ identifier: config.initialSuperAdminLogin, password: config.initialSuperAdminPassword }).expect(200);
+  for (const requireOp of ['false', 0, null, {}, undefined]) {
+    await agent.put('/api/admin/auth/queue-settings').send({ requireOp }).expect(400);
+  }
+  assert.equal((await agent.get('/api/admin/auth/me').expect(200)).body.user.queueSettings.requireOp, false);
+});
+
+test('all four queue conditions combine independently across distribution, legacy lookup and statistics', async () => {
+  const { agent, pool, config } = await createAdminTestContext();
+  const operator = await createAdminUser(pool, {
+    login: 'all-conditions', email: 'all-conditions@example.test', password: 'operator-pass', role: 'operator',
+  });
+  const other = await createAdminUser(pool, {
+    login: 'other-conditions', email: 'other-conditions@example.test', password: 'operator-pass', role: 'operator',
+  });
+  const settingsKeys = ['requireGoogleAccount', 'requireGooglePassword', 'requireOp', 'requireEmptyUid'];
+  const variants = [{ googleAccount: '' }, { googlePassword: '' }, { opValue: '' }, { uidValue: 'existing-uid' }, {}];
+  const rows = [];
+  for (const variant of variants) rows.push(await insertManagedRecord(pool, config, operator.id, { opValue: 'has-op', ...variant }));
+  await insertManagedRecord(pool, config, other.id, { googleAccount: '', googlePassword: '', opValue: '', uidValue: 'other-existing-uid' });
+  await agent.post('/api/admin/auth/login').send({ identifier: operator.login, password: 'operator-pass' }).expect(200);
+  const defaults = { requireGoogleAccount: true, requireGooglePassword: true, requireOp: false, requireEmptyUid: true };
+  assert.deepEqual((await agent.get('/api/admin/auth/me').expect(200)).body.user.queueSettings, defaults);
+  for (let mask = 0; mask < 16; mask += 1) {
+    const settings = Object.fromEntries(settingsKeys.map((key, index) => [key, Boolean(mask & (1 << index))]));
+    const saved = await agent.put('/api/admin/auth/queue-settings').send({ ...settings, ownerId: other.id }).expect(200);
+    assert.deepEqual(saved.body.queueSettings, settings);
+    const expected = rows.filter((row, index) => index === 4 || !settings[settingsKeys[index]]);
+    const batch = (await agent.post('/api/public/user/all-conditions/batch/advance').send({}).expect(200)).body.batch;
+    assert.deepEqual(batch.slots.filter((slot) => slot.record).map((slot) => slot.record.id).sort(), expected.map((row) => row.id).sort(), `mask ${mask}`);
+    const stats = (await agent.get('/api/admin/records').expect(200)).body.publicBatchEligibility;
+    assert.deepEqual(stats, {
+      eligibleCount: expected.length,
+      missingGoogleAccountCount: Number(settings.requireGoogleAccount),
+      missingGooglePasswordCount: Number(settings.requireGooglePassword),
+      missingOpCount: Number(settings.requireOp),
+      filledUidCount: Number(settings.requireEmptyUid),
+      blockedTotalCount: 5 - expected.length,
+    });
+    const first = (await agent.get('/api/public/user/all-conditions/record').expect(200)).body.record;
+    assert.equal(first.id, expected[0].id);
+    const completed = batch.slots.find((slot) => slot.record?.uidValue === 'existing-uid');
+    if (!settings.requireEmptyUid) {
+      assert.equal(completed.status, 'done');
+      await agent.post(`/api/public/user/all-conditions/batch/slots/${completed.slot}/uid`).send({ uid: 'replacement-uid' }).expect(409);
+    } else {
+      assert.equal(completed, undefined);
+    }
+  }
+  // Updating one checkbox preserves the other stored settings.
+  const partial = await agent.put('/api/admin/auth/queue-settings').send({ requireEmptyUid: false }).expect(200);
+  assert.deepEqual(partial.body.queueSettings, { ...defaults, requireOp: true, requireEmptyUid: false });
+  // Saved choices are loaded from storage again after a fresh login.
+  await agent.post('/api/admin/auth/logout').send({}).expect(204);
+  await agent.post('/api/admin/auth/login').send({ identifier: operator.login, password: 'operator-pass' }).expect(200);
+  assert.deepEqual((await agent.get('/api/admin/auth/me').expect(200)).body.user.queueSettings, partial.body.queueSettings);
+  const otherRow = (await pool.query('select * from admin_users where id = $1', [other.id])).rows[0];
+  assert.deepEqual(require('../lib/public-queue-settings').serializeQueueSettings(otherRow), defaults);
+  for (const key of settingsKeys) {
+    await agent.put('/api/admin/auth/queue-settings').send({ [key]: 'false' }).expect(400);
+  }
+  // Super-admin statistics apply each record owner's settings, not the viewer's settings.
+  await agent.post('/api/admin/auth/logout').send({}).expect(204);
+  await agent.post('/api/admin/auth/login').send({ identifier: config.initialSuperAdminLogin, password: config.initialSuperAdminPassword }).expect(200);
+  const combined = (await agent.get('/api/admin/records').expect(200)).body.publicBatchEligibility;
+  assert.equal(combined.eligibleCount, 2);
+  assert.equal(combined.blockedTotalCount, 4);
+});
+
+test('relaxed queue conditions refill missing fields and keep a completed-only batch stable on refresh', async () => {
+  const { agent, pool, config } = await createAdminTestContext();
+  const operator = await createAdminUser(pool, {
+    login: 'relaxed-refill', email: 'relaxed-refill@example.test', password: 'operator-pass', role: 'operator',
+  });
+  const complete = await insertManagedRecord(pool, config, operator.id, { googleAccount: '', googlePassword: '', opValue: '', uidValue: 'completed-only' });
+  const empty = (await agent.get('/api/public/user/relaxed-refill/batch').expect(200)).body.batch;
+  assert.ok(empty.slots.every((slot) => !slot.record));
+  await agent.post('/api/admin/auth/login').send({ identifier: operator.login, password: 'operator-pass' }).expect(200);
+  await agent.put('/api/admin/auth/queue-settings').send({ requireGoogleAccount: false, requireGooglePassword: false, requireOp: false, requireEmptyUid: false }).expect(200);
+  const shown = (await agent.get('/api/public/user/relaxed-refill/batch').expect(200)).body.batch;
+  assert.equal(shown.slots[0].record.id, complete.id);
+  assert.equal(shown.slots[0].status, 'done');
+  const refresh = (await agent.get('/api/public/user/relaxed-refill/batch').expect(200)).body.batch;
+  assert.equal(refresh.id, shown.id);
+  const pending = await insertManagedRecord(pool, config, operator.id, { googleAccount: '', googlePassword: '', opValue: '' });
+  const next = (await agent.get('/api/public/user/relaxed-refill/batch').expect(200)).body.batch;
+  assert.ok(next.slots.some((slot) => slot.record?.id === pending.id));
+  const extra = await insertManagedRecord(pool, config, operator.id, { googleAccount: '', googlePassword: '', opValue: '' });
+  const filled = (await agent.get('/api/public/user/relaxed-refill/batch').expect(200)).body.batch;
+  assert.equal(filled.id, next.id);
+  assert.ok(filled.slots.some((slot) => slot.record?.id === extra.id));
 });

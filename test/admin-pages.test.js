@@ -1171,3 +1171,46 @@ test('admin common UI hides own user page button for admin login', async () => {
   assert.match(response.text, /openButton\.hidden = normalizedLogin === 'admin';/);
   assert.match(response.text, /if \(openButton\.hidden\) \{\s*return;\s*\}/);
 });
+
+test('operator queue form loads the saved choice, saves a boolean and recovers after errors', async () => {
+  const sandbox = loadAdminRecordsScript();
+  const elements = new Map();
+  const requests = [];
+  const messages = [];
+  let submit;
+  let fail = false;
+  let refreshes = 0;
+  sandbox.document = { getElementById(id) {
+    if (!elements.has(id)) elements.set(id, { checked: false, disabled: false, addEventListener(event, handler) { submit = handler; } });
+    return elements.get(id);
+  } };
+  sandbox.adminFetch = async (url, options) => {
+    requests.push({ url, method: options.method, body: JSON.parse(options.body) });
+    if (fail) throw new Error('保存失败测试');
+    return { queueSettings: requests.at(-1).body };
+  };
+  sandbox.showToast = (message) => messages.push(message);
+  sandbox.loadRecords = async () => { refreshes += 1; };
+  sandbox.initializeQueueSettings({ queueSettings: { requireGoogleAccount: false, requireGooglePassword: true, requireOp: true, requireEmptyUid: false } });
+  const checkbox = elements.get('queueRequireOp');
+  const button = elements.get('saveQueueSettingsButton');
+  assert.equal(checkbox.checked, true);
+  assert.equal(elements.get('queueRequireGoogleAccount').checked, false);
+  assert.equal(elements.get('queueRequireGooglePassword').checked, true);
+  assert.equal(elements.get('queueRequireEmptyUid').checked, false);
+  elements.get('queueRequireGooglePassword').checked = false;
+  checkbox.checked = false;
+  await submit({ preventDefault() {} });
+  assert.deepEqual(requests[0], { url: '/api/admin/auth/queue-settings', method: 'PUT', body: { requireGoogleAccount: false, requireGooglePassword: false, requireOp: false, requireEmptyUid: false } });
+  assert.equal(refreshes, 1);
+  assert.equal(button.disabled, false);
+  assert.equal(checkbox.disabled, false);
+  fail = true;
+  checkbox.checked = true;
+  await submit({ preventDefault() {} });
+  assert.equal(refreshes, 1);
+  assert.equal(button.disabled, false);
+  assert.equal(checkbox.disabled, false);
+  assert.equal(messages.at(-1), '保存失败测试');
+  for (const id of ['queueRequireGoogleAccount', 'queueRequireGooglePassword', 'queueRequireEmptyUid']) assert.equal(elements.get(id).disabled, false);
+});

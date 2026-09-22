@@ -16,6 +16,7 @@
 - 支持按用户名访问专属页面 `/:username`
 - 数据管理页面用表单展示共享密码，默认 `qq123456`，登录后可直接修改保存；用户数据中心把该密码放在手机号下方，可复制。打开页面不必再输入该密码；后台仍使用原有账号登录。
 - 用户专属页面支持批次分发、UID 占用检查、UID 回填
+- 数据管理页的“用户中心队列设置”提供四项独立勾选：必须有谷歌号、必须有谷歌密码、必须有 OP、UID 必须为空。默认勾选谷歌号、谷歌密码和 UID 为空，不勾选 OP；全部取消则不限制这四项。已有 UID 的记录展示为已保存，可查看，不重复覆盖 UID。设置按运营账号保存，新分配和补位按新条件取数，已分配槽位保留。
 - 服务启动时自动建表，并在首次启动时初始化默认超管
 - 提供 `PM2 + Nginx + HTTPS` 部署脚本
 
@@ -234,6 +235,7 @@ curl -X POST http://localhost:4399/api/submit \
 | `POST /api/admin/auth/login` | 登录 |
 | `GET /api/admin/auth/me` | 获取当前登录管理员 |
 | `POST /api/admin/auth/change-password` | 修改当前管理员密码 |
+| `PUT /api/admin/auth/queue-settings` | 修改当前管理员的用户中心队列条件（`requireGoogleAccount`、`requireGooglePassword`、`requireOp`、`requireEmptyUid` 布尔值；未传的项保留原设置） |
 | `POST /api/admin/auth/change-wifi` | 修改当前管理员的二维码配置 |
 | `POST /api/admin/auth/logout` | 退出登录 |
 

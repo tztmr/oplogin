@@ -1,3 +1,5 @@
+const { eligibleRecordSql } = require('../lib/public-queue-settings');
+const { buildGooglePasswordSearchHash } = require('../lib/google-password-crypto');
 const express = require('express');
 const { findAdminByIdentifier } = require('../lib/admin-users');
 const { decryptGooglePassword } = require('../lib/google-password-crypto');
@@ -216,7 +218,7 @@ function createUserPublicRouter({ pool, config }) {
       const jumpSlot = Number.isNaN(jumpSlotValue) ? null : jumpSlotValue;
       const user = await findActiveUser(username);
 
-      // 获取当前用户下，有谷歌号且未被提取过的记录（uid_value 为空）
+      // 旧版单条记录入口也遵循所属运营的队列条件。
       const countResult = await pool.query(
         `select count(*) from managed_records where owner_id = $1`,
         [user.id]
@@ -224,12 +226,12 @@ function createUserPublicRouter({ pool, config }) {
       const totalRecords = parseInt(countResult.rows[0].count, 10);
 
       const result = await pool.query(
-        `select * from managed_records 
-         where owner_id = $1 
-           and google_account != ''
-           and (uid_value = '' or uid_value is null)
-         order by created_at asc, id asc`,
-        [user.id],
+        `select m.* from managed_records m
+         join admin_users u on u.id = m.owner_id
+         where m.owner_id = $1
+           and ${eligibleRecordSql('$2')}
+         order by m.created_at asc, m.id asc`,
+        [user.id, buildGooglePasswordSearchHash('', config.googlePasswordEncryptionKey)],
       );
 
       if (result.rows.length === 0) {
@@ -267,6 +269,7 @@ function createUserPublicRouter({ pool, config }) {
           total: totalRecords,
           availableCount: result.rows.length,
           googleAccount: row.google_account,
+          uidValue: row.uid_value || '',
           googlePassword: decryptGooglePassword(
             row.google_password_encrypted,
             config.googlePasswordEncryptionKey,

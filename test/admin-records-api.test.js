@@ -928,6 +928,16 @@ test('record list returns public batch eligibility stats for incomplete inventor
 
   assert.equal(response.status, 200);
   assert.deepEqual(response.body.publicBatchEligibility, {
+    eligibleCount: 2,
+    missingGoogleAccountCount: 0,
+    missingGooglePasswordCount: 1,
+    missingOpCount: 0,
+    filledUidCount: 1,
+    blockedTotalCount: 2,
+  });
+  await agent.put('/api/admin/auth/queue-settings').send({ requireOp: true }).expect(200);
+  const strict = await agent.get('/api/admin/records').expect(200);
+  assert.deepEqual(strict.body.publicBatchEligibility, {
     eligibleCount: 1,
     missingGoogleAccountCount: 0,
     missingGooglePasswordCount: 1,
@@ -1246,7 +1256,7 @@ test('record list accepts pageSize=all and returns every matching row', async ()
       opLink: `https://example.com/all-${index}`,
       opExpireAt: '2026-12-31T00:00:00.000Z',
       remark: `row-${index}`,
-    });
+    }).expect(201);
   }
 
   const response = await agent.get('/api/admin/records').query({ pageSize: 'all' });

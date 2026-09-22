@@ -80,6 +80,18 @@
     <p id="batchDeleteProgressText" class="batch-action-progress-text">等待开始操作</p>
   </div>
 
+  <section class="public-batch-eligibility">
+    <strong>用户中心队列设置</strong>
+    <form id="queueSettingsForm" class="queue-settings-form">
+      <label><input id="queueRequireGoogleAccount" type="checkbox" checked /> 必须有谷歌号</label>
+      <label><input id="queueRequireGooglePassword" type="checkbox" checked /> 必须有谷歌密码</label>
+      <label><input id="queueRequireOp" type="checkbox" /> 必须有 OP</label>
+      <label><input id="queueRequireEmptyUid" type="checkbox" checked /> UID 必须为空</label>
+      <button id="saveQueueSettingsButton" type="submit" class="btn-primary">保存队列设置</button>
+    </form>
+    <p class="public-batch-eligibility-details">仅按勾选的条件筛选，全部取消则不限制这四项；取消“UID 必须为空”后，已有 UID 的记录也会显示为已保存。设置只影响自己的用户中心，新分配及补位时生效，已分配槽位保留。</p>
+  </section>
+
   <section id="publicBatchEligibilityCard" class="public-batch-eligibility" aria-live="polite">
     <div class="public-batch-eligibility-head">
       <strong>公开批次库存提示</strong>

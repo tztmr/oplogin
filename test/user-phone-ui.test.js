@@ -186,3 +186,27 @@ test('failed delayed refresh releases all controls without losing current drafts
   assert.equal(element('uid').value, 'draft');
   assert.equal(element('remark').value, 'remark');
 });
+
+
+test('record without OP still renders and allows phone extraction and bound UID saving', () => {
+  const { sandbox, element } = loadPage({ ...baseRecord, opValue: '' });
+  sandbox.renderSelectedSlot();
+  assert.equal(element('googleAccountText').textContent, baseRecord.googleAccount);
+  assert.equal(element('extractPhoneButton').hidden, false);
+  assert.equal(element('extractPhoneButton').disabled, false);
+  assert.equal(element('opLoginBtn').disabled, true);
+  const bound = loadPage({ ...baseRecord, opValue: '', phoneNumber: '13000000001', phoneStatus: '已绑定' });
+  bound.sandbox.renderSelectedSlot();
+  assert.equal(bound.element('submitUidBtn').disabled, false);
+});
+
+
+test('completed records admitted by queue settings display their saved UID and disable mutations', () => {
+  const { sandbox, element } = loadPage({ ...baseRecord, uidValue: 'saved-uid', googleAccount: '', googlePassword: '' });
+  sandbox.seedBatch.slots[0].status = 'done';
+  sandbox.renderSelectedSlot();
+  assert.equal(element('uid').value, 'saved-uid');
+  assert.match(element('slotStateText').textContent, /已保存/);
+  assert.equal(element('extractPhoneButton').disabled, true);
+  assert.equal(element('submitUidBtn').disabled, true);
+});
