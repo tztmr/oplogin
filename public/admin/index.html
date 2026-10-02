@@ -346,21 +346,23 @@
           <button id="phoneInventoryNextButton" type="button" disabled>下一页</button>
         </div>
 
-  <dialog id="phoneInventoryStatusDialog">
+  <dialog id="phoneInventoryStatusDialog" aria-labelledby="phoneInventoryStatusDialogTitle">
     <form id="phoneInventoryStatusForm" class="stack-form">
       <div class="dialog-heading">
-        <h3>批量更改手机号状态</h3>
-        <p class="dialog-subtitle">未绑定会回到可提取库存；已绑定会写入当前占用的数据记录；老号售后不再分配。</p>
+        <h3 id="phoneInventoryStatusDialogTitle">批量更改手机号状态</h3>
+        <p id="phoneInventoryStatusTarget" class="dialog-subtitle"></p>
+        <p class="dialog-subtitle">未绑定会回到可提取库存；已提取暂不入库，不再分配；已绑定会写入当前占用的数据记录；老号售后不再分配。</p>
       </div>
       <label for="phoneInventoryStatusSelect">目标状态</label>
       <select id="phoneInventoryStatusSelect" required>
         <option value="unbound">未绑定</option>
+        <option value="reserved">已提取</option>
         <option value="bound">已绑定</option>
         <option value="after_sale">老号售后</option>
       </select>
       <menu class="dialog-menu">
         <button type="button" id="phoneInventoryStatusCancelButton" class="btn-cancel">取消</button>
-        <button type="submit" class="btn-primary">确认更改</button>
+        <button type="submit" id="phoneInventoryStatusSubmitButton" class="btn-primary">确认更改</button>
       </menu>
     </form>
   </dialog>

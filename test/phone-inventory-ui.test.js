@@ -16,11 +16,15 @@ function loadUi(fetcher, extras = {}) {
     indeterminate: false,
     children: [],
     dataset: {},
+    attributes: {},
+    listeners: new Map(),
     appendChild(child) { this.children.push(child); },
     replaceChildren(...children) { this.children = children; },
-    addEventListener() {},
-    close() { this.closed = true; },
-    showModal() { this.opened = true; },
+    setAttribute(name, value) { this.attributes[name] = value; },
+    addEventListener(name, listener) { this.listeners.set(name, listener); },
+    dispatchEvent(event) { this.listeners.get(event.type)?.(event); },
+    close() { this.closed = true; this.opened = false; this.dispatchEvent({ type: 'close' }); },
+    showModal() { this.opened = true; this.closed = false; },
     querySelectorAll() { return []; },
   });
   const element = (id) => { if (!elements.has(id)) elements.set(id, make()); return elements.get(id); };
@@ -63,6 +67,97 @@ test('phone inventory renders real rows with three status labels and safe SMS li
   assert.equal(rows[0].children[4].children[0].href, 'https://example.test/sms');
   assert.equal(rows[3].children[4].children.length, 0);
   assert.equal(rows[3].children[1].textContent, '<img src=x onerror=alert(1)>');
+});
+
+test('phone inventory row status action updates only that phone and preserves other selections', async () => {
+  const response = data();
+  const first = response.items[0];
+  const second = { ...first, id: '22222222-2222-4222-8222-222222222222', phoneNumber: '13000000002', status: 'bound' };
+  response.items.push(second);
+  const requests = [];
+  const { sandbox, element } = loadUi(async (url, options = {}) => {
+    if (url.endsWith('/batch-status')) {
+      requests.push(JSON.parse(options.body));
+      second.status = 'reserved';
+      return { updatedCount: 1 };
+    }
+    return response;
+  });
+  await sandbox.loadPhoneInventory();
+  sandbox.togglePhoneInventorySelection(first.id, true);
+  const extractionCell = element('phoneInventoryTableBody').children[1].children[3];
+  const button = extractionCell.children.find((child) => child.textContent === '修改状态');
+  assert.ok(button, 'each extraction cell has a status action');
+  button.dispatchEvent({ type: 'click' });
+  assert.equal(element('phoneInventoryStatusDialog').opened, true);
+  assert.equal(element('phoneInventoryStatusDialogTitle').textContent, '修改手机号状态');
+  assert.match(element('phoneInventoryStatusTarget').textContent, /13000000002.*已入库/);
+  assert.equal(element('phoneInventoryStatusSelect').value, 'bound');
+  element('phoneInventoryStatusSelect').value = 'reserved';
+  await sandbox.submitPhoneInventoryStatusForm({ preventDefault() {} });
+  assert.deepEqual(requests, [{ ids: [second.id], status: 'reserved' }]);
+  assert.equal(element('phoneInventoryTableBody').children[1].children[3].textContent, '已提取');
+  assert.deepEqual(Array.from(sandbox.getSelectedPhoneInventoryIds()), [first.id]);
+  assert.equal(element('phoneInventoryTableBody').children[0].children[0].children[0].checked, true);
+});
+
+test('phone inventory status dialog keeps its target while saving and allows retry on failure', async () => {
+  const item = { ...data().items[0], status: 'reserved' };
+  const pending = [];
+  const requests = [];
+  const { sandbox, element } = loadUi(async (url, options = {}) => {
+    if (!url.endsWith('/batch-status')) return { ...data(), items: [item] };
+    requests.push(JSON.parse(options.body));
+    return new Promise((resolve, reject) => pending.push({ resolve, reject }));
+  });
+  sandbox.initializePhoneInventory();
+  await sandbox.loadPhoneInventory();
+  const button = element('phoneInventoryTableBody').children[0].children[3].children[0];
+  assert.ok(button, 'reserved phones have a status action');
+  button.dispatchEvent({ type: 'click' });
+  assert.equal(element('phoneInventoryStatusSelect').value, 'reserved');
+  assert.match(element('phoneInventoryStatusTarget').textContent, /已提取/);
+  element('phoneInventoryStatusSelect').value = 'unbound';
+  const saving = sandbox.submitPhoneInventoryStatusForm({ preventDefault() {} });
+  assert.equal(element('phoneInventoryStatusSubmitButton').disabled, true);
+  assert.equal(element('phoneInventoryStatusCancelButton').disabled, true);
+  await sandbox.submitPhoneInventoryStatusForm({ preventDefault() {} });
+  assert.equal(requests.length, 1);
+  const failed = assert.rejects(saving, /network test/);
+  pending[0].reject(new Error('network test'));
+  await failed;
+  assert.equal(element('phoneInventoryStatusDialog').opened, true);
+  assert.equal(element('phoneInventoryStatusSubmitButton').disabled, false);
+  const retry = sandbox.submitPhoneInventoryStatusForm({ preventDefault() {} });
+  pending[1].resolve({ updatedCount: 1 });
+  await retry;
+  assert.deepEqual(requests, [
+    { ids: [item.id], status: 'unbound' },
+    { ids: [item.id], status: 'unbound' },
+  ]);
+  assert.equal(element('phoneInventoryStatusDialog').closed, true);
+});
+
+test('phone inventory batch status targets the selection captured when the dialog opened', async () => {
+  const first = data().items[0];
+  const second = { ...first, id: '22222222-2222-4222-8222-222222222222', phoneNumber: '13000000002' };
+  const requests = [];
+  const { sandbox, element } = loadUi(async (url, options = {}) => {
+    if (url.endsWith('/batch-status')) {
+      requests.push(JSON.parse(options.body));
+      return { updatedCount: 1 };
+    }
+    return { ...data(), items: [first, second] };
+  });
+  await sandbox.loadPhoneInventory();
+  sandbox.togglePhoneInventorySelection(first.id, true);
+  sandbox.openPhoneInventoryStatusDialog();
+  sandbox.togglePhoneInventorySelection(first.id, false);
+  sandbox.togglePhoneInventorySelection(second.id, true);
+  element('phoneInventoryStatusSelect').value = 'after_sale';
+  await sandbox.submitPhoneInventoryStatusForm({ preventDefault() {} });
+  assert.deepEqual(requests, [{ ids: [first.id], status: 'after_sale' }]);
+  assert.deepEqual(Array.from(sandbox.getSelectedPhoneInventoryIds()), [second.id]);
 });
 
 test('phone inventory ignores stale responses and reports fetch failure without claiming an empty stock', async () => {
@@ -125,8 +220,8 @@ test('phone inventory batch delete and status actions follow the selected ids', 
   assert.deepEqual(JSON.parse(requests[1].options.body), { ids: [item.id] });
   assert.match(toasts[0], /已删除 1 个手机号/);
   sandbox.togglePhoneInventorySelection(item.id, true);
-  element('phoneInventoryStatusSelect').value = 'after_sale';
   sandbox.openPhoneInventoryStatusDialog();
+  element('phoneInventoryStatusSelect').value = 'after_sale';
   assert.equal(element('phoneInventoryStatusDialog').opened, true);
   await sandbox.submitPhoneInventoryStatusForm({ preventDefault() {} });
   const statusRequest = requests.find((request) => String(request.url).includes('/batch-status'));

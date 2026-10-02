@@ -26,6 +26,30 @@ async function phone(f, overrides = {}) {
 }
 const command = (f, action, body, slot = '1') => f.agent.post(`/api/public/user/phones/batch/slots/${slot}/phone/${action}`).send(body);
 
+test('admin extracted status holds a phone out of FIFO until it is reset to unbound', async () => {
+  const f = await fixture();
+  const held = await phone(f);
+  const next = await phone(f, { createdAt: '2024-01-02T00:00:00Z' });
+  await f.agent.post('/api/admin/auth/login').send({ identifier: 'phones', password: 'change-me-now' });
+  const endpoint = '/api/admin/records/phone-inventory/batch-status';
+  const reserved = await f.agent.post(endpoint).send({ ids: [held.id], status: 'reserved' });
+  assert.equal(reserved.status, 200);
+  assert.equal(reserved.body.updatedCount, 1);
+  const stored = (await f.pool.query('select * from phone_inventory where id = $1', [held.id])).rows[0];
+  assert.equal(stored.status, 'reserved');
+  assert.ok(stored.reserved_at);
+  assert.equal(stored.reserved_record_id, null);
+  const extracted = await command(f, 'extract', f.identity);
+  assert.equal(extracted.status, 200);
+  assert.equal(extracted.body.batch.slots[0].record.phoneInventoryId, next.id);
+  await command(f, 'status', { ...f.identity, phoneInventoryId: next.id, phoneStatus: '老号售后' });
+  const released = await f.agent.post(endpoint).send({ ids: [held.id], status: 'unbound' });
+  assert.equal(released.body.updatedCount, 1);
+  const extractedAgain = await command(f, 'extract', f.identity);
+  assert.equal(extractedAgain.status, 200);
+  assert.equal(extractedAgain.body.batch.slots[0].record.phoneInventoryId, held.id);
+});
+
 test('phone lifecycle exposes unnumbered slots and blocks both prebind UID routes', async () => {
   const f = await fixture();
   assert.equal(f.batch.slots[0].record.id, f.recordId);

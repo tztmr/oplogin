@@ -164,3 +164,70 @@ test('phone inventory batch endpoints require authentication', async () => {
     status: 'unbound',
   })).status, 401);
 });
+
+test('marking a bound phone as extracted retains its reservation and removes the bound projection', async () => {
+  const { agent, pool, config } = await createAdminTestContext();
+  await login(agent, config);
+  const [phone] = await importPhones(agent, ['16000000001']);
+  const record = await createManagedRecord(pool, config, {
+    googleAccount: 'extracted-phone@example.test',
+    googlePassword: 'test-password',
+    googleAssist: 'test-assist',
+    opValue: 'extracted-phone-op',
+  }, { id: phone.ownerId, role: 'super_admin' });
+  await pool.query(
+    `update phone_inventory set status = 'bound', reserved_record_id = $2,
+       reserved_at = '2026-01-01T00:00:00Z', bound_at = now(), after_sale_at = now()
+     where id = $1`,
+    [phone.id, record.id],
+  );
+  await pool.query(
+    "update managed_records set phone_number = $2, phone_status = '已绑定' where id = $1",
+    [record.id, phone.phoneNumber],
+  );
+  const response = await agent.post(`${endpoint}/batch-status`).send({ ids: [phone.id], status: 'reserved' });
+  assert.equal(response.status, 200);
+  assert.equal(response.body.updatedCount, 1);
+  const stored = (await pool.query('select * from phone_inventory where id = $1', [phone.id])).rows[0];
+  assert.equal(stored.status, 'reserved');
+  assert.equal(stored.reserved_record_id, record.id);
+  assert.equal(new Date(stored.reserved_at).toISOString(), '2026-01-01T00:00:00.000Z');
+  assert.equal(stored.bound_at, null);
+  assert.equal(stored.after_sale_at, null);
+  const projected = (await pool.query('select phone_number, phone_status from managed_records where id = $1', [record.id])).rows[0];
+  assert.equal(projected.phone_number, '');
+  assert.equal(projected.phone_status, '未绑定');
+  const repeated = await agent.post(`${endpoint}/batch-status`).send({ ids: [phone.id], status: 'reserved' });
+  assert.equal(repeated.body.updatedCount, 0);
+  const rebound = await agent.post(`${endpoint}/batch-status`).send({ ids: [phone.id], status: 'bound' });
+  assert.equal(rebound.body.updatedCount, 1);
+  assert.equal(
+    (await pool.query('select phone_number from managed_records where id = $1', [record.id])).rows[0].phone_number,
+    phone.phoneNumber,
+  );
+});
+
+test('marking an old phone as extracted rejects a record that already has another reservation', async () => {
+  const { agent, pool, config } = await createAdminTestContext();
+  await login(agent, config);
+  const [oldPhone, currentPhone] = await importPhones(agent, ['17000000001', '17000000002']);
+  const record = await createManagedRecord(pool, config, {
+    googleAccount: 'existing-reservation@example.test',
+    googlePassword: 'test-password',
+    googleAssist: 'test-assist',
+    opValue: 'existing-reservation-op',
+  }, { id: oldPhone.ownerId, role: 'super_admin' });
+  await pool.query(
+    "update phone_inventory set status = 'after_sale', reserved_record_id = $2 where id = $1",
+    [oldPhone.id, record.id],
+  );
+  await pool.query(
+    "update phone_inventory set status = 'reserved', reserved_record_id = $2, reserved_at = now() where id = $1",
+    [currentPhone.id, record.id],
+  );
+  const response = await agent.post(`${endpoint}/batch-status`).send({ ids: [oldPhone.id], status: 'reserved' });
+  assert.equal(response.status, 400);
+  assert.match(response.body.error, /已提取其他手机号/);
+  assert.equal((await pool.query('select status from phone_inventory where id = $1', [oldPhone.id])).rows[0].status, 'after_sale');
+  assert.equal((await pool.query('select status from phone_inventory where id = $1', [currentPhone.id])).rows[0].status, 'reserved');
+});

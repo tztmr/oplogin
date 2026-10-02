@@ -453,6 +453,16 @@ table {
   white-space: nowrap;
 }
 
+#phoneInventoryTable .phone-inventory-extraction-cell {
+  white-space: nowrap;
+}
+
+#phoneInventoryTable .phone-inventory-extraction-cell button {
+  margin-left: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
 th,
 td {
   padding: 16px;
