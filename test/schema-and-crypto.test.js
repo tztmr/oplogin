@@ -126,6 +126,50 @@ test('ensureDatabaseSchema creates the admin and record tables', async () => {
   assert.ok(settingsColumns.rows.some((row) => row.column_name === 'value'));
 });
 
+test('schema upgrades the legacy six-slot constraint to eighteen and defaults existing owners to two groups', async () => {
+  // pg-mem cannot account for skipped CREATE IF NOT EXISTS ASTs when testing upgrades.
+  const db = newDb({ noAstCoverageCheck: true });
+  const { Pool } = db.adapters.createPg();
+  const pool = new Pool();
+  await createLegacyPhoneSchema(pool);
+  await pool.query(`
+    create table public_user_batches (
+      id uuid primary key,
+      owner_id uuid not null references admin_users(id) on delete cascade,
+      status text not null check (status in ('open', 'released')),
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      released_at timestamptz null
+    );
+    create table public_user_batch_slots (
+      id uuid primary key,
+      batch_id uuid not null references public_user_batches(id) on delete cascade,
+      slot_number integer not null constraint public_user_batch_slots_slot_number_check check (slot_number between 1 and 6),
+      record_id uuid null references managed_records(id) on delete set null,
+      status text not null check (status in ('available', 'done', 'released', 'empty')),
+      completed_at timestamptz null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      unique (batch_id, slot_number)
+    );
+    insert into admin_users (id, login, email, password_hash, role, status)
+      values ('00000000-0000-4000-8000-000000000001', 'queue-owner', 'queue@example.test', 'hash', 'operator', 'active');
+    insert into public_user_batches (id, owner_id, status)
+      values ('00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000001', 'open');
+    insert into public_user_batch_slots (id, batch_id, slot_number, status)
+      values ('00000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-000000000002', 1, 'done');
+  `);
+  await ensureDatabaseSchema(pool);
+  assert.equal((await pool.query('select queue_group_count from admin_users')).rows[0].queue_group_count, 2);
+  await pool.query(`insert into public_user_batch_slots (id, batch_id, slot_number, status)
+    values ('00000000-0000-4000-8000-000000000004', '00000000-0000-4000-8000-000000000002', 18, 'empty')`);
+  assert.deepEqual((await pool.query('select slot_number, status from public_user_batch_slots order by slot_number')).rows,
+    [{ slot_number: 1, status: 'done' }, { slot_number: 18, status: 'empty' }]);
+  await assert.rejects(pool.query(`insert into public_user_batch_slots (id, batch_id, slot_number, status)
+    values ('00000000-0000-4000-8000-000000000005', '00000000-0000-4000-8000-000000000002', 19, 'empty')`), /check constraint/);
+  await assert.rejects(pool.query('update admin_users set queue_group_count = 7'), /check constraint/);
+});
+
 test('ensureDatabaseSchema creates short OP tables and seeds default Douyin app', async () => {
   const db = newDb();
   const { Pool } = db.adapters.createPg();

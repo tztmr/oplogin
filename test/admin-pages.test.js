@@ -1172,7 +1172,7 @@ test('admin common UI hides own user page button for admin login', async () => {
   assert.match(response.text, /if \(openButton\.hidden\) \{\s*return;\s*\}/);
 });
 
-test('operator queue form loads the saved choice, saves a boolean and recovers after errors', async () => {
+test('operator queue form loads and saves group count with boolean conditions and recovers after errors', async () => {
   const sandbox = loadAdminRecordsScript();
   const elements = new Map();
   const requests = [];
@@ -1181,7 +1181,7 @@ test('operator queue form loads the saved choice, saves a boolean and recovers a
   let fail = false;
   let refreshes = 0;
   sandbox.document = { getElementById(id) {
-    if (!elements.has(id)) elements.set(id, { checked: false, disabled: false, addEventListener(event, handler) { submit = handler; } });
+    if (!elements.has(id)) elements.set(id, { value: '', checked: false, disabled: false, addEventListener(event, handler) { submit = handler; } });
     return elements.get(id);
   } };
   sandbox.adminFetch = async (url, options) => {
@@ -1191,7 +1191,9 @@ test('operator queue form loads the saved choice, saves a boolean and recovers a
   };
   sandbox.showToast = (message) => messages.push(message);
   sandbox.loadRecords = async () => { refreshes += 1; };
-  sandbox.initializeQueueSettings({ queueSettings: { requireGoogleAccount: false, requireGooglePassword: true, requireOp: true, requireEmptyUid: false } });
+  sandbox.initializeQueueSettings({ queueSettings: { groupCount: 3, requireGoogleAccount: false, requireGooglePassword: true, requireOp: true, requireEmptyUid: false } });
+  const groupCount = elements.get('queueGroupCount');
+  assert.equal(groupCount?.value, '3');
   const checkbox = elements.get('queueRequireOp');
   const button = elements.get('saveQueueSettingsButton');
   assert.equal(checkbox.checked, true);
@@ -1200,8 +1202,11 @@ test('operator queue form loads the saved choice, saves a boolean and recovers a
   assert.equal(elements.get('queueRequireEmptyUid').checked, false);
   elements.get('queueRequireGooglePassword').checked = false;
   checkbox.checked = false;
+  groupCount.value = '6';
   await submit({ preventDefault() {} });
-  assert.deepEqual(requests[0], { url: '/api/admin/auth/queue-settings', method: 'PUT', body: { requireGoogleAccount: false, requireGooglePassword: false, requireOp: false, requireEmptyUid: false } });
+  assert.deepEqual(requests[0], { url: '/api/admin/auth/queue-settings', method: 'PUT', body: { groupCount: 6, requireGoogleAccount: false, requireGooglePassword: false, requireOp: false, requireEmptyUid: false } });
+  assert.equal(groupCount.value, '6');
+  assert.equal(groupCount.disabled, false);
   assert.equal(refreshes, 1);
   assert.equal(button.disabled, false);
   assert.equal(checkbox.disabled, false);
@@ -1212,5 +1217,7 @@ test('operator queue form loads the saved choice, saves a boolean and recovers a
   assert.equal(button.disabled, false);
   assert.equal(checkbox.disabled, false);
   assert.equal(messages.at(-1), '保存失败测试');
+  assert.equal(groupCount.disabled, false);
+  assert.equal(groupCount.value, '6');
   for (const id of ['queueRequireGoogleAccount', 'queueRequireGooglePassword', 'queueRequireEmptyUid']) assert.equal(elements.get(id).disabled, false);
 });

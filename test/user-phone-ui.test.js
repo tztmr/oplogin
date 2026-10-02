@@ -8,13 +8,19 @@ function loadPage(record) {
   const html = fs.readFileSync(path.join(__dirname, '../public/user-page.html'), 'utf8');
   const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
   const elements = new Map();
-  function element(id) {
-    if (!elements.has(id)) elements.set(id, {
-      value: '', textContent: '', disabled: false, hidden: false, style: {},
-      classList: { toggle() {}, add() {}, remove() {} },
+  function makeElement() {
+    const classes = new Set();
+    return {
+      value: '', textContent: '', disabled: false, hidden: false, style: {}, dataset: {}, children: [], listeners: {},
+      get childElementCount() { return this.children.length; },
+      replaceChildren(...children) { this.children = children; },
+      classList: { toggle(name, active) { if (active) classes.add(name); else classes.delete(name); }, add() {}, remove() {}, contains(name) { return classes.has(name); } },
       removeAttribute(name) { delete this[name]; },
-      addEventListener() {},
-    });
+      addEventListener(name, callback) { this.listeners[name] = callback; },
+    };
+  }
+  function element(id) {
+    if (!elements.has(id)) elements.set(id, makeElement());
     return elements.get(id);
   }
   const requests = [];
@@ -22,7 +28,7 @@ function loadPage(record) {
   const sandbox = {
     URL, URLSearchParams, console, setTimeout() {}, clearInterval() {},
     navigator: {}, localStorage: { getItem() { return ''; }, setItem() {} },
-    document: { getElementById: element, querySelectorAll() { return []; } },
+    document: { getElementById: element, createElement: makeElement, querySelectorAll() { return []; } },
     window: {
       addEventListener() {}, location: { pathname: '/tester', origin: 'http://localhost' },
       createWakeUrlCache() { return { prefetch: async () => '', get: () => '' }; },
@@ -209,4 +215,37 @@ test('completed records admitted by queue settings display their saved UID and d
   assert.match(element('slotStateText').textContent, /已保存/);
   assert.equal(element('extractPhoneButton').disabled, true);
   assert.equal(element('submitUidBtn').disabled, true);
+});
+
+test('user center renders two to six groups, supports slot 18 and disables every slot while refreshing', async () => {
+  for (const groupCount of [2, 3, 4, 5, 6]) {
+    const { sandbox, element } = loadPage({ ...baseRecord });
+    sandbox.seedBatch.groupCount = groupCount;
+    sandbox.seedBatch.slots = Array.from({ length: groupCount * 3 }, (_, index) => ({
+      slot: index + 1, status: 'available', record: { ...baseRecord, id: `record-${index + 1}` },
+    }));
+    sandbox.seedBatch.slots[1].status = 'done';
+    sandbox.seedBatch.slots[2] = { slot: 3, status: 'empty', record: null };
+    sandbox.applyBatch(sandbox.seedBatch);
+    const buttons = element('quickSlotButtons').children;
+    assert.equal(buttons.length, groupCount * 3);
+    assert.equal(buttons[1].className, 'quick-slot-button slot-done');
+    assert.equal(buttons[2].disabled, true);
+    const last = buttons.at(-1);
+    assert.equal(Number(last.dataset.slot), groupCount * 3);
+    last.listeners.click();
+    assert.equal(vm.runInContext('currentSlotNumber', sandbox), groupCount * 3);
+    assert.ok(last.classList.contains('is-active'));
+    assert.equal(element('googleAccountText').textContent, baseRecord.googleAccount);
+    const pending = delayedFetch(sandbox);
+    const refresh = sandbox.refreshBatch();
+    assert.ok(element('quickSlotButtons').children.every((button) => button.disabled));
+    pending[0].respond(sandbox.seedBatch);
+    await refresh;
+    assert.equal(element('quickSlotButtons').children.at(-1).disabled, false);
+    const smaller = { id: 'smaller', groupCount: 2, slots: sandbox.seedBatch.slots.slice(0, 6) };
+    sandbox.applyBatch(smaller);
+    assert.equal(element('quickSlotButtons').children.length, 6);
+    assert.equal(vm.runInContext('currentSlotNumber', sandbox), 1);
+  }
 });

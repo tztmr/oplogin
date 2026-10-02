@@ -948,12 +948,12 @@ test('all four queue conditions combine independently across distribution, legac
   for (const variant of variants) rows.push(await insertManagedRecord(pool, config, operator.id, { opValue: 'has-op', ...variant }));
   await insertManagedRecord(pool, config, other.id, { googleAccount: '', googlePassword: '', opValue: '', uidValue: 'other-existing-uid' });
   await agent.post('/api/admin/auth/login').send({ identifier: operator.login, password: 'operator-pass' }).expect(200);
-  const defaults = { requireGoogleAccount: true, requireGooglePassword: true, requireOp: false, requireEmptyUid: true };
+  const defaults = { groupCount: 2, requireGoogleAccount: true, requireGooglePassword: true, requireOp: false, requireEmptyUid: true };
   assert.deepEqual((await agent.get('/api/admin/auth/me').expect(200)).body.user.queueSettings, defaults);
   for (let mask = 0; mask < 16; mask += 1) {
     const settings = Object.fromEntries(settingsKeys.map((key, index) => [key, Boolean(mask & (1 << index))]));
     const saved = await agent.put('/api/admin/auth/queue-settings').send({ ...settings, ownerId: other.id }).expect(200);
-    assert.deepEqual(saved.body.queueSettings, settings);
+    assert.deepEqual(saved.body.queueSettings, { groupCount: 2, ...settings });
     const expected = rows.filter((row, index) => index === 4 || !settings[settingsKeys[index]]);
     const batch = (await agent.post('/api/public/user/all-conditions/batch/advance').send({}).expect(200)).body.batch;
     assert.deepEqual(batch.slots.filter((slot) => slot.record).map((slot) => slot.record.id).sort(), expected.map((row) => row.id).sort(), `mask ${mask}`);
@@ -1018,4 +1018,146 @@ test('relaxed queue conditions refill missing fields and keep a completed-only b
   const filled = (await agent.get('/api/public/user/relaxed-refill/batch').expect(200)).body.batch;
   assert.equal(filled.id, next.id);
   assert.ok(filled.slots.some((slot) => slot.record?.id === extra.id));
+});
+
+test('queue group count defaults to two, persists per operator and changes capacity only on a new batch', async () => {
+  const { agent, pool, config } = await createAdminTestContext();
+  const operator = await createAdminUser(pool, {
+    login: 'queue-capacity', email: 'queue-capacity@example.test', password: 'operator-pass', role: 'operator',
+  });
+  const other = await createAdminUser(pool, {
+    login: 'queue-other', email: 'queue-other@example.test', password: 'operator-pass', role: 'operator',
+  });
+  assert.equal(operator.queueSettings.groupCount, 2);
+  const rows = [];
+  for (let index = 0; index < 19; index += 1) {
+    rows.push(await insertManagedRecord(pool, config, operator.id, {
+      phoneNumber: `1300000${String(index).padStart(4, '0')}`, phoneStatus: '已绑定',
+    }));
+  }
+  await agent.put('/api/admin/auth/queue-settings').send({ groupCount: 6 }).expect(401);
+  await agent.post('/api/admin/auth/login').send({ identifier: operator.login, password: 'operator-pass' }).expect(200);
+  const first = (await agent.get('/api/public/user/queue-capacity/batch').expect(200)).body.batch;
+  assert.equal(first.slots.length, 6);
+  await agent.post('/api/public/user/queue-capacity/batch/slots/1/uid').send({ uid: 'capacity-done' }).expect(200);
+  for (const groupCount of [1, 7, 2.5, '6', null, true, {}, [], 0]) {
+    await agent.put('/api/admin/auth/queue-settings').send({ groupCount, requireOp: true }).expect(400);
+  }
+  const unchanged = (await agent.get('/api/admin/auth/me').expect(200)).body.user.queueSettings;
+  assert.equal(unchanged.groupCount, 2);
+  assert.equal(unchanged.requireOp, false);
+  const saved = await agent.put('/api/admin/auth/queue-settings').send({ groupCount: 6, ownerId: other.id }).expect(200);
+  assert.equal(saved.body.queueSettings.groupCount, 6);
+  assert.equal(saved.body.queueSettings.requireGoogleAccount, true);
+  const kept = (await agent.get('/api/public/user/queue-capacity/batch').expect(200)).body.batch;
+  assert.equal(kept.id, first.id);
+  assert.equal(kept.slots.length, 6);
+  assert.equal(kept.slots[0].status, 'done');
+  assert.equal(kept.slots[0].record.uidValue, 'capacity-done');
+  for (const groupCount of [6, 5, 4, 3, 2]) {
+    await agent.put('/api/admin/auth/queue-settings').send({ groupCount }).expect(200);
+    const batch = (await agent.post('/api/public/user/queue-capacity/batch/advance').send({}).expect(200)).body.batch;
+    assert.equal(batch.slots.length, groupCount * 3);
+    assert.equal(batch.groupCount, groupCount);
+    assert.deepEqual(batch.slots.map((slot) => slot.slot), Array.from({ length: groupCount * 3 }, (_, index) => index + 1));
+    assert.ok(batch.slots.every((slot) => slot.record));
+    assert.equal(new Set(batch.slots.map((slot) => slot.record.id)).size, groupCount * 3);
+    assert.equal(batch.slots[0].record.id, rows[1].id);
+  }
+  await agent.put('/api/admin/auth/queue-settings').send({ groupCount: 6 }).expect(200);
+  await agent.put('/api/admin/auth/queue-settings').send({ requireGoogleAccount: false }).expect(200);
+  await agent.post('/api/admin/auth/logout').send({}).expect(204);
+  const relogin = await agent.post('/api/admin/auth/login').send({ identifier: operator.login, password: 'operator-pass' }).expect(200);
+  assert.equal(relogin.body.user.queueSettings.groupCount, 6);
+  const me = (await agent.get('/api/admin/auth/me').expect(200)).body.user.queueSettings;
+  assert.equal(me.groupCount, 6);
+  assert.equal(me.requireGoogleAccount, false);
+  assert.equal((await agent.get('/api/public/user/queue-other/batch').expect(200)).body.batch.slots.length, 6);
+  assert.equal((await pool.query('select queue_group_count from admin_users where id = $1', [other.id])).rows[0].queue_group_count, 2);
+});
+
+test('expanded queues refill genuine vacancies and automatically roll into the configured capacity', async () => {
+  const { agent, pool, config } = await createAdminTestContext();
+  const operator = await createAdminUser(pool, {
+    login: 'capacity-refill', email: 'capacity-refill@example.test', password: 'operator-pass', role: 'operator',
+  });
+  await agent.post('/api/admin/auth/login').send({ identifier: operator.login, password: 'operator-pass' }).expect(200);
+  await agent.put('/api/admin/auth/queue-settings').send({ groupCount: 6 }).expect(200);
+  const first = await insertManagedRecord(pool, config, operator.id, { phoneNumber: '13000000001', phoneStatus: '已绑定' });
+  const initial = (await agent.get('/api/public/user/capacity-refill/batch').expect(200)).body.batch;
+  assert.equal(initial.slots.length, 18);
+  assert.equal(initial.slots.filter((slot) => !slot.record).length, 17);
+  const extra = await insertManagedRecord(pool, config, operator.id);
+  const refill = (await agent.get('/api/public/user/capacity-refill/batch').expect(200)).body.batch;
+  assert.equal(refill.id, initial.id);
+  assert.equal(refill.slots[0].record.id, first.id);
+  assert.equal(refill.slots[1].record.id, extra.id);
+  await pool.query("update managed_records set uid_value = id::text where owner_id = $1", [operator.id]);
+  await agent.put('/api/admin/auth/queue-settings').send({ groupCount: 3 }).expect(200);
+  const next = await insertManagedRecord(pool, config, operator.id);
+  const rollover = (await agent.get('/api/public/user/capacity-refill/batch').expect(200)).body.batch;
+  assert.notEqual(rollover.id, initial.id);
+  assert.equal(rollover.slots.length, 9);
+  assert.equal(rollover.slots[0].record.id, next.id);
+});
+
+test('reducing queue capacity keeps unfinished records in the previous slot order', async () => {
+  const { agent, pool, config } = await createAdminTestContext();
+  const operator = await createAdminUser(pool, {
+    login: 'capacity-order', email: 'capacity-order@example.test', password: 'operator-pass', role: 'operator',
+  });
+  await agent.post('/api/admin/auth/login').send({ identifier: operator.login, password: 'operator-pass' }).expect(200);
+  await agent.put('/api/admin/auth/queue-settings').send({ groupCount: 6 }).expect(200);
+  const rows = [];
+  for (let index = 0; index < 18; index += 1) rows.push(await insertManagedRecord(pool, config, operator.id));
+  const batch = (await agent.get('/api/public/user/capacity-order/batch').expect(200)).body.batch;
+  const previousOrder = [...rows.slice(12), ...rows.slice(0, 12)];
+  for (let index = 0; index < previousOrder.length; index += 1) {
+    await pool.query('update public_user_batch_slots set record_id = $1 where batch_id = $2 and slot_number = $3',
+      [previousOrder[index].id, batch.id, index + 1]);
+  }
+  await agent.put('/api/admin/auth/queue-settings').send({ groupCount: 2 }).expect(200);
+  const next = (await agent.post('/api/public/user/capacity-order/batch/advance').send({}).expect(200)).body.batch;
+  assert.deepEqual(next.slots.map((slot) => slot.record.id), previousOrder.slice(0, 6).map((row) => row.id));
+});
+
+test('slots beyond six support phone extraction, model changes, status, binding and UID with identity checks', async () => {
+  const { agent, pool, config } = await createAdminTestContext();
+  // Avoid pg-mem's partial-index history planner bug; real PostgreSQL retains this index.
+  await pool.query('drop index idx_phone_inventory_active_record');
+  const operator = await createAdminUser(pool, {
+    login: 'expanded-phones', email: 'expanded-phones@example.test', password: 'operator-pass', role: 'operator',
+  });
+  await agent.post('/api/admin/auth/login').send({ identifier: operator.login, password: 'operator-pass' }).expect(200);
+  await agent.put('/api/admin/auth/queue-settings').send({ groupCount: 6 }).expect(200);
+  for (let index = 0; index < 18; index += 1) await insertManagedRecord(pool, config, operator.id);
+  const batch = (await agent.get('/api/public/user/expanded-phones/batch').expect(200)).body.batch;
+  assert.equal(batch.slots.length, 18);
+  for (const slotNumber of [7, 18]) {
+    const identity = { batchId: batch.id, recordId: batch.slots[slotNumber - 1].record.id };
+    const endpoint = `/api/public/user/expanded-phones/batch/slots/${slotNumber}`;
+    await pool.query("insert into phone_inventory (id, owner_id, phone_number) values ($1, $2, $3)", [crypto.randomUUID(), operator.id, `1300000${String(slotNumber).padStart(4, '0')}`]);
+    await agent.post(`${endpoint}/uid`).send({ ...identity, uid: `before-bind-${slotNumber}` }).expect(400);
+    await agent.post(`${endpoint}/phone/extract`).send({ ...identity, batchId: crypto.randomUUID() }).expect(409);
+    const extracted = (await agent.post(`${endpoint}/phone/extract`).send(identity).expect(200)).body.batch;
+    const phoneIdentity = { ...identity, phoneInventoryId: extracted.slots[slotNumber - 1].record.phoneInventoryId };
+    assert.ok(phoneIdentity.phoneInventoryId);
+    const updated = await agent.put(`${endpoint}/phone-model`).send({ ...phoneIdentity, phoneModel: '14' }).expect(200);
+    assert.equal(updated.body.batch.slots[slotNumber - 1].record.phoneModel, '14');
+    await agent.post(`${endpoint}/phone/status`).send({ ...phoneIdentity, recordId: crypto.randomUUID(), phoneStatus: '已绑定' }).expect(409);
+    const action = slotNumber === 18 ? 'bind' : 'status';
+    const bound = await agent.post(`${endpoint}/phone/${action}`).send({ ...phoneIdentity, phoneStatus: '已绑定' }).expect(200);
+    assert.equal(bound.body.batch.slots[slotNumber - 1].record.phoneStatus, '已绑定');
+    const saved = await agent.post(`${endpoint}/uid`).send({ ...identity, uid: `expanded-${slotNumber}` }).expect(200);
+    assert.equal(saved.body.batch.slots[slotNumber - 1].status, 'done');
+    assert.equal(saved.body.batch.slots[slotNumber - 1].record.uidValue, `expanded-${slotNumber}`);
+    await agent.post(`${endpoint}/uid`).send({ ...identity, uid: 'overwrite' }).expect(409);
+  }
+  for (const slotNumber of ['0', '19', '01', '1.5', '7x', '1e1']) {
+    for (const action of ['uid', 'phone/extract', 'phone/status', 'phone/bind', 'phone-model']) {
+      const req = action === 'phone-model' ? agent.put.bind(agent) : agent.post.bind(agent);
+      const response = await req(`/api/public/user/expanded-phones/batch/slots/${slotNumber}/${action}`).send({}).expect(400);
+      assert.match(response.body.error, /槽位/);
+    }
+  }
 });

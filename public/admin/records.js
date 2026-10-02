@@ -966,6 +966,8 @@ window.openRecordActions = function openRecordActions(id) {
 };
 
 function initializeQueueSettings(user) {
+  const groupCount = document.getElementById('queueGroupCount');
+  groupCount.value = String(user.queueSettings?.groupCount ?? 2);
   const fields = [
     ['requireGoogleAccount', 'queueRequireGoogleAccount', true],
     ['requireGooglePassword', 'queueRequireGooglePassword', true],
@@ -981,14 +983,19 @@ function initializeQueueSettings(user) {
     event.preventDefault();
     if (button.disabled) return;
     button.disabled = true;
+    groupCount.disabled = true;
     fields.forEach(({ checkbox }) => { checkbox.disabled = true; });
     try {
       const data = await adminFetch('/api/admin/auth/queue-settings', {
         method: 'PUT',
-        body: JSON.stringify(Object.fromEntries(fields.map(({ key, checkbox }) => [key, checkbox.checked]))),
+        body: JSON.stringify({
+          groupCount: Number(groupCount.value),
+          ...Object.fromEntries(fields.map(({ key, checkbox }) => [key, checkbox.checked])),
+        }),
       });
+      groupCount.value = String(data.queueSettings.groupCount);
       fields.forEach(({ key, checkbox }) => { checkbox.checked = data.queueSettings[key]; });
-      showToast('队列设置已保存，新分配及补位时生效');
+      showToast('队列设置已保存，组数在新建批次或换组时生效');
       try {
         await loadRecords();
       } catch (error) {
@@ -998,6 +1005,7 @@ function initializeQueueSettings(user) {
       showToast(error.message || '队列设置保存失败');
     } finally {
       button.disabled = false;
+      groupCount.disabled = false;
       fields.forEach(({ checkbox }) => { checkbox.disabled = false; });
     }
   });

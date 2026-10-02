@@ -979,7 +979,18 @@
         }
 
         function renderBatchSlots() {
-            const buttons = document.querySelectorAll('#quickSlotButtons .quick-slot-button');
+            const container = document.getElementById('quickSlotButtons');
+            const slots = currentBatch?.slots || [];
+            if (container.childElementCount !== slots.length) {
+                container.replaceChildren(...slots.map((slot) => {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.dataset.slot = String(slot.slot);
+                    button.addEventListener('click', () => switchSlot(slot.slot));
+                    return button;
+                }));
+            }
+            const buttons = Array.from(container.children);
             buttons.forEach((button) => {
                 const slotNumber = Number(button.dataset.slot);
                 const slot = getSlot(slotNumber);
@@ -1160,7 +1171,8 @@
             const doneCount = countSlotsByStatus('done');
             const availableCount = countSlotsByStatus('available');
             const emptyCount = countSlotsByStatus('empty');
-            document.getElementById('batchSummaryText').textContent = `本组已保存 ${doneCount} 条，待处理 ${availableCount} 条，空槽 ${emptyCount} 条`;
+            const groupCount = currentBatch.groupCount || currentBatch.slots.length / 3;
+            document.getElementById('batchSummaryText').textContent = `当前 ${groupCount} 组，每组 3 条；已保存 ${doneCount} 条，待处理 ${availableCount} 条，空槽 ${emptyCount} 条`;
         }
 
         function showEmptyState() {

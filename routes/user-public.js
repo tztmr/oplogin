@@ -1,4 +1,4 @@
-const { eligibleRecordSql } = require('../lib/public-queue-settings');
+const { eligibleRecordSql, MAX_SLOT_COUNT } = require('../lib/public-queue-settings');
 const { buildGooglePasswordSearchHash } = require('../lib/google-password-crypto');
 const express = require('express');
 const { findAdminByIdentifier } = require('../lib/admin-users');
@@ -17,6 +17,14 @@ const { DEFAULT_ACCESS_PASSWORD } = require('../lib/config');
 
 function createUserPublicRouter({ pool, config }) {
   const router = express.Router();
+  router.param('slot', (req, res, next, value) => {
+    const slotNumber = Number(value);
+    if (!/^[1-9]\d*$/.test(value) || !Number.isInteger(slotNumber) || slotNumber > MAX_SLOT_COUNT) {
+      return res.status(400).json({ error: `槽位必须在 1 到 ${MAX_SLOT_COUNT} 之间` });
+    }
+    req.batchSlotNumber = slotNumber;
+    return next();
+  });
   const sharedPassword = () => (config && config.accessPassword) || DEFAULT_ACCESS_PASSWORD;
   const withSharedPassword = (payload) => ({ ...payload, accessPassword: sharedPassword() });
 
@@ -83,10 +91,7 @@ function createUserPublicRouter({ pool, config }) {
   router.post('/:username/batch/slots/:slot/uid', async (req, res, next) => {
     try {
       const user = await findActiveUser(req.params.username);
-      const slotNumber = (/^[1-6]$/.test(req.params.slot) ? Number(req.params.slot) : NaN);
-      if (!Number.isInteger(slotNumber) || slotNumber < 1 || slotNumber > 6) {
-        return res.status(400).json({ error: '槽位必须在 1 到 6 之间' });
-      }
+      const slotNumber = req.batchSlotNumber;
 
       const batch = await submitBatchSlotUid(pool, config, user, slotNumber, req.body || {});
       return res.status(200).json(withSharedPassword({
@@ -103,9 +108,8 @@ function createUserPublicRouter({ pool, config }) {
     router.post(`/:username/batch/slots/:slot/phone/${action}`, async (req, res, next) => {
       try {
         const user = await findActiveUser(req.params.username);
-        if (!/^[1-6]$/.test(req.params.slot)) return res.status(400).json({ error: '槽位必须在 1 到 6 之间' });
         const payload = req.body || {};
-        const slotNumber = Number(req.params.slot);
+        const slotNumber = req.batchSlotNumber;
         const batch = action === 'extract'
           ? await extractBatchSlotPhone(pool, config, user, slotNumber, payload)
           : await setBatchSlotPhoneStatus(pool, config, user, slotNumber, payload.phoneStatus, payload);
@@ -119,10 +123,7 @@ function createUserPublicRouter({ pool, config }) {
   router.post('/:username/batch/slots/:slot/phone/bind', async (req, res, next) => {
     try {
       const user = await findActiveUser(req.params.username);
-      const slotNumber = (/^[1-6]$/.test(req.params.slot) ? Number(req.params.slot) : NaN);
-      if (!Number.isInteger(slotNumber) || slotNumber < 1 || slotNumber > 6) {
-        return res.status(400).json({ error: '槽位必须在 1 到 6 之间' });
-      }
+      const slotNumber = req.batchSlotNumber;
 
       const batch = await markBatchSlotPhoneBound(
         pool,
@@ -145,10 +146,7 @@ function createUserPublicRouter({ pool, config }) {
   router.put('/:username/batch/slots/:slot/phone-model', async (req, res, next) => {
     try {
       const user = await findActiveUser(req.params.username);
-      const slotNumber = (/^[1-6]$/.test(req.params.slot) ? Number(req.params.slot) : NaN);
-      if (!Number.isInteger(slotNumber) || slotNumber < 1 || slotNumber > 6) {
-        return res.status(400).json({ error: '槽位必须在 1 到 6 之间' });
-      }
+      const slotNumber = req.batchSlotNumber;
 
       const batch = await updateBatchSlotPhoneModel(
         pool,
