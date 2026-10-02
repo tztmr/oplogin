@@ -4,10 +4,14 @@ let phoneInventoryGeneration = 0;
 let phoneInventoryInitialized = false;
 let phoneInventoryStatusTargetIds = [];
 let phoneInventoryStatusSubmitting = false;
+let phoneInventoryStatusMode = 'status';
 const selectedPhoneInventoryIds = new Set();
 let currentPagePhoneInventoryIds = [];
 const phoneInventoryExtractionLabels = {
   available: '待提取', reserved: '已提取', bound: '已入库', after_sale: '不再分配',
+};
+const phoneInventoryStatusLabels = {
+  unbound: '未绑定', reserved: '已提取', bound: '已绑定', after_sale: '老号售后',
 };
 
 function phoneInventoryCell(value) {
@@ -35,6 +39,13 @@ function syncPhoneInventoryBatchState() {
     statusButton.textContent = selectedCount > 0
       ? `批量更改手机号状态 (${selectedCount})`
       : '批量更改手机号状态';
+  }
+  const extractionButton = document.getElementById('phoneInventoryBatchExtractionButton');
+  if (extractionButton) {
+    extractionButton.disabled = selectedCount === 0;
+    extractionButton.textContent = selectedCount > 0
+      ? `批量修改提取情况 (${selectedCount})`
+      : '批量修改提取情况';
   }
   const selectAll = document.getElementById('selectAllPhoneInventoryCheckbox');
   if (!selectAll) return;
@@ -185,21 +196,36 @@ async function deleteSelectedPhoneInventory() {
   showToast('未删除任何手机号，请重新勾选后再试');
 }
 
-function openPhoneInventoryStatusDialog(item) {
+function openPhoneInventoryStatusDialog(item, mode = 'status') {
   if (phoneInventoryStatusSubmitting) return;
+  const extractionMode = mode === 'extraction';
   const ids = item ? [item.id] : getSelectedPhoneInventoryIds();
   if (!ids.length) {
-    showToast('请先勾选要更改状态的手机号');
+    showToast(extractionMode ? '请先勾选要修改提取情况的手机号' : '请先勾选要更改状态的手机号');
     return;
   }
   phoneInventoryStatusTargetIds = ids;
-  document.getElementById('phoneInventoryStatusDialogTitle').textContent = item
-    ? '修改手机号状态'
-    : '批量更改手机号状态';
+  phoneInventoryStatusMode = extractionMode ? 'extraction' : 'status';
+  document.getElementById('phoneInventoryStatusDialogTitle').textContent = extractionMode
+    ? '批量修改提取情况'
+    : item ? '修改手机号状态' : '批量更改手机号状态';
   document.getElementById('phoneInventoryStatusTarget').textContent = item
     ? `${item.phoneNumber} · 当前提取情况：${phoneInventoryExtractionLabels[item.status] || '未知'}`
     : `已选 ${ids.length} 个手机号`;
-  document.getElementById('phoneInventoryStatusSelect').value = item && ['reserved', 'bound', 'after_sale'].includes(item.status)
+  document.getElementById('phoneInventoryStatusSelectLabel').textContent = extractionMode ? '目标提取情况' : '目标状态';
+  document.getElementById('phoneInventoryStatusDescription').textContent = extractionMode
+    ? '待提取会回到可提取库存；已提取暂不入库，不再分配；已入库会标记已绑定并写入当前占用的数据记录；不再分配会标记老号售后。'
+    : '未绑定会回到可提取库存；已提取暂不入库，不再分配；已绑定会写入当前占用的数据记录；老号售后不再分配。';
+  const select = document.getElementById('phoneInventoryStatusSelect');
+  select.replaceChildren(...Object.entries(phoneInventoryStatusLabels).map(([value, label]) => {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = extractionMode
+      ? phoneInventoryExtractionLabels[value === 'unbound' ? 'available' : value]
+      : label;
+    return option;
+  }));
+  select.value = item && ['reserved', 'bound', 'after_sale'].includes(item.status)
     ? item.status
     : 'unbound';
   const dialog = document.getElementById('phoneInventoryStatusDialog');
@@ -209,9 +235,10 @@ function openPhoneInventoryStatusDialog(item) {
 async function submitPhoneInventoryStatusForm(event) {
   event.preventDefault();
   if (phoneInventoryStatusSubmitting) return;
+  const extractionMode = phoneInventoryStatusMode === 'extraction';
   const ids = phoneInventoryStatusTargetIds.slice();
   if (!ids.length) {
-    showToast('请先勾选要更改状态的手机号');
+    showToast(extractionMode ? '请先勾选要修改提取情况的手机号' : '请先勾选要更改状态的手机号');
     return;
   }
   const select = document.getElementById('phoneInventoryStatusSelect');
@@ -235,10 +262,12 @@ async function submitPhoneInventoryStatusForm(event) {
       ids.forEach((id) => selectedPhoneInventoryIds.delete(id));
       syncPhoneInventoryBatchState();
       await loadPhoneInventory();
-      showToast(`已更改 ${data.updatedCount} 个手机号状态`);
+      showToast(extractionMode
+        ? `已修改 ${data.updatedCount} 个手机号提取情况`
+        : `已更改 ${data.updatedCount} 个手机号状态`);
       return;
     }
-    showToast('状态未发生变化，请刷新列表后查看');
+    showToast(extractionMode ? '提取情况未发生变化，请刷新列表后查看' : '状态未发生变化，请刷新列表后查看');
   } finally {
     phoneInventoryStatusSubmitting = false;
     submitButton.disabled = false;
@@ -276,8 +305,12 @@ function initializePhoneInventory() {
   document.getElementById('phoneInventoryBatchStatusButton').addEventListener('click', () => {
     openPhoneInventoryStatusDialog();
   });
+  document.getElementById('phoneInventoryBatchExtractionButton').addEventListener('click', () => {
+    openPhoneInventoryStatusDialog(null, 'extraction');
+  });
   document.getElementById('phoneInventoryStatusForm').addEventListener('submit', (event) => {
-    void submitPhoneInventoryStatusForm(event).catch((error) => showToast(error.message || '更改状态失败'));
+    void submitPhoneInventoryStatusForm(event).catch((error) => showToast(error.message
+      || (phoneInventoryStatusMode === 'extraction' ? '修改提取情况失败' : '更改状态失败')));
   });
   document.getElementById('phoneInventoryStatusCancelButton').addEventListener('click', () => {
     const dialog = document.getElementById('phoneInventoryStatusDialog');

@@ -321,6 +321,7 @@
           <span class="selection-hint">勾选手机号后批量操作</span>
           <div class="batch-selection-actions">
             <button id="phoneInventoryBatchStatusButton" type="button" class="btn-cancel" disabled>批量更改手机号状态</button>
+            <button id="phoneInventoryBatchExtractionButton" type="button" class="btn-cancel" disabled>批量修改提取情况</button>
             <button id="phoneInventoryBatchDeleteButton" type="button" class="btn-danger-quiet" disabled>批量删除手机号</button>
           </div>
         </div>
@@ -351,9 +352,9 @@
       <div class="dialog-heading">
         <h3 id="phoneInventoryStatusDialogTitle">批量更改手机号状态</h3>
         <p id="phoneInventoryStatusTarget" class="dialog-subtitle"></p>
-        <p class="dialog-subtitle">未绑定会回到可提取库存；已提取暂不入库，不再分配；已绑定会写入当前占用的数据记录；老号售后不再分配。</p>
+        <p id="phoneInventoryStatusDescription" class="dialog-subtitle">未绑定会回到可提取库存；已提取暂不入库，不再分配；已绑定会写入当前占用的数据记录；老号售后不再分配。</p>
       </div>
-      <label for="phoneInventoryStatusSelect">目标状态</label>
+      <label id="phoneInventoryStatusSelectLabel" for="phoneInventoryStatusSelect">目标状态</label>
       <select id="phoneInventoryStatusSelect" required>
         <option value="unbound">未绑定</option>
         <option value="reserved">已提取</option>

@@ -160,6 +160,74 @@ test('phone inventory batch status targets the selection captured when the dialo
   assert.deepEqual(Array.from(sandbox.getSelectedPhoneInventoryIds()), [second.id]);
 });
 
+for (const target of [
+  { label: '待提取', value: 'unbound', inventoryStatus: 'available' },
+  { label: '已提取', value: 'reserved', inventoryStatus: 'reserved' },
+  { label: '已入库', value: 'bound', inventoryStatus: 'bound' },
+  { label: '不再分配', value: 'after_sale', inventoryStatus: 'after_sale' },
+]) {
+  test(`batch extraction changes only captured phones to ${target.label}`, async () => {
+    const initialStatus = target.value === 'bound' ? 'after_sale' : 'bound';
+    const first = { ...data().items[0], status: initialStatus };
+    const second = { ...first, id: '22222222-2222-4222-8222-222222222222', phoneNumber: '13000000002' };
+    const third = { ...data().items[0], id: '33333333-3333-4333-8333-333333333333', phoneNumber: '13000000003' };
+    const response = { ...data(), total: 3, items: [first, second, third] };
+    const requests = [];
+    const { sandbox, element, toasts } = loadUi(async (url, options = {}) => {
+      if (url.endsWith('/batch-status')) {
+        requests.push(JSON.parse(options.body));
+        first.status = target.inventoryStatus;
+        second.status = target.inventoryStatus;
+        return { updatedCount: 2 };
+      }
+      return response;
+    });
+    sandbox.initializePhoneInventory();
+    await sandbox.loadPhoneInventory();
+    const button = element('phoneInventoryBatchExtractionButton');
+    assert.equal(button.disabled, true);
+    sandbox.togglePhoneInventorySelection(first.id, true);
+    sandbox.togglePhoneInventorySelection(second.id, true);
+    assert.equal(button.disabled, false);
+    assert.match(button.textContent, /批量修改提取情况 \(2\)/);
+    button.dispatchEvent({ type: 'click' });
+    assert.equal(element('phoneInventoryStatusDialog').opened, true);
+    assert.equal(element('phoneInventoryStatusDialogTitle').textContent, '批量修改提取情况');
+    assert.equal(element('phoneInventoryStatusSelectLabel').textContent, '目标提取情况');
+    const select = element('phoneInventoryStatusSelect');
+    const option = select.children.find((child) => child.textContent === target.label);
+    assert.ok(option, `the extraction option ${target.label} is available`);
+    select.value = option.value;
+    sandbox.togglePhoneInventorySelection(third.id, true);
+    await sandbox.submitPhoneInventoryStatusForm({ preventDefault() {} });
+    assert.deepEqual(requests, [{ ids: [first.id, second.id], status: target.value }]);
+    assert.deepEqual(
+      element('phoneInventoryTableBody').children.map((row) => row.children[3].textContent),
+      [target.label, target.label, '待提取'],
+    );
+    assert.deepEqual(Array.from(sandbox.getSelectedPhoneInventoryIds()), [third.id]);
+    assert.equal(element('phoneInventoryStatusDialog').closed, true);
+    assert.match(toasts[0], /已修改 2 个手机号提取情况/);
+  });
+}
+
+test('canceling batch extraction restores normal labels when the status dialog is opened again', async () => {
+  const { sandbox, element } = loadUi(async () => data());
+  sandbox.initializePhoneInventory();
+  await sandbox.loadPhoneInventory();
+  sandbox.togglePhoneInventorySelection(data().items[0].id, true);
+  element('phoneInventoryBatchExtractionButton').dispatchEvent({ type: 'click' });
+  assert.equal(element('phoneInventoryStatusDialogTitle').textContent, '批量修改提取情况');
+  element('phoneInventoryStatusCancelButton').dispatchEvent({ type: 'click' });
+  element('phoneInventoryBatchStatusButton').dispatchEvent({ type: 'click' });
+  assert.equal(element('phoneInventoryStatusDialogTitle').textContent, '批量更改手机号状态');
+  assert.equal(element('phoneInventoryStatusSelectLabel').textContent, '目标状态');
+  assert.deepEqual(
+    element('phoneInventoryStatusSelect').children.map((option) => option.textContent),
+    ['未绑定', '已提取', '已绑定', '老号售后'],
+  );
+});
+
 test('phone inventory ignores stale responses and reports fetch failure without claiming an empty stock', async () => {
   const pending = [];
   const { sandbox, element } = loadUi(() => new Promise((resolve, reject) => pending.push({ resolve, reject })));
