@@ -44,14 +44,14 @@
       <div>
         <p class="eyebrow">用户中心 / 手机号</p>
         <h1>本组批量接码</h1>
-        <p class="intro">只显示本轮新收到的验证码，保留原槽位序号。每秒自动查询，关闭本页即停止。</p>
+        <p class="intro">只显示本轮新收到的信息，保留原槽位序号。每秒自动查询，关闭本页即停止。</p>
       </div>
       <a id="phoneSmsReturnLink" class="back-link" href="/">返回用户中心</a>
     </header>
     <section class="polling-card" aria-label="接码状态">
       <p id="phoneSmsPollingStatus" role="status" aria-live="polite">正在加载本组手机号…</p>
       <p id="phoneSmsBatchText"></p>
-      <p class="note">首次来码即显示；下一轮没有新码或返回相同验证码时，消息自动消失。</p>
+      <p class="note">返回 0|0 表示未到码；其他内容按完整信息比较，下一轮没有新内容时自动消失。</p>
     </section>
     <section id="phoneSmsSlots" aria-label="各槽位接码结果"></section>
     <p id="phoneSmsEmptyState" class="sms-empty-state">等待新验证码…</p>
