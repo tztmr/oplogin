@@ -12,7 +12,9 @@ const slots = [
 ];
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
-function loadPage(fetcher) {
+function loadPage(fetcher, { now = Date.now() } = {}) {
+  let currentTime = now;
+  class ClockDate extends Date { static now() { return currentTime; } }
   const elements = new Map();
   const windowListeners = new Map();
   const intervals = new Map();
@@ -27,7 +29,7 @@ function loadPage(fetcher) {
     return elements.get(id);
   };
   const sandbox = {
-    URLSearchParams, AbortController, Date, console,
+    URLSearchParams, AbortController, Date: ClockDate, console,
     fetch: fetcher,
     setInterval(callback, delay) { intervals.set(1, { callback, delay }); return 1; },
     clearInterval(id) { intervals.delete(id); },
@@ -40,7 +42,7 @@ function loadPage(fetcher) {
   vm.createContext(sandbox);
   const script = path.join(__dirname, '../public/user-phone-sms.js');
   if (fs.existsSync(script)) vm.runInContext(fs.readFileSync(script, 'utf8'), sandbox);
-  return { sandbox, element, intervals, windowListeners };
+  return { sandbox, element, intervals, windowListeners, setNow(value) { currentTime = value; } };
 }
 
 function texts(node) {
@@ -127,7 +129,7 @@ test('SMS recognizes every nonempty response except the exact default marker and
   }
 });
 
-test('217api new codes appear in their original slots while default, repeated and empty responses stay hidden', async () => {
+test('217api messages remain visible across repeats, clear only on the default marker, and can return unchanged', async () => {
   const sms = (code) => `[抖音] ${code} is your verification code, valid for 5 minutes.\n`;
   const responses = [
     ['0|0\n', '0|0\n'],
@@ -137,6 +139,7 @@ test('217api new codes appear in their original slots while default, repeated an
     ['0|0\n', '0|0\n'],
     [sms('8642'), '0|0\n'],
   ];
+  const start = Date.UTC(2026, 0, 1);
   const ui = loadPage(async (url, options) => ({ ok: true, json: async () => {
     if (options.method === 'GET') return { batchId, slots };
     const [first, third] = responses.shift();
@@ -145,128 +148,128 @@ test('217api new codes appear in their original slots while default, repeated an
       { ...slots[1], status: 'skipped', message: '尚未提取手机号' },
       { ...slots[2], status: 'success', message: third },
     ] };
-  } }));
+  } }), { now: start });
   await ui.sandbox.initializePhoneSmsPage();
   const cards = () => ui.element('phoneSmsSlots').children;
-  const tick = async () => { ui.intervals.get(1).callback(); await flush(); };
+  const timeOf = (card) => card.children.find((node) => node.className === 'note').textContent;
+  const tick = async (elapsed) => { ui.setNow(start + elapsed); ui.intervals.get(1).callback(); await flush(); };
   assert.equal(cards().length, 0);
-  assert.doesNotMatch(ui.element('phoneSmsPollingStatus').textContent, /无法识别|读取失败/);
-  await tick();
+  await tick(1000);
   assert.deepEqual(cards().map((card) => Number(card.dataset.slot)), [1, 3]);
   assert.match(texts(cards()[0]), /2468/);
   assert.match(texts(cards()[1]), /1357/);
-  await tick();
-  assert.equal(cards().length, 0);
-  await tick();
+  const firstTime = timeOf(cards()[0]);
+  await tick(2000);
+  assert.deepEqual(cards().map((card) => Number(card.dataset.slot)), [1, 3], 'repeats retain both cards');
+  assert.equal(timeOf(cards()[0]), firstTime, 'repeats do not update the original new-message time');
+  await tick(3000);
   assert.deepEqual(cards().map((card) => Number(card.dataset.slot)), [1]);
   assert.match(texts(cards()[0]), /8642/);
-  await tick();
-  assert.equal(cards().length, 0);
-  assert.doesNotMatch(ui.element('phoneSmsPollingStatus').textContent, /无法识别|读取失败/);
-  await tick();
-  assert.equal(cards().length, 0, 'a repeated code stays hidden after the default response');
+  const changedTime = timeOf(cards()[0]);
+  await tick(4000);
+  assert.equal(cards().length, 0, 'only an explicit default response clears the cards');
+  await tick(5000);
+  assert.deepEqual(cards().map((card) => Number(card.dataset.slot)), [1], 'same content returns visibly after 0|0');
+  assert.match(texts(cards()[0]), /8642/);
+  assert.equal(timeOf(cards()[0]), changedTime, 'returning content keeps its deduplicated new-message time');
   assert.equal(ui.intervals.get(1).delay, 1000);
 });
 
-test('only fresh SMS cards appear, retain original slot numbers, and disappear on later rounds without new codes', async () => {
+test('stored SMS snapshots survive empty, error, skipped and missing results without replacing safe raw text', async () => {
+  const raw = '<img src=x onerror=alert(1)>验证码：123456';
   const rounds = [
-    [
-      { ...slots[2], status: 'success', message: '<img src=x onerror=alert(1)>验证码：123456' },
-      { ...slots[0], status: 'success', message: '0|0' },
-      { ...slots[1], status: 'skipped', message: '尚未提取手机号' },
-    ],
-    [{ ...slots[2], status: 'success', message: '<img src=x onerror=alert(1)>验证码：123456' }],
-    [{ ...slots[2], status: 'success', message: '验证码：654321' }],
+    [{ ...slots[2], status: 'success', message: raw }],
+    [{ ...slots[2], status: 'success', message: raw }],
+    [{ ...slots[2], status: 'success', message: '' }],
     [{ ...slots[2], status: 'error', message: '本次接码请求超时' }],
-    [{ ...slots[2], status: 'success', message: '0|0' }],
-    [{ ...slots[2], status: 'success', message: '验证码：654321' }],
-    [
-      { slot: 18, recordId: 'record-18', phoneNumber: '13000000018', status: 'success', message: '验证码：181818' },
-      { ...slots[2], status: 'success', message: '验证码：333333' },
-    ],
+    [{ ...slots[2], status: 'skipped', message: '没有接码链接' }],
     [],
+    [{ ...slots[2], status: 'success', message: ' 0 | 0 \n' }],
   ];
   const ui = loadPage(async (url, options) => ({ ok: true, json: async () => options.method === 'GET'
-    ? { batchId, slots } : { batchId, results: rounds.shift() } }));
+    ? { batchId, slots: [slots[2]] } : { batchId, results: rounds.shift() } }));
   await ui.sandbox.initializePhoneSmsPage();
-  await flush();
   const cards = () => ui.element('phoneSmsSlots').children;
-  const thirdCard = cards()[0];
-  const thirdRaw = thirdCard.children.find((node) => node.className === 'sms-raw');
+  const originalCard = cards()[0];
+  const originalRaw = originalCard.children.find((node) => node.className === 'sms-raw');
   assert.deepEqual(cards().map((card) => Number(card.dataset.slot)), [3]);
-  assert.match(texts(cards()[0]), /第 3 个/);
-  assert.match(texts(cards()[0]), /13000000003/);
-  assert.match(texts(cards()[0]), /本次收到新码/);
-  assert.match(texts(cards()[0]), /<img src=x onerror=alert\(1\)>验证码：123456/);
-  assert.equal(ui.element('phoneSmsEmptyState').hidden, true);
-  const tick = async () => { ui.intervals.get(1).callback(); await flush(); };
-  await tick();
-  assert.equal(cards().length, 0, 'same code disappears on the next round');
+  assert.match(texts(originalCard), /第 3 个/);
+  assert.equal(originalRaw.textContent, raw);
+  for (let round = 1; round <= 5; round += 1) {
+    ui.intervals.get(1).callback(); await flush();
+    assert.equal(cards().length, 1, `round ${round} must retain the previous message`);
+    assert.equal(cards()[0], originalCard);
+    assert.equal(cards()[0].children.find((node) => node.className === 'sms-raw'), originalRaw);
+    assert.equal(originalRaw.textContent, raw, 'status text must not overwrite the displayed message');
+    if (round === 3 || round === 5) assert.match(ui.element('phoneSmsPollingStatus').textContent, /读取失败/);
+  }
+  ui.intervals.get(1).callback(); await flush();
+  assert.equal(cards().length, 0);
   assert.equal(ui.element('phoneSmsEmptyState').hidden, false);
-  assert.match(ui.element('phoneSmsPollingStatus').textContent, /新码 0/);
-  await tick();
-  assert.equal(cards()[0], thirdCard, 'a new code reuses the original slot card');
-  assert.equal(cards()[0].children.find((node) => node.className === 'sms-raw'), thirdRaw);
-  assert.match(texts(cards()[0]), /本次收到新码/);
-  assert.match(texts(cards()[0]), /654321/);
-  await tick();
-  assert.equal(cards().length, 0, 'failed reads remove old cards');
-  assert.match(ui.element('phoneSmsPollingStatus').textContent, /读取失败/);
-  await tick();
-  assert.equal(cards().length, 0, 'waiting responses do not show old messages');
-  await tick();
-  assert.equal(cards().length, 0, 'same code must not reappear after empty/error responses');
-  await tick();
-  assert.deepEqual(cards().map((card) => Number(card.dataset.slot)), [3, 18]);
-  assert.match(texts(cards()[1]), /第 18 个/);
-  await tick();
-  assert.equal(cards().length, 0, 'missing results also clear previous cards');
 });
 
-test('message deduplication displays arbitrary text and treats changed text with the same OTP as new', async () => {
-  const messages = [
-    '任意非数字通知内容',
-    '  任意非数字通知内容\n',
-    '0|0',
-    '任意非数字通知内容',
-    '验证码：2468，第一条通知',
-    '验证码：2468，第二条通知',
-    '验证码：2468，第二条通知',
-    '',
-    '验证码：2468，第二条通知',
+test('new message content moves its original slot to the top while repeated content preserves time and ordering', async () => {
+  const start = Date.UTC(2026, 0, 1);
+  const result = (slot, message) => ({ ...slot, status: 'success', message });
+  const rounds = [
+    [result(slots[0], '0|0'), result(slots[2], '第三个初始消息')],
+    [result(slots[0], '第一个后来消息'), result(slots[2], '第三个初始消息')],
+    [result(slots[2], '第三个初始消息'), result(slots[0], '第一个后来消息')],
+    [result(slots[0], '第一个后来消息'), result(slots[2], '第三个更新消息')],
+    [result(slots[2], '第三个再次更新消息'), result(slots[0], '第一个同时更新消息')],
   ];
+  const ui = loadPage(async (url, options) => ({ ok: true, json: async () => options.method === 'GET'
+    ? { batchId, slots: [slots[0], slots[2]] } : { batchId, results: rounds.shift() } }), { now: start });
+  await ui.sandbox.initializePhoneSmsPage();
+  const cards = () => ui.element('phoneSmsSlots').children;
+  const order = () => cards().map((card) => Number(card.dataset.slot));
+  const timeOf = (slot) => cards().find((card) => Number(card.dataset.slot) === slot).children.find((node) => node.className === 'note').textContent;
+  const tick = async (elapsed) => { ui.setNow(start + elapsed); ui.intervals.get(1).callback(); await flush(); };
+  assert.deepEqual(order(), [3]);
+  const thirdCard = cards()[0];
+  await tick(1000);
+  assert.deepEqual(order(), [1, 3], 'the later message moves its original slot above older messages');
+  const firstTime = timeOf(1);
+  const thirdTime = timeOf(3);
+  await tick(2000);
+  assert.deepEqual(order(), [1, 3], 'provider result order and repeated contents do not reorder cards');
+  assert.equal(timeOf(1), firstTime);
+  assert.equal(timeOf(3), thirdTime);
+  await tick(3000);
+  assert.deepEqual(order(), [3, 1]);
+  assert.equal(cards()[0], thirdCard, 'new content updates the existing card for that slot');
+  assert.match(texts(cards()[0]), /第三个更新消息/);
+  await tick(4000);
+  assert.deepEqual(order(), [1, 3], 'simultaneous new messages use slot number as a stable tie-break');
+});
+
+test('same-OTP text changes update the visible message and blank responses keep the last snapshot', async () => {
+  const messages = ['任意非数字通知内容', '  任意非数字通知内容\n', '验证码：2468，第一条通知', '验证码：2468，第二条通知', '', '验证码：2468，第二条通知'];
   const ui = loadPage(async (url, options) => ({ ok: true, json: async () => options.method === 'GET'
     ? { batchId, slots: [slots[2]] } : { batchId, results: [{ ...slots[2], status: 'success', message: messages.shift() }] } }));
   await ui.sandbox.initializePhoneSmsPage();
   const cards = () => ui.element('phoneSmsSlots').children;
   const tick = async () => { ui.intervals.get(1).callback(); await flush(); };
-  assert.deepEqual(cards().map((card) => Number(card.dataset.slot)), [3]);
   assert.match(texts(cards()[0]), /任意非数字通知内容/);
-  assert.doesNotMatch(ui.element('phoneSmsPollingStatus').textContent, /无法识别|读取失败/);
   await tick();
-  assert.equal(cards().length, 0, 'outer whitespace does not create a new message');
-  await tick();
-  assert.equal(cards().length, 0, 'the default marker hides old messages');
-  await tick();
-  assert.equal(cards().length, 0, 'the previous message stays deduplicated after the default marker');
+  assert.equal(cards().length, 1);
   await tick();
   assert.match(texts(cards()[0]), /第一条通知/);
   await tick();
   assert.match(texts(cards()[0]), /第二条通知/);
+  await tick();
+  assert.equal(cards().length, 1);
+  assert.match(texts(cards()[0]), /第二条通知/);
+  await tick();
+  assert.equal(cards().length, 1);
   assert.match(texts(cards()[0]), /2468/);
-  await tick();
-  assert.equal(cards().length, 0, 'identical message text is hidden');
-  await tick();
-  assert.equal(cards().length, 0, 'empty responses hide old messages');
-  await tick();
-  assert.equal(cards().length, 0, 'the same message is still deduplicated after an empty response');
 });
 
-test('HTTP and item-level failures stay hidden and do not consume a successful message deduplication key', async () => {
+test('initial HTTP errors and skipped items remain hidden until a successful message arrives', async () => {
   const message = '供应商返回的非数字新内容';
   let round = 0;
   const ui = loadPage(async (url, options) => {
-    if (options.method === 'GET') return { ok: true, json: async () => ({ batchId, slots }) };
+    if (options.method === 'GET') return { ok: true, json: async () => ({ batchId, slots: [slots[0]] }) };
     round += 1;
     if (round === 1) return { ok: false, status: 503, json: async () => ({ error: message }) };
     return { ok: true, json: async () => ({ batchId, results: [{ ...slots[0], status: round === 2 ? 'error' : round === 3 ? 'skipped' : 'success', message }] }) };
@@ -275,16 +278,35 @@ test('HTTP and item-level failures stay hidden and do not consume a successful m
   const cards = () => ui.element('phoneSmsSlots').children;
   const tick = async () => { ui.intervals.get(1).callback(); await flush(); };
   assert.equal(cards().length, 0);
-  assert.match(ui.element('phoneSmsPollingStatus').textContent, /读取失败/);
   await tick();
-  assert.equal(cards().length, 0, 'an upstream HTTP failure remains hidden even if it includes content');
+  assert.equal(cards().length, 0);
   await tick();
-  assert.equal(cards().length, 0, 'skipped items do not show content');
+  assert.equal(cards().length, 0);
   await tick();
-  assert.equal(cards().length, 1, 'the first successful nonempty response must be shown');
+  assert.equal(cards().length, 1);
   assert.match(texts(cards()[0]), /供应商返回的非数字新内容/);
   await tick();
-  assert.equal(cards().length, 0, 'the successful response now participates in deduplication');
+  assert.equal(cards().length, 1);
+});
+
+test('slot identity changes clear the previous phone snapshot before a new phone receives a message', async () => {
+  const replacement = { slot: 3, recordId: 'replacement-record', phoneNumber: '13000000004' };
+  const rounds = [
+    [{ ...slots[2], status: 'success', message: '原手机号消息' }],
+    [{ ...replacement, status: 'error', message: '本次请求失败' }],
+    [{ ...replacement, status: 'success', message: '新手机号消息' }],
+  ];
+  const ui = loadPage(async (url, options) => ({ ok: true, json: async () => options.method === 'GET'
+    ? { batchId, slots: [slots[2]] } : { batchId, results: rounds.shift() } }));
+  await ui.sandbox.initializePhoneSmsPage();
+  assert.equal(ui.element('phoneSmsSlots').children.length, 1);
+  ui.intervals.get(1).callback(); await flush();
+  assert.equal(ui.element('phoneSmsSlots').children.length, 0);
+  ui.intervals.get(1).callback(); await flush();
+  const card = ui.element('phoneSmsSlots').children[0];
+  assert.match(texts(card), /13000000004/);
+  assert.match(texts(card), /新手机号消息/);
+  assert.doesNotMatch(texts(card), /原手机号消息|13000000003/);
 });
 
 for (const status of [409, 404]) {
@@ -312,23 +334,26 @@ for (const status of [409, 404]) {
   });
 }
 
-test('SMS page hides old messages after a request failure while retaining message deduplication and retrying', async () => {
+test('network and HTTP failures retain the last message while polling continues', async () => {
   let round = 0;
   const ui = loadPage(async (url, options) => {
-    if (options.method === 'GET') return { ok: true, json: async () => ({ batchId, slots }) };
+    if (options.method === 'GET') return { ok: true, json: async () => ({ batchId, slots: [slots[0]] }) };
     round += 1;
     if (round === 2) throw new Error('network failed');
-    return { ok: true, json: async () => ({ batchId, results: [{ ...slots[0], status: 'success', message: round === 4 ? '验证码：654321' : '验证码：123456' }] }) };
+    if (round === 3) return { ok: false, status: 503, json: async () => ({ error: 'gateway unavailable' }) };
+    return { ok: true, json: async () => ({ batchId, results: [{ ...slots[0], status: 'success', message: round === 5 ? '验证码：654321' : '验证码：123456' }] }) };
   });
   await ui.sandbox.initializePhoneSmsPage();
-  await flush();
+  for (let failedRound = 0; failedRound < 2; failedRound += 1) {
+    ui.intervals.get(1).callback(); await flush();
+    assert.equal(ui.element('phoneSmsSlots').children.length, 1);
+    assert.match(texts(ui.element('phoneSmsSlots').children[0]), /123456/);
+    assert.match(ui.element('phoneSmsPollingStatus').textContent, /读取失败/);
+    assert.equal(ui.intervals.size, 1);
+  }
   ui.intervals.get(1).callback(); await flush();
-  assert.equal(ui.element('phoneSmsSlots').children.length, 0);
-  assert.match(ui.element('phoneSmsPollingStatus').textContent, /读取失败/);
-  assert.equal(ui.intervals.size, 1);
-  ui.intervals.get(1).callback(); await flush();
-  assert.equal(round, 3);
-  assert.equal(ui.element('phoneSmsSlots').children.length, 0);
+  assert.equal(ui.element('phoneSmsSlots').children.length, 1);
+  assert.match(texts(ui.element('phoneSmsSlots').children[0]), /123456/);
   ui.intervals.get(1).callback(); await flush();
   assert.match(texts(ui.element('phoneSmsSlots').children[0]), /654321/);
 });
