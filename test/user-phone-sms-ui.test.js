@@ -63,6 +63,7 @@ test('SMS page polls each second with one in-flight request and aborts when leav
   assert.equal(requests[0].url, `/api/public/user/tester/batch/phone?batchId=${batchId}`);
   assert.equal(requests[1].url, '/api/public/user/tester/batch/phone/sms');
   assert.deepEqual(JSON.parse(requests[1].options.body), { batchId });
+  assert.equal(ui.element('phoneSmsSlots').children.length, 0, 'pending and empty phone slots stay hidden');
   const tick = ui.intervals.get(1).callback;
   tick(); tick();
   await flush();
@@ -112,7 +113,7 @@ test('SMS recognition ignores status codes and errors, recognizes codes only wit
   }
 });
 
-test('SMS results stay attached to original slots and distinguish new, repeated, changed and missing codes', async () => {
+test('only fresh SMS cards appear, retain original slot numbers, and disappear on later rounds without new codes', async () => {
   const rounds = [
     [
       { ...slots[2], status: 'success', message: '<img src=x onerror=alert(1)>验证码：123456' },
@@ -124,37 +125,47 @@ test('SMS results stay attached to original slots and distinguish new, repeated,
     [{ ...slots[2], status: 'error', message: '本次接码请求超时' }],
     [{ ...slots[2], status: 'success', message: '暂无短信' }],
     [{ ...slots[2], status: 'success', message: '验证码：654321' }],
+    [
+      { slot: 18, recordId: 'record-18', phoneNumber: '13000000018', status: 'success', message: '验证码：181818' },
+      { ...slots[2], status: 'success', message: '验证码：333333' },
+    ],
+    [],
   ];
   const ui = loadPage(async (url, options) => ({ ok: true, json: async () => options.method === 'GET'
     ? { batchId, slots } : { batchId, results: rounds.shift() } }));
   await ui.sandbox.initializePhoneSmsPage();
   await flush();
   const cards = () => ui.element('phoneSmsSlots').children;
-  const thirdCard = cards()[2];
+  const thirdCard = cards()[0];
   const thirdRaw = thirdCard.children.find((node) => node.className === 'sms-raw');
-  assert.deepEqual(cards().map((card) => Number(card.dataset.slot)), [1, 2, 3]);
-  assert.match(texts(cards()[2]), /13000000003/);
-  assert.match(texts(cards()[2]), /本次收到新码/);
-  assert.match(texts(cards()[2]), /<img src=x onerror=alert\(1\)>验证码：123456/);
-  assert.match(texts(cards()[0]), /等待验证码/);
-  assert.match(texts(cards()[1]), /尚未提取手机号/);
+  assert.deepEqual(cards().map((card) => Number(card.dataset.slot)), [3]);
+  assert.match(texts(cards()[0]), /第 3 个/);
+  assert.match(texts(cards()[0]), /13000000003/);
+  assert.match(texts(cards()[0]), /本次收到新码/);
+  assert.match(texts(cards()[0]), /<img src=x onerror=alert\(1\)>验证码：123456/);
+  assert.equal(ui.element('phoneSmsEmptyState').hidden, true);
   const tick = async () => { ui.intervals.get(1).callback(); await flush(); };
   await tick();
-  assert.equal(cards()[2], thirdCard, 'polling keeps the same slot card');
-  assert.equal(cards()[2].children.find((node) => node.className === 'sms-raw'), thirdRaw, 'polling reuses the original message element');
-  assert.match(texts(cards()[2]), /与上次相同/);
+  assert.equal(cards().length, 0, 'same code disappears on the next round');
+  assert.equal(ui.element('phoneSmsEmptyState').hidden, false);
+  assert.match(ui.element('phoneSmsPollingStatus').textContent, /新码 0/);
   await tick();
-  assert.match(texts(cards()[2]), /本次收到新码/);
-  assert.match(texts(cards()[2]), /654321/);
+  assert.equal(cards()[0], thirdCard, 'a new code reuses the original slot card');
+  assert.equal(cards()[0].children.find((node) => node.className === 'sms-raw'), thirdRaw);
+  assert.match(texts(cards()[0]), /本次收到新码/);
+  assert.match(texts(cards()[0]), /654321/);
   await tick();
-  assert.match(texts(cards()[2]), /本次读取失败/);
-  assert.match(texts(cards()[2]), /上次收到的验证码/);
-  assert.match(texts(cards()[2]), /654321/);
+  assert.equal(cards().length, 0, 'failed reads remove old cards');
+  assert.match(ui.element('phoneSmsPollingStatus').textContent, /读取失败/);
   await tick();
-  assert.match(texts(cards()[2]), /等待验证码/);
-  assert.match(texts(cards()[2]), /654321/);
+  assert.equal(cards().length, 0, 'waiting responses do not show old messages');
   await tick();
-  assert.match(texts(cards()[2]), /与上次相同/);
+  assert.equal(cards().length, 0, 'same code must not reappear after empty/error responses');
+  await tick();
+  assert.deepEqual(cards().map((card) => Number(card.dataset.slot)), [3, 18]);
+  assert.match(texts(cards()[1]), /第 18 个/);
+  await tick();
+  assert.equal(cards().length, 0, 'missing results also clear previous cards');
 });
 
 for (const status of [409, 404]) {
@@ -182,23 +193,42 @@ for (const status of [409, 404]) {
   });
 }
 
-test('SMS page retries transient request failures while retaining previous received messages', async () => {
+test('SMS page hides old messages after a request failure while retaining code deduplication and retrying', async () => {
   let round = 0;
   const ui = loadPage(async (url, options) => {
     if (options.method === 'GET') return { ok: true, json: async () => ({ batchId, slots }) };
     round += 1;
     if (round === 2) throw new Error('network failed');
-    return { ok: true, json: async () => ({ batchId, results: [{ ...slots[0], status: 'success', message: '验证码：123456' }] }) };
+    return { ok: true, json: async () => ({ batchId, results: [{ ...slots[0], status: 'success', message: round === 4 ? '验证码：654321' : '验证码：123456' }] }) };
   });
   await ui.sandbox.initializePhoneSmsPage();
   await flush();
   ui.intervals.get(1).callback(); await flush();
-  assert.match(texts(ui.element('phoneSmsSlots').children[0]), /本次读取失败/);
-  assert.match(texts(ui.element('phoneSmsSlots').children[0]), /123456/);
+  assert.equal(ui.element('phoneSmsSlots').children.length, 0);
+  assert.match(ui.element('phoneSmsPollingStatus').textContent, /读取失败/);
   assert.equal(ui.intervals.size, 1);
   ui.intervals.get(1).callback(); await flush();
   assert.equal(round, 3);
-  assert.match(texts(ui.element('phoneSmsSlots').children[0]), /与上次相同/);
+  assert.equal(ui.element('phoneSmsSlots').children.length, 0);
+  ui.intervals.get(1).callback(); await flush();
+  assert.match(texts(ui.element('phoneSmsSlots').children[0]), /654321/);
+});
+
+test('terminal errors clear the last fresh message instead of leaving a stopped page showing a stale code', async () => {
+  let round = 0;
+  const ui = loadPage(async (url, options) => {
+    if (options.method === 'GET') return { ok: true, json: async () => ({ batchId, slots }) };
+    round += 1;
+    return round === 1
+      ? { ok: true, json: async () => ({ batchId, results: [{ ...slots[2], status: 'success', message: '验证码：123456' }] }) }
+      : { ok: false, status: 409, json: async () => ({ error: '批次已变更' }) };
+  });
+  await ui.sandbox.initializePhoneSmsPage();
+  assert.equal(ui.element('phoneSmsSlots').children.length, 1);
+  ui.intervals.get(1).callback(); await flush();
+  assert.equal(ui.element('phoneSmsSlots').children.length, 0);
+  assert.equal(ui.intervals.size, 0);
+  assert.match(ui.element('phoneSmsPollingStatus').textContent, /当前组已变更/);
 });
 
 test('returning from page cache revalidates the fixed batch and ignores a response from before leaving', async () => {

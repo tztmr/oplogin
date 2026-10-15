@@ -33,7 +33,7 @@
     .sms-code { font-size: 23px; font-weight: 700; letter-spacing: .12em; color: #264f9d; margin: 12px 0 8px; }
     .sms-label { margin: 14px 0 7px; font-size: 12px; font-weight: 600; color: #65768c; }
     .sms-raw { margin: 0; padding: 12px; border-radius: 8px; background: #f7f9fc; font: 13px/1.7 ui-monospace, "SFMono-Regular", Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 250px; overflow-y: auto; }
-    .sms-last-message { margin-top: 12px; padding-top: 1px; border-top: 1px solid #edf1f6; }
+    .sms-empty-state { color: #64748b; padding: 30px 16px; text-align: center; font-size: 14px; }
     @media (max-width: 600px) { body { padding: 22px 12px 36px; } header { flex-direction: column; gap: 12px; } h1 { font-size: 24px; } .sms-slot-card { padding: 16px; } .polling-card { padding: 15px 16px; } }
   </style>
   <script src="/user-phone-sms.js" defer></script>
@@ -44,16 +44,17 @@
       <div>
         <p class="eyebrow">用户中心 / 手机号</p>
         <h1>本组批量接码</h1>
-        <p class="intro">号码按原槽位顺序显示，每秒自动查询。关闭本页即停止接码。</p>
+        <p class="intro">只显示本轮新收到的验证码，保留原槽位序号。每秒自动查询，关闭本页即停止。</p>
       </div>
       <a id="phoneSmsReturnLink" class="back-link" href="/">返回用户中心</a>
     </header>
     <section class="polling-card" aria-label="接码状态">
       <p id="phoneSmsPollingStatus" role="status" aria-live="polite">正在加载本组手机号…</p>
       <p id="phoneSmsBatchText"></p>
-      <p class="note">新码按本页已收到的验证码比较；首次收到也会标记。未能识别的内容请查看接口原文。</p>
+      <p class="note">首次来码即显示；下一轮没有新码或返回相同验证码时，消息自动消失。</p>
     </section>
     <section id="phoneSmsSlots" aria-label="各槽位接码结果"></section>
+    <p id="phoneSmsEmptyState" class="sms-empty-state">等待新验证码…</p>
   </main>
 </body>
 </html>
