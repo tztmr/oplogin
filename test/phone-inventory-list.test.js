@@ -62,6 +62,47 @@ test('phone inventory list requires authentication and never accepts another own
   assert.deepEqual((await agent.get(endpoint).query({ ownerId: adminId })).body.items.map((row) => row.phoneNumber), ['10002']);
   await login(agent, config);
   assert.deepEqual((await agent.get(endpoint).query({ ownerId: otherId })).body.items.map((row) => row.phoneNumber), ['10001']);
+  const filtered = await agent.get(endpoint).query({ ownerId: otherId, status: 'unbound', extractionStatus: 'available' });
+  assert.equal(filtered.body.total, 1);
+  assert.deepEqual(filtered.body.items.map((row) => row.phoneNumber), ['10001']);
+});
+
+test('phone inventory extraction filters combine with status and search before counting and paginating', async () => {
+  const { agent, pool, config } = await createAdminTestContext();
+  await login(agent, config);
+  const imported = await agent.post(`${endpoint}/import-text`).send({
+    rowsText: Array.from({ length: 27 }, (_, i) => `13900000${String(i).padStart(3, '0')}----https://example.test/${i}`).join('\n'),
+  });
+  assert.equal(imported.status, 201);
+  await pool.query("update phone_inventory set status = 'reserved'");
+  for (const [i, status] of ['available', 'bound', 'after_sale'].entries()) {
+    await pool.query('update phone_inventory set status = $1 where id = $2', [status, imported.body.items[i].id]);
+  }
+  for (const [extractionStatus, phoneNumber] of [
+    ['available', '13900000000'], ['bound', '13900000001'], ['after_sale', '13900000002'],
+  ]) {
+    const filtered = await agent.get(endpoint).query({ extractionStatus });
+    assert.equal(filtered.status, 200);
+    assert.equal(filtered.body.total, 1);
+    assert.deepEqual(filtered.body.items.map((item) => item.phoneNumber), [phoneNumber]);
+  }
+  const first = await agent.get(endpoint).query({ status: 'unbound', extractionStatus: 'reserved' });
+  assert.equal(first.status, 200);
+  assert.equal(first.body.total, 24);
+  assert.equal(first.body.items.length, 20);
+  assert.ok(first.body.items.every((item) => item.status === 'reserved'));
+  const last = await agent.get(endpoint).query({ status: 'unbound', extractionStatus: 'reserved', page: 99 });
+  assert.equal(last.body.total, 24);
+  assert.equal(last.body.page, 2);
+  assert.equal(last.body.items.length, 4);
+  assert.equal(new Set([...first.body.items, ...last.body.items].map((item) => item.id)).size, 24);
+  const searched = await agent.get(endpoint).query({ status: 'unbound', extractionStatus: 'reserved', search: '13900000026' });
+  assert.equal(searched.body.total, 1);
+  assert.deepEqual(searched.body.items.map((item) => item.phoneNumber), ['13900000026']);
+  const incompatible = await agent.get(endpoint).query({ status: 'bound', extractionStatus: 'reserved', page: 2 });
+  assert.equal(incompatible.body.total, 0);
+  assert.equal(incompatible.body.page, 1);
+  assert.deepEqual(incompatible.body.items, []);
 });
 
 test('phone inventory list rejects invalid pagination and filters and returns an empty list honestly', async () => {
@@ -71,7 +112,7 @@ test('phone inventory list rejects invalid pagination and filters and returns an
   assert.equal(empty.status, 200);
   assert.deepEqual(empty.body.items, []);
   assert.equal(empty.body.total, 0);
-  for (const query of [{ page: 'NaN' }, { page: 0 }, { page: '1.5' }, { pageSize: 0 }, { pageSize: 1000 }, { status: 'unknown' }]) {
+  for (const query of [{ page: 'NaN' }, { page: 0 }, { page: '1.5' }, { pageSize: 0 }, { pageSize: 1000 }, { status: 'unknown' }, { extractionStatus: 'unknown' }, { extractionStatus: ['available', 'reserved'] }]) {
     assert.equal((await agent.get(endpoint).query(query)).status, 400);
   }
 });

@@ -22,6 +22,7 @@ function createApp({
   buildWakeUrlImpl,
   rateLimitMiddleware,
   lookupOpNicknamesImpl,
+  requestPhoneSmsImpl,
 } = {}) {
   const app = express();
   const publicDir = path.join(__dirname, 'public');
@@ -67,7 +68,7 @@ function createApp({
   app.use(express.static(publicDir, { index: false, redirect: false }));
   app.use(createAdminPagesRouter(publicDir));
   app.use('/api', createSubmitRouter({ buildWakeUrlImpl }));
-  app.use('/api/public/user', createUserPublicRouter({ pool, config }));
+  app.use('/api/public/user', createUserPublicRouter({ pool, config, requestPhoneSmsImpl }));
   if (pool) {
     app.use('/api/op', createOpSubmitRouter({
       pool,

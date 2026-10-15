@@ -250,18 +250,58 @@ test('successful phone import refreshes the actual inventory table and clears hi
     const query = new URL(url, 'http://localhost').searchParams;
     assert.equal(query.get('search'), null);
     assert.equal(query.get('status'), null);
+    assert.equal(query.get('extractionStatus'), null);
     assert.equal(query.get('page'), '1');
     return imported ? data('40004') : { ...data(), items: [], total: 0 };
   });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/admin/records.js'), 'utf8'), sandbox);
   element('phoneInventorySearch').value = 'old filter';
   element('phoneInventoryStatusFilter').value = 'bound';
+  element('phoneInventoryExtractionFilter').value = 'bound';
   element('phoneImportText').value = '40004----https://example.test/sms';
   element('phoneImportDurationDays').value = '30';
   await sandbox.submitPhoneImportForm({ preventDefault() {} });
   assert.equal(element('phoneInventoryTableBody').children.length, 1);
   assert.equal(element('phoneInventoryTableBody').children[0].children[1].textContent, '40004');
   assert.equal(element('phoneImportDialog').closed, true);
+  assert.equal(element('phoneInventoryExtractionFilter').value, '');
+});
+
+test('phone inventory filter changes query combined conditions from page one and reset clears them', async () => {
+  const requests = [];
+  const { sandbox, element } = loadUi(async (url) => {
+    const query = new URL(url, 'http://localhost').searchParams;
+    requests.push(Object.fromEntries(query));
+    return { ...data(), page: Number(query.get('page')), total: query.has('extractionStatus') ? 1 : 41 };
+  });
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+  sandbox.initializePhoneInventory();
+  await sandbox.loadPhoneInventory();
+  element('phoneInventoryNextButton').dispatchEvent({ type: 'click' });
+  await flush();
+  assert.equal(requests.at(-1).page, '2');
+  element('phoneInventorySearch').value = '13000000001';
+  element('phoneInventoryStatusFilter').value = 'unbound';
+  element('phoneInventoryExtractionFilter').value = 'reserved';
+  element('phoneInventoryExtractionFilter').dispatchEvent({ type: 'change' });
+  await flush();
+  assert.deepEqual(requests.at(-1), {
+    page: '1', pageSize: '20', search: '13000000001', status: 'unbound', extractionStatus: 'reserved',
+  });
+  assert.match(element('phoneInventoryPageStatus').textContent, /第 1 \/ 1 页，共 1 个手机号/);
+  assert.equal(element('phoneInventoryPreviousButton').disabled, true);
+  assert.equal(element('phoneInventoryNextButton').disabled, true);
+  element('phoneInventoryStatusFilter').value = '';
+  element('phoneInventoryStatusFilter').dispatchEvent({ type: 'change' });
+  await flush();
+  assert.deepEqual(requests.at(-1), {
+    page: '1', pageSize: '20', search: '13000000001', extractionStatus: 'reserved',
+  });
+  element('phoneInventoryResetButton').dispatchEvent({ type: 'click' });
+  await flush();
+  assert.deepEqual(requests.at(-1), { page: '1', pageSize: '20' });
+  assert.equal(element('phoneInventoryExtractionFilter').value, '');
+  assert.match(element('phoneInventoryPageStatus').textContent, /第 1 \/ 3 页，共 41 个手机号/);
 });
 
 test('phone inventory batch delete and status actions follow the selected ids', async () => {

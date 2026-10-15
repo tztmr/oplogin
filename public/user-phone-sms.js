@@ -1,0 +1,275 @@
+let phoneSmsInitialized = false;
+let phoneSmsStopped = false;
+let phoneSmsPending = false;
+let phoneSmsTimer = null;
+let phoneSmsController = null;
+let phoneSmsUsername = '';
+let phoneSmsBatchId = '';
+let phoneSmsGeneration = 0;
+let phoneSmsResumeOnShow = false;
+const phoneSmsRows = new Map();
+const phoneSmsCardNodes = new Map();
+
+const smsErrorText = /错误|失败|异常|未授权|无权限|(?:token|密钥|链接|账号|账户).{0,8}(?:失效|无效)|\b(?:error|failed|failure|unauthorized|forbidden|invalid|expired)\b|not valid/i;
+const smsWaitingText = /暂无|没有短信|未收到|等待|暂未|未获取|无短信|\b(?:waiting|pending)\b|no\s+(?:sms|message|code|data)|not\s+(?:yet\s+)?received/i;
+
+function identifyPhoneSms(raw) {
+  const text = String(raw ?? '').trim();
+  if (!text) return { state: 'waiting', code: '' };
+  let parsed;
+  try { parsed = JSON.parse(text); } catch { parsed = text; }
+  function isError(value, depth = 0) {
+    if (!value || typeof value !== 'object' || depth > 8) return false;
+    if (value.success === false || value.ok === false || value.error || value.errors) return true;
+    if (['error', 'failed', 'failure'].includes(String(value.status || '').toLowerCase())) return true;
+    for (const key of ['code', 'status', 'statusCode']) {
+      const number = Number(value[key]);
+      if (number >= 400 && number <= 599) return true;
+    }
+    if ([value.message, value.msg].some((message) => typeof message === 'string' && smsErrorText.test(message))) return true;
+    return Object.values(value).some((child) => typeof child === 'object' && isError(child, depth + 1));
+  }
+  if (isError(parsed) || (typeof parsed === 'string' && smsErrorText.test(parsed))) {
+    return { state: 'error', code: '' };
+  }
+  const candidates = [];
+  function collect(value, depth = 0) {
+    if (depth > 8 || value == null) return;
+    if (typeof value === 'string' || typeof value === 'number') { candidates.push(String(value).trim()); return; }
+    if (Array.isArray(value)) { value.forEach((child) => collect(child, depth + 1)); return; }
+    for (const [key, child] of Object.entries(value)) {
+      // A code alongside response metadata is normally the supplier's status code.
+      if (key.toLowerCase() === 'code' && Object.keys(value).length > 1) continue;
+      if (/^(sms|message|msg|data|content|text|body|code|otp|verify_?code|verification_?code|sms_?code)$/i.test(key)) collect(child, depth + 1);
+    }
+  }
+  collect(parsed);
+  for (const candidate of candidates) {
+    const code = /^\d{4,8}$/.test(candidate) ? candidate
+      : candidate.match(/(?:验证码|校验码|动态码|动态密码|一次性密码|(?:verification|security|login|authentication|one[ -]time)\s*(?:code|password)|\botp\b|\bcode\b)[^\d\n]{0,20}(\d{4,8})(?!\d)/i)?.[1]
+        || candidate.match(/(?:^|[^\d])(\d{4,8})(?!\d)[^\d\n]{0,12}(?:验证码|校验码|动态码)/)?.[1];
+    if (code) return { state: 'received', code };
+  }
+  return { state: candidates.some((candidate) => smsWaitingText.test(candidate)) ? 'waiting' : 'unknown', code: '' };
+}
+
+function smsNode(tag, className, text) {
+  const node = document.createElement(tag);
+  node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function updateSmsText(node, text) {
+  if (node.textContent !== text) node.textContent = text;
+}
+
+function createPhoneSmsCard(row) {
+  const card = smsNode('article', 'sms-slot-card');
+  card.dataset.slot = String(row.slot);
+  const heading = smsNode('div', 'sms-slot-heading');
+  const phone = smsNode('span', 'sms-phone-number');
+  heading.replaceChildren(smsNode('h2', 'sms-slot-number', `第 ${row.slot} 个`), phone);
+  const statuses = smsNode('div', 'sms-statuses');
+  const received = smsNode('span', 'sms-badge');
+  const fresh = smsNode('span', 'sms-badge');
+  statuses.replaceChildren(received, fresh);
+  const time = smsNode('p', 'note');
+  const code = smsNode('p', 'sms-code');
+  const raw = smsNode('pre', 'sms-raw');
+  const previous = smsNode('div', 'sms-last-message');
+  const previousLabel = smsNode('p', 'sms-label');
+  const previousRaw = smsNode('pre', 'sms-raw');
+  previous.replaceChildren(previousLabel, previousRaw);
+  card.replaceChildren(heading, statuses, time, code, smsNode('p', 'sms-label', '本次接口原文'), raw, previous);
+  return { card, phone, received, fresh, time, code, raw, previous, previousLabel, previousRaw };
+}
+
+function renderPhoneSmsRows() {
+  const cards = Array.from(phoneSmsRows.values()).sort((a, b) => a.slot - b.slot).map((row) => {
+    if (!phoneSmsCardNodes.has(row.slot)) phoneSmsCardNodes.set(row.slot, createPhoneSmsCard(row));
+    const nodes = phoneSmsCardNodes.get(row.slot);
+    updateSmsText(nodes.phone, row.phoneNumber || '暂无手机号');
+    const receivedText = { received: '已来码', waiting: '等待验证码', unknown: '无法识别，请查看原文', error: '本次读取失败，无法判断', skipped: '尚未接码' }[row.state] || '等待查询';
+    const newText = row.state === 'received' ? row.isNew ? '本次收到新码' : '无新码，与上次相同' : '本次未确认新码';
+    nodes.received.className = `sms-badge ${row.state}`;
+    nodes.fresh.className = `sms-badge ${row.isNew ? 'new' : ''}`;
+    updateSmsText(nodes.received, `是否来码：${receivedText}`);
+    updateSmsText(nodes.fresh, `是否新码：${newText}`);
+    const time = row.lastNewAt ? new Date(row.lastNewAt).toLocaleString('zh-CN', { hour12: false }) : '尚未收到';
+    updateSmsText(nodes.time, `上次新码时间：${time}`);
+    nodes.code.hidden = row.state !== 'received';
+    updateSmsText(nodes.code, row.lastCode);
+    updateSmsText(nodes.raw, row.raw || (row.state === 'waiting' ? '接口返回空内容' : '等待首次查询…'));
+    nodes.previous.hidden = !row.lastReceivedRaw || row.state === 'received';
+    updateSmsText(nodes.previousLabel, row.lastCode ? `上次收到的验证码：${row.lastCode}` : '');
+    updateSmsText(nodes.previousRaw, row.lastReceivedRaw);
+    return nodes.card;
+  });
+  const list = document.getElementById('phoneSmsSlots');
+  if (list.children.length !== cards.length || cards.some((card, index) => list.children[index] !== card)) {
+    list.replaceChildren(...cards);
+  }
+}
+
+function setPhoneSmsStatus(message, state = '') {
+  const node = document.getElementById('phoneSmsPollingStatus');
+  node.textContent = message;
+  node.dataset.state = state;
+}
+
+function stopPhoneSms(message = '') {
+  phoneSmsStopped = true;
+  if (message) phoneSmsResumeOnShow = false;
+  phoneSmsGeneration += 1;
+  if (phoneSmsTimer !== null) clearInterval(phoneSmsTimer);
+  phoneSmsTimer = null;
+  phoneSmsController?.abort();
+  phoneSmsController = null;
+  phoneSmsPending = false;
+  if (message) setPhoneSmsStatus(message, 'stopped');
+}
+
+function phoneSmsFatalResponse(status) {
+  if (status === 409) {
+    stopPhoneSms('当前组已变更，已停止接码。请返回用户中心重新打开批量接码。');
+    return true;
+  }
+  if (status === 404) {
+    stopPhoneSms('用户不存在或已禁用，已停止接码。请返回用户中心。');
+    return true;
+  }
+  return false;
+}
+
+function putPhoneSmsRow(item) {
+  if (!Number.isInteger(item.slot) || item.slot < 1 || item.slot > 18) return null;
+  let row = phoneSmsRows.get(item.slot);
+  if (!row || row.recordId !== item.recordId || row.phoneNumber !== (item.phoneNumber || '')) {
+    row = { slot: item.slot, recordId: item.recordId, phoneNumber: item.phoneNumber || '', state: 'pending', raw: '', lastCode: '', lastReceivedRaw: '', lastNewAt: null, isNew: false };
+    phoneSmsRows.set(item.slot, row);
+  }
+  return row;
+}
+
+function markPhoneSmsFailure(message) {
+  for (const row of phoneSmsRows.values()) {
+    row.state = 'error';
+    row.isNew = false;
+    row.raw = message;
+  }
+  renderPhoneSmsRows();
+}
+
+async function pollPhoneSms() {
+  if (phoneSmsStopped || phoneSmsPending) return;
+  const generation = phoneSmsGeneration;
+  phoneSmsPending = true;
+  phoneSmsController = new AbortController();
+  try {
+    const response = await fetch(`/api/public/user/${encodeURIComponent(phoneSmsUsername)}/batch/phone/sms`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ batchId: phoneSmsBatchId }), signal: phoneSmsController.signal, cache: 'no-store',
+    });
+    if (generation !== phoneSmsGeneration || phoneSmsStopped || phoneSmsFatalResponse(response.status)) return;
+    const data = await response.json();
+    if (generation !== phoneSmsGeneration || phoneSmsStopped) return;
+    if (!response.ok) throw new Error('本次读取失败，将自动重试。');
+    if (data.batchId !== phoneSmsBatchId) {
+      stopPhoneSms('当前组已变更，已停止接码。请返回用户中心重新打开批量接码。');
+      return;
+    }
+    if (!Array.isArray(data.results)) throw new Error('接码返回格式不正确，将自动重试。');
+    const seen = new Set();
+    for (const item of data.results) {
+      const row = putPhoneSmsRow(item);
+      if (!row) continue;
+      seen.add(item.slot);
+      row.raw = typeof item.message === 'string' ? item.message : '';
+      const identified = item.status === 'success' ? identifyPhoneSms(row.raw)
+        : { state: item.status === 'skipped' ? 'skipped' : 'error', code: '' };
+      row.state = identified.state;
+      row.isNew = row.state === 'received' && identified.code !== row.lastCode;
+      if (row.state === 'received') {
+        if (row.isNew) row.lastNewAt = Date.now();
+        row.lastCode = identified.code;
+        row.lastReceivedRaw = row.raw;
+      }
+    }
+    for (const row of phoneSmsRows.values()) {
+      if (!seen.has(row.slot)) { row.state = 'error'; row.isNew = false; row.raw = '本次未返回该槽位，将自动重试。'; }
+    }
+    renderPhoneSmsRows();
+    const rows = Array.from(phoneSmsRows.values());
+    const received = rows.filter((row) => row.state === 'received').length;
+    const fresh = rows.filter((row) => row.isNew).length;
+    const failed = rows.filter((row) => row.state === 'error').length;
+    setPhoneSmsStatus(`自动接码中 · 本次已来码 ${received} 个，新码 ${fresh} 个${failed ? `，读取失败 ${failed} 个` : ''} · 每秒查询`, failed ? 'error' : '');
+  } catch (error) {
+    if (generation === phoneSmsGeneration && !phoneSmsStopped) {
+      markPhoneSmsFailure('本次读取失败，请等待自动重试。');
+      setPhoneSmsStatus('本次读取失败，正在自动重试；上次已收到的信息仍保留。', 'error');
+    }
+  } finally {
+    if (generation === phoneSmsGeneration) {
+      phoneSmsPending = false;
+      phoneSmsController = null;
+    }
+  }
+}
+
+async function initializePhoneSmsPage() {
+  if (phoneSmsInitialized) return;
+  phoneSmsInitialized = true;
+  const query = new URLSearchParams(window.location.search);
+  phoneSmsUsername = (query.get('username') || '').trim();
+  phoneSmsBatchId = query.get('batchId') || '';
+  document.getElementById('phoneSmsReturnLink').href = phoneSmsUsername ? `/${encodeURIComponent(phoneSmsUsername)}` : '/';
+  if (!phoneSmsUsername || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(phoneSmsBatchId)) {
+    stopPhoneSms('缺少有效的用户或批次信息，请返回用户中心重新打开批量接码。');
+    return;
+  }
+  document.getElementById('phoneSmsBatchText').textContent = `${phoneSmsUsername} · 固定批次 ${phoneSmsBatchId.slice(0, 8)}`;
+  const generation = phoneSmsGeneration;
+  phoneSmsPending = true;
+  phoneSmsController = new AbortController();
+  phoneSmsTimer = setInterval(() => { void pollPhoneSms(); }, 1000);
+  try {
+    const response = await fetch(`/api/public/user/${encodeURIComponent(phoneSmsUsername)}/batch/phone?batchId=${encodeURIComponent(phoneSmsBatchId)}`, {
+      method: 'GET', cache: 'no-store', signal: phoneSmsController.signal,
+    });
+    if (generation !== phoneSmsGeneration || phoneSmsStopped || phoneSmsFatalResponse(response.status)) return;
+    const data = await response.json();
+    if (generation !== phoneSmsGeneration || phoneSmsStopped) return;
+    if (!response.ok) throw new Error('暂时无法加载手机号');
+    if (data.batchId !== phoneSmsBatchId) { phoneSmsFatalResponse(409); return; }
+    for (const slot of data.slots || []) putPhoneSmsRow(slot);
+    renderPhoneSmsRows();
+  } catch (error) {
+    if (generation === phoneSmsGeneration && !phoneSmsStopped) setPhoneSmsStatus('暂时无法加载手机号，正在自动重试。', 'error');
+  } finally {
+    if (generation === phoneSmsGeneration) {
+      phoneSmsPending = false;
+      phoneSmsController = null;
+    }
+  }
+  if (generation === phoneSmsGeneration && !phoneSmsStopped) await pollPhoneSms();
+}
+
+function suspendPhoneSmsPage() {
+  if (phoneSmsStopped) return;
+  phoneSmsResumeOnShow = true;
+  stopPhoneSms();
+}
+
+window.addEventListener('pagehide', suspendPhoneSmsPage);
+window.addEventListener('beforeunload', suspendPhoneSmsPage);
+window.addEventListener('pageshow', (event) => {
+  if (!event.persisted || !phoneSmsStopped || !phoneSmsResumeOnShow) return;
+  phoneSmsResumeOnShow = false;
+  phoneSmsInitialized = false;
+  phoneSmsStopped = false;
+  setPhoneSmsStatus('正在重新核对本组手机号…');
+  void initializePhoneSmsPage();
+});
+document.addEventListener('DOMContentLoaded', () => { void initializePhoneSmsPage(); });

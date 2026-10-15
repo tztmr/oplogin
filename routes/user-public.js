@@ -6,6 +6,9 @@ const { decryptGooglePassword } = require('../lib/google-password-crypto');
 const {
   getCurrentBatch,
   extractBatchSlotPhone,
+  extractBatchPhones,
+  readBatchPhoneSms,
+  readBatchPhoneSlots,
   setBatchSlotPhoneStatus,
   submitRecordUid,
   markBatchSlotPhoneBound,
@@ -15,7 +18,7 @@ const {
 } = require('../lib/public-user-batches');
 const { DEFAULT_ACCESS_PASSWORD } = require('../lib/config');
 
-function createUserPublicRouter({ pool, config }) {
+function createUserPublicRouter({ pool, config, requestPhoneSmsImpl }) {
   const router = express.Router();
   router.param('slot', (req, res, next, value) => {
     const slotNumber = Number(value);
@@ -86,6 +89,35 @@ function createUserPublicRouter({ pool, config }) {
     } catch (error) {
       return next(error);
     }
+  });
+
+  router.get('/:username/batch/phone', async (req, res, next) => {
+    try {
+      const user = await findActiveUser(req.params.username);
+      return res.status(200).json(await readBatchPhoneSlots(pool, config, user, req.query));
+    } catch (error) { return next(error); }
+  });
+
+  router.post('/:username/batch/phone/extract', async (req, res, next) => {
+    try {
+      const user = await findActiveUser(req.params.username);
+      const result = await extractBatchPhones(pool, config, user, req.body || {});
+      return res.status(200).json(withSharedPassword({ ...result, qrConfig: buildQrConfig(user) }));
+    } catch (error) { return next(error); }
+  });
+
+  router.post('/:username/batch/phone/sms', async (req, res, next) => {
+    const controller = new AbortController();
+    const onClose = () => { if (!res.writableEnded) controller.abort(); };
+    res.on('close', onClose);
+    try {
+      const user = await findActiveUser(req.params.username);
+      const result = await readBatchPhoneSms(pool, config, user, req.body || {}, requestPhoneSmsImpl, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      return res.status(200).json(result);
+    } catch (error) {
+      if (!controller.signal.aborted) return next(error);
+    } finally { res.off('close', onClose); }
   });
 
   router.post('/:username/batch/slots/:slot/uid', async (req, res, next) => {

@@ -143,8 +143,10 @@ async function loadPhoneInventory() {
   });
   const search = document.getElementById('phoneInventorySearch').value.trim();
   const filter = document.getElementById('phoneInventoryStatusFilter').value;
+  const extractionFilter = document.getElementById('phoneInventoryExtractionFilter').value;
   if (search) query.set('search', search);
   if (filter) query.set('status', filter);
+  if (extractionFilter) query.set('extractionStatus', extractionFilter);
   try {
     const data = await adminFetch(`/api/admin/records/phone-inventory?${query}`, { method: 'GET', cache: 'no-store' });
     if (generation !== phoneInventoryGeneration) return;
@@ -168,6 +170,7 @@ async function refreshPhoneInventoryAfterImport() {
   phoneInventoryPage = 1;
   document.getElementById('phoneInventorySearch').value = '';
   document.getElementById('phoneInventoryStatusFilter').value = '';
+  document.getElementById('phoneInventoryExtractionFilter').value = '';
   await loadPhoneInventory();
 }
 
@@ -285,6 +288,12 @@ function initializePhoneInventory() {
     phoneInventoryPage = 1;
     void loadPhoneInventory();
   });
+  for (const id of ['phoneInventoryStatusFilter', 'phoneInventoryExtractionFilter']) {
+    document.getElementById(id).addEventListener('change', () => {
+      phoneInventoryPage = 1;
+      void loadPhoneInventory();
+    });
+  }
   document.getElementById('phoneInventoryRefreshButton').addEventListener('click', () => { void loadPhoneInventory(); });
   document.getElementById('phoneInventoryResetButton').addEventListener('click', () => { void refreshPhoneInventoryAfterImport(); });
   document.getElementById('phoneInventoryPreviousButton').addEventListener('click', () => {

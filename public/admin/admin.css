@@ -1058,7 +1058,7 @@ menu {
 .public-batch-eligibility-head span, .public-batch-eligibility-details { font-size: 12px; }
 .public-batch-eligibility.has-warning { background: #fffaf0; border-color: #efdfbb; }
 .public-batch-eligibility.has-warning strong { color: #96662d; }
-#phoneInventoryFilterForm { grid-template-columns: minmax(180px, 1fr) minmax(120px, 190px) auto auto; }
+#phoneInventoryFilterForm { grid-template-columns: minmax(180px, 1fr) repeat(2, minmax(120px, 190px)) auto auto; }
 .management-filter-bar, .filter-section { border: 1px solid var(--border-color); box-shadow: none; }
 .table-toolbar {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;

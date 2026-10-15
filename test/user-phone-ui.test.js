@@ -206,6 +206,88 @@ test('record without OP still renders and allows phone extraction and bound UID 
   assert.equal(bound.element('submitUidBtn').disabled, false);
 });
 
+test('batch extraction locks competing actions, targets this batch and preserves drafts', async () => {
+  const { sandbox, element } = loadPage({ ...baseRecord });
+  sandbox.renderSelectedSlot();
+  element('uid').value = '123456789';
+  element('remark').value = 'keep this draft';
+  let respond;
+  const requests = [];
+  sandbox.fetch = (url, options) => new Promise((resolve) => {
+    requests.push({ url, body: JSON.parse(options.body) });
+    respond = resolve;
+  });
+  const extraction = sandbox.runBatchPhoneAction('extract');
+  assert.equal(element('batchExtractPhonesBtn').disabled, true);
+  assert.equal(element('batchReceiveSmsBtn').disabled, true);
+  await sandbox.advanceBatchGroup();
+  await sandbox.extractCurrentSlotPhone();
+  await sandbox.runBatchPhoneAction('sms');
+  assert.deepEqual(requests, [{ url: '/api/public/user/tester/batch/phone/extract', body: { batchId: 'batch-1' } }]);
+  const batch = { id: 'batch-1', slots: [{ slot: 1, status: 'available', record: {
+    ...baseRecord, phoneNumber: '13000000001', phoneStatus: '未绑定', phoneInventoryId: 'phone-1', phoneSmsUrl: 'https://sms.example/read',
+  } }] };
+  respond({ ok: true, json: async () => ({ batch, results: [{ slot: 1, recordId: 'record-1', phoneNumber: '13000000001', status: 'success', message: '提取成功' }] }) });
+  await extraction;
+  assert.equal(element('bindPhoneNumberButton').textContent, '13000000001');
+  assert.equal(element('uid').value, '123456789');
+  assert.equal(element('remark').value, 'keep this draft');
+  assert.equal(element('batchExtractPhonesBtn').disabled, false);
+  assert.equal(element('batchReceiveSmsBtn').disabled, false);
+});
+
+test('batch results keep slot numbers and render returned text without interpreting HTML', async () => {
+  const { sandbox, element } = loadPage({ ...baseRecord, phoneNumber: '13000000001', phoneSmsUrl: 'https://sms.example/read' });
+  sandbox.renderSelectedSlot();
+  sandbox.fetch = async () => ({ ok: true, json: async () => ({ batch: sandbox.seedBatch, results: [
+    { slot: 1, phoneNumber: '13000000001', status: 'error', message: '接码请求超时' },
+    { slot: 2, phoneNumber: '', status: 'skipped', message: '尚未提取手机号' },
+    { slot: 3, phoneNumber: '13000000003', status: 'success', message: '<img src=x onerror=alert(1)>验证码 123456\n请勿泄露' },
+  ] }) });
+  await sandbox.runBatchPhoneAction('extract');
+  const rows = element('batchPhoneResultsList').children;
+  assert.equal(rows.length, 3);
+  assert.match(rows[2].children[0].textContent, /第 3 个.*13000000003/);
+  assert.equal(rows[2].children[1].textContent, '<img src=x onerror=alert(1)>验证码 123456\n请勿泄露');
+  assert.equal(rows[2].children[1].innerHTML, undefined);
+  assert.match(element('batchPhoneResultsSummary').textContent, /失败 1/);
+  assert.equal(element('batchPhoneResults').hidden, false);
+  sandbox.applyBatch({ id: 'batch-2', slots: [{ slot: 1, status: 'available', record: { ...baseRecord, id: 'record-2' } }] });
+  assert.equal(element('batchPhoneResults').hidden, true);
+});
+
+test('batch SMS opens a separate page for the current group and never embeds phone tokens', () => {
+  const { sandbox, element } = loadPage({ ...baseRecord, phoneNumber: '13000000001', phoneSmsUrl: 'https://sms.example/read?token=private-test-token' });
+  sandbox.renderSelectedSlot();
+  const opened = [];
+  sandbox.window.open = (...args) => opened.push(args);
+  sandbox.openBatchSmsPage();
+  assert.deepEqual(opened, [['/user-phone-sms.html?username=tester&batchId=batch-1', '_blank', 'noopener,noreferrer']]);
+  assert.equal(element('batchReceiveSmsBtn').disabled, false);
+  vm.runInContext('phoneMutationPending = true', sandbox);
+  sandbox.openBatchSmsPage();
+  assert.equal(opened.length, 1);
+});
+
+test('batch conflict refreshes the group and clears stale drafts without retrying the operation', async () => {
+  const { sandbox, element } = loadPage({ ...baseRecord });
+  sandbox.renderSelectedSlot();
+  element('uid').value = '123456789';
+  element('remark').value = 'old group';
+  const requests = [];
+  sandbox.fetch = async (url) => {
+    requests.push(url);
+    if (url.endsWith('/extract')) return { ok: false, status: 409, json: async () => ({ error: '批次已变更，请刷新后重试' }) };
+    return { ok: true, json: async () => ({ batch: { id: 'batch-2', slots: [{ slot: 1, status: 'available', record: { ...baseRecord, id: 'record-2' } }] } }) };
+  };
+  await sandbox.runBatchPhoneAction('extract');
+  assert.deepEqual(requests, ['/api/public/user/tester/batch/phone/extract', '/api/public/user/tester/batch']);
+  assert.equal(element('uid').value, '');
+  assert.equal(element('remark').value, '');
+  assert.equal(element('batchExtractPhonesBtn').disabled, false);
+  assert.match(element('toast').textContent, /批次已变更/);
+});
+
 
 test('completed records admitted by queue settings display their saved UID and disable mutations', () => {
   const { sandbox, element } = loadPage({ ...baseRecord, uidValue: 'saved-uid', googleAccount: '', googlePassword: '' });

@@ -460,6 +460,30 @@
             text-align: center;
         }
 
+        .batch-phone-results {
+            margin: 16px 0;
+            padding: 14px;
+            border: 1px solid var(--border-color, #dbe3ef);
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.65);
+        }
+
+        .batch-phone-results h2 { margin: 0; font-size: 16px; }
+        .batch-phone-results .status-note { text-align: left; margin: 8px 0; }
+        .batch-phone-result { border-top: 1px solid #e2e8f0; padding: 10px 0; }
+        .batch-phone-result-title { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+        .batch-phone-result.is-error .batch-phone-result-title { color: #b91c1c; }
+        .batch-phone-result.is-skipped .batch-phone-result-title { color: var(--text-muted); }
+        .batch-phone-result-text {
+            margin: 6px 0 0;
+            font: inherit;
+            font-size: 13px;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            max-height: 220px;
+            overflow-y: auto;
+        }
+
         .toast {
             position: fixed;
             top: 20px;
@@ -541,6 +565,11 @@
                     <button type="button" id="refreshBatchBtn" class="btn-submit" onclick="refreshBatch()">刷新本组</button>
                     <button type="button" id="advanceBatchBtn" class="btn-submit btn-danger" onclick="advanceBatchGroup()">放弃剩余并换组</button>
                 </div>
+                <div class="batch-action-row">
+                    <button type="button" id="batchExtractPhonesBtn" class="btn-submit" onclick="runBatchPhoneAction('extract')">批量提取手机号</button>
+                    <button type="button" id="batchReceiveSmsBtn" class="btn-submit btn-secondary" onclick="openBatchSmsPage()">批量接码手机号</button>
+                </div>
+                <p class="status-note">批量提取本组全部槽位的手机号；批量接码在新页面每秒检查，关闭页面后停止。</p>
 
                 <div class="legend">
                     <span class="legend-available">红色待处理</span>
@@ -556,6 +585,12 @@
                     <button type="button" class="quick-slot-button slot-available" data-slot="5" onclick="switchSlot(5)">5</button>
                     <button type="button" class="quick-slot-button slot-available" data-slot="6" onclick="switchSlot(6)">6</button>
                 </div>
+
+                <section class="batch-phone-results" id="batchPhoneResults" hidden aria-labelledby="batchPhoneResultsTitle">
+                    <h2 id="batchPhoneResultsTitle">本组手机号结果</h2>
+                    <p class="status-note" id="batchPhoneResultsSummary" role="status" aria-live="polite"></p>
+                    <div id="batchPhoneResultsList"></div>
+                </section>
 
                 <div class="info-row">
                     <div class="label">当前槽位</div>
@@ -712,6 +747,7 @@
         let phoneMutationPending = false;
         let uidSavePending = false;
         let batchRequestPending = false;
+        let batchPhoneResultSnapshot = '';
 
         async function userPageFetch(url, options = {}) {
             return fetch(url, options);
@@ -1060,8 +1096,9 @@
             }
             document.getElementById('refreshBatchBtn').disabled = busy;
             document.getElementById('advanceBatchBtn').disabled = busy;
+            renderBatchPhoneActions();
             document.getElementById('phoneWorkflowHint').textContent = busy
-                ? '正在保存，请稍候…'
+                ? '正在处理，请稍候…'
                 : bindingLocked ? (phoneNumber ? '已绑定并入库，号码已锁定。保存 UID 后卡槽变绿。' : '此记录已有绑定历史，号码操作已锁定，请联系管理员检查资料。')
                 : isReserved ? '绑定成功后点“已绑定”；如为老号，点“老号售后”再提取下一个号码。'
                 : slot.record.lastPhoneAttempt ? '上个号码已标记老号售后，可重新提取。'
@@ -1086,6 +1123,103 @@
             opButton.disabled = !slot.record.opValue;
             enterOpButton.disabled = !slot.record.opValue;
             void prefetchCurrentWakeUrl();
+        }
+
+        function phoneBatchSnapshot() {
+            return JSON.stringify([currentBatch?.id, (currentBatch?.slots || []).map((slot) => [
+                slot.slot, slot.record?.id, slot.record?.phoneInventoryId,
+                slot.record?.phoneNumber, slot.record?.phoneSmsUrl,
+            ])]);
+        }
+
+        function renderBatchPhoneActions() {
+            const busy = phoneMutationPending || uidSavePending || batchRequestPending;
+            const slots = currentBatch?.slots || [];
+            document.getElementById('batchExtractPhonesBtn').disabled = busy || !slots.some((slot) => slot.record && slot.status === 'available');
+            document.getElementById('batchReceiveSmsBtn').disabled = busy || !slots.some((slot) => slot.record?.phoneNumber && slot.record?.phoneSmsUrl);
+            if (batchPhoneResultSnapshot && batchPhoneResultSnapshot !== phoneBatchSnapshot()) {
+                document.getElementById('batchPhoneResults').hidden = true;
+                document.getElementById('batchPhoneResultsList').replaceChildren();
+                batchPhoneResultSnapshot = '';
+            }
+        }
+
+        function renderBatchPhoneResults(results) {
+            const successCount = results.filter((item) => item.status === 'success').length;
+            const errorCount = results.filter((item) => item.status === 'error').length;
+            const skippedCount = results.filter((item) => item.status === 'skipped').length;
+            document.getElementById('batchPhoneResultsSummary').textContent = `提取成功 ${successCount}，失败 ${errorCount}，跳过 ${skippedCount}。已有号码保持不变，失败项可稍后重试。`;
+            document.getElementById('batchPhoneResultsList').replaceChildren(...results.map((item) => {
+                const row = document.createElement('div');
+                row.className = `batch-phone-result ${item.status === 'error' ? 'is-error' : item.status === 'skipped' ? 'is-skipped' : ''}`;
+                const title = document.createElement('div');
+                title.className = 'batch-phone-result-title';
+                const label = item.status === 'error' ? '失败' : item.status === 'skipped' ? '跳过' : '提取成功';
+                title.textContent = `第 ${item.slot} 个 · ${item.phoneNumber || '暂无手机号'} · ${label}`;
+                const content = document.createElement('pre');
+                content.className = 'batch-phone-result-text';
+                content.textContent = item.message || '暂无信息';
+                row.replaceChildren(title, content);
+                return row;
+            }));
+            batchPhoneResultSnapshot = phoneBatchSnapshot();
+            document.getElementById('batchPhoneResults').hidden = false;
+        }
+
+        function openBatchSmsPage() {
+            if (phoneMutationPending || uidSavePending || batchRequestPending || !currentBatch
+                || !currentBatch.slots.some((slot) => slot.record?.phoneNumber && slot.record?.phoneSmsUrl)) return;
+            const query = new URLSearchParams({ username, batchId: currentBatch.id });
+            window.open(`/user-phone-sms.html?${query}`, '_blank', 'noopener,noreferrer');
+        }
+
+        async function runBatchPhoneAction(action) {
+            if (action !== 'extract' || phoneMutationPending || uidSavePending || batchRequestPending || !currentBatch) return;
+            const batchId = currentBatch.id;
+            const preferredSlot = currentSlotNumber;
+            const button = document.getElementById('batchExtractPhonesBtn');
+            const originalText = button.textContent;
+            phoneMutationPending = true;
+            renderBatchSlots();
+            renderSelectedSlot({ preserveDraft: true });
+            button.textContent = '正在批量提取…';
+            batchPhoneResultSnapshot = phoneBatchSnapshot();
+            document.getElementById('batchPhoneResults').hidden = false;
+            document.getElementById('batchPhoneResultsTitle').textContent = '本组提取结果';
+            document.getElementById('batchPhoneResultsSummary').textContent = '正在按本组槽位顺序提取手机号，请稍候…';
+            document.getElementById('batchPhoneResultsList').replaceChildren();
+            try {
+                const response = await userPageFetch(`/api/public/user/${encodeURIComponent(username)}/batch/phone/${action}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ batchId }),
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    if (response.status === 409) {
+                        const fresh = await fetchBatch();
+                        applyUserPagePayload(fresh);
+                        applyBatch(fresh.batch, preferredSlot, { preserveDraft: true });
+                    }
+                    throw new Error(data.error || '批量操作失败，请稍后重试');
+                }
+                if (currentBatch.id !== batchId || (data.batch?.id || data.batchId) !== batchId) {
+                    throw new Error('批次已变更，请刷新后重试');
+                }
+                if (data.batch) {
+                    applyUserPagePayload(data);
+                    applyBatch(data.batch, preferredSlot, { preserveDraft: true });
+                }
+                renderBatchPhoneResults(data.results || []);
+            } catch (error) {
+                document.getElementById('batchPhoneResultsSummary').textContent = error.message || '网络异常，请重试';
+                showToast(error.message || '网络异常，请重试', 'error');
+            } finally {
+                phoneMutationPending = false;
+                button.textContent = originalText;
+                renderBatchSlots();
+                renderSelectedSlot({ preserveDraft: true });
+            }
         }
 
         function applyPhoneMutationResponse(data, successMessage) {
@@ -1186,6 +1320,7 @@
             const previousBatchId = currentBatch?.id;
             const previousRecordId = currentRecord?.id;
             currentBatch = batch;
+            renderBatchPhoneActions();
             currentSlotNumber = resolveSelectableSlot(preferredSlotNumber);
             const keepDraft = preserveDraft && previousBatchId === batch.id
                 && previousRecordId === getSlot(currentSlotNumber)?.record?.id;

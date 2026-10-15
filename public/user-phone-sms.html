@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>批量接码 · 用户中心</title>
+  <style>
+    :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; color: #213047; background: #f2f5fa; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 32px 18px 56px; }
+    main { width: min(100%, 1040px); margin: 0 auto; }
+    header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 22px; }
+    .eyebrow { margin: 0 0 8px; color: #687990; font-size: 12px; letter-spacing: .08em; }
+    h1 { margin: 0; font-size: 27px; letter-spacing: -.04em; }
+    .intro { margin: 10px 0 0; color: #64748b; line-height: 1.7; font-size: 14px; }
+    a { color: #315fbd; text-decoration: none; }
+    .back-link { flex-shrink: 0; background: #fff; border: 1px solid #dae2ef; border-radius: 10px; padding: 10px 14px; font-size: 14px; }
+    .polling-card { padding: 18px 20px; background: #e9f0ff; border: 1px solid #d7e2fa; border-radius: 14px; margin-bottom: 22px; }
+    #phoneSmsPollingStatus { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.6; }
+    #phoneSmsPollingStatus[data-state="stopped"], #phoneSmsPollingStatus[data-state="error"] { color: #a04429; }
+    #phoneSmsBatchText { margin: 6px 0 0; font-size: 12px; color: #64748b; overflow-wrap: anywhere; }
+    .note { color: #64748b; margin: 8px 0 0; font-size: 12px; line-height: 1.7; }
+    #phoneSmsSlots { display: grid; gap: 16px; }
+    .sms-slot-card { background: #fff; border: 1px solid #dfe6f0; border-radius: 14px; padding: 20px; box-shadow: 0 3px 12px #18304a04; min-width: 0; }
+    .sms-slot-heading { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+    .sms-slot-number { margin: 0; padding: 5px 9px; font-size: 13px; background: #f0f4fa; border-radius: 6px; color: #576b85; }
+    .sms-phone-number { font-size: 20px; font-weight: 650; letter-spacing: .02em; overflow-wrap: anywhere; }
+    .sms-statuses { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 9px; }
+    .sms-badge { padding: 5px 9px; border-radius: 6px; background: #f1f4f8; color: #64748b; font-size: 12px; line-height: 1.5; }
+    .sms-badge.received { background: #e9f7ef; color: #227447; }
+    .sms-badge.new { background: #eaf0ff; color: #315fbd; }
+    .sms-badge.error { background: #fff0eb; color: #a04429; }
+    .sms-code { font-size: 23px; font-weight: 700; letter-spacing: .12em; color: #264f9d; margin: 12px 0 8px; }
+    .sms-label { margin: 14px 0 7px; font-size: 12px; font-weight: 600; color: #65768c; }
+    .sms-raw { margin: 0; padding: 12px; border-radius: 8px; background: #f7f9fc; font: 13px/1.7 ui-monospace, "SFMono-Regular", Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 250px; overflow-y: auto; }
+    .sms-last-message { margin-top: 12px; padding-top: 1px; border-top: 1px solid #edf1f6; }
+    @media (max-width: 600px) { body { padding: 22px 12px 36px; } header { flex-direction: column; gap: 12px; } h1 { font-size: 24px; } .sms-slot-card { padding: 16px; } .polling-card { padding: 15px 16px; } }
+  </style>
+  <script src="/user-phone-sms.js" defer></script>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <p class="eyebrow">用户中心 / 手机号</p>
+        <h1>本组批量接码</h1>
+        <p class="intro">号码按原槽位顺序显示，每秒自动查询。关闭本页即停止接码。</p>
+      </div>
+      <a id="phoneSmsReturnLink" class="back-link" href="/">返回用户中心</a>
+    </header>
+    <section class="polling-card" aria-label="接码状态">
+      <p id="phoneSmsPollingStatus" role="status" aria-live="polite">正在加载本组手机号…</p>
+      <p id="phoneSmsBatchText"></p>
+      <p class="note">新码按本页已收到的验证码比较；首次收到也会标记。未能识别的内容请查看接口原文。</p>
+    </section>
+    <section id="phoneSmsSlots" aria-label="各槽位接码结果"></section>
+  </main>
+</body>
+</html>
