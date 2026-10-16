@@ -7,6 +7,7 @@ let phoneInventoryStatusSubmitting = false;
 let phoneInventoryStatusMode = 'status';
 const selectedPhoneInventoryIds = new Set();
 let currentPagePhoneInventoryIds = [];
+let currentPagePhoneInventoryItems = [];
 const phoneInventoryExtractionLabels = {
   available: '待提取', reserved: '已提取', bound: '已入库', after_sale: '不再分配',
 };
@@ -28,6 +29,11 @@ function syncPhoneInventoryBatchState() {
   const selectedCount = selectedPhoneInventoryIds.size;
   const selectionText = document.getElementById('phoneInventorySelectionText');
   if (selectionText) selectionText.textContent = `已选 ${selectedCount} 条`;
+  const exportButton = document.getElementById('phoneInventoryBatchExportButton');
+  if (exportButton) {
+    exportButton.disabled = selectedCount === 0;
+    exportButton.textContent = selectedCount > 0 ? `批量导出 TXT (${selectedCount})` : '批量导出 TXT';
+  }
   const deleteButton = document.getElementById('phoneInventoryBatchDeleteButton');
   if (deleteButton) {
     deleteButton.disabled = selectedCount === 0;
@@ -67,6 +73,7 @@ function togglePhoneInventorySelection(id, checked) {
 
 function renderPhoneInventory(items) {
   const body = document.getElementById('phoneInventoryTableBody');
+  currentPagePhoneInventoryItems = items;
   currentPagePhoneInventoryIds = items.map((item) => item.id).filter(Boolean);
   for (const selectedId of Array.from(selectedPhoneInventoryIds)) {
     if (!currentPagePhoneInventoryIds.includes(selectedId)) {
@@ -172,6 +179,28 @@ async function refreshPhoneInventoryAfterImport() {
   document.getElementById('phoneInventoryStatusFilter').value = '';
   document.getElementById('phoneInventoryExtractionFilter').value = '';
   await loadPhoneInventory();
+}
+
+function exportSelectedPhoneInventory() {
+  const items = currentPagePhoneInventoryItems.filter((item) => selectedPhoneInventoryIds.has(item.id));
+  if (!items.length) {
+    showToast('请先勾选要导出的手机号');
+    return;
+  }
+  const text = items.map((item) => `${item.phoneNumber}----${item.phoneSmsUrl || ''}`).join('\r\n');
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.download = `手机号-${items.length}条-${Date.now()}.txt`;
+  document.body.appendChild(link);
+  try {
+    link.click();
+  } finally {
+    link.remove();
+    setTimeout(() => window.URL.revokeObjectURL(downloadUrl), 1000);
+  }
+  showToast(`已导出 ${items.length} 个手机号`);
 }
 
 async function deleteSelectedPhoneInventory() {
@@ -310,6 +339,9 @@ function initializePhoneInventory() {
   });
   document.getElementById('phoneInventoryBatchDeleteButton').addEventListener('click', () => {
     void deleteSelectedPhoneInventory().catch((error) => showToast(error.message || '删除失败'));
+  });
+  document.getElementById('phoneInventoryBatchExportButton').addEventListener('click', () => {
+    try { exportSelectedPhoneInventory(); } catch (error) { showToast(error.message || '导出失败'); }
   });
   document.getElementById('phoneInventoryBatchStatusButton').addEventListener('click', () => {
     openPhoneInventoryStatusDialog();
